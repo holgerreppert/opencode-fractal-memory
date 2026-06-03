@@ -1,0 +1,1529 @@
+const LEVEL_COLORS = {
+  0: 0x4a9eff,
+  1: 0x34d399,
+  2: 0xfb923c,
+  3: 0xa78bfa,
+  4: 0xf472b6,
+  5: 0xfbbf24,
+};
+
+const TYPE_SHAPES = {
+  note: "sphere",
+  event: "box",
+  episode: "box",
+  concept: "octahedron",
+  summary: "octahedron",
+  core: "dodecahedron",
+  improvement: "sphere",
+  howto: "sphere",
+  skill: "icosahedron",
+  unknown: "sphere",
+};
+
+const CUSTOM_TYPE_COLORS = {
+  'middle-term': 0xff6b6b,
+};
+
+const CUSTOM_TYPE_SHAPES = {
+  'middle-term': "torus",
+};
+
+// ==================== Filter Engine ====================
+
+class NodeFilterEngine {
+  constructor() {
+    this.levels = new Set();
+    this.types = new Set();
+    this.customTypes = new Set();
+    this.shapes = new Set();
+    this.searchQuery = "";
+    this.searchMode = "text";
+    this.serverSearchIds = null;
+    this.onUpdate = null;
+  }
+
+  initFromStats(stats) {
+    this.levels.clear();
+    this.types.clear();
+    this.customTypes.clear();
+    this.shapes.clear();
+
+    Object.keys(stats.nodesPerLevel || {}).map(Number).sort((a, b) => a - b).forEach(l => this.levels.add(l));
+    Object.keys(stats.nodesPerType || {}).sort().forEach(t => this.types.add(t));
+    Object.keys(stats.nodesPerCustomType || {}).sort().forEach(ct => this.customTypes.add(ct));
+    Object.keys(stats.nodesPerShape || {}).sort().forEach(s => this.shapes.add(s));
+  }
+
+  toggleLevel(v) { this._toggle(this.levels, v); this.changed(); }
+  toggleType(v) { this._toggle(this.types, v); this.changed(); }
+  toggleCustomType(v) { this._toggle(this.customTypes, v); this.changed(); }
+  toggleShape(v) { this._toggle(this.shapes, v); this.changed(); }
+
+  setSearchQuery(q) { this.searchQuery = (q || "").toLowerCase(); }
+  setSearchMode(m) { this.searchMode = m; }
+  setServerSearchIds(ids) { this.serverSearchIds = ids; }
+
+  changed() {
+    if (this.onUpdate) this.onUpdate();
+  }
+
+  _toggle(set, value) {
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+  }
+
+  matches(node) {
+    if (!node) return false;
+    if (!this.levels.has(node.level)) return false;
+    if (!this.types.has(node.type || "unknown")) return false;
+
+    if (this.customTypes.size > 0) {
+      const ct = node.metadata?.customType;
+      if (ct && !this.customTypes.has(ct)) return false;
+    }
+
+    if (this.shapes.size > 0) {
+      if (!this.shapes.has(getNodeShape(node))) return false;
+    }
+
+    if (this.searchQuery) {
+      if (this.searchMode === "text") {
+        const q = this.searchQuery;
+        const lm = node.label && node.label.toLowerCase().includes(q);
+        const cm = node.content && node.content.toLowerCase().includes(q);
+        if (!lm && !cm) return false;
+      } else if (this.serverSearchIds) {
+        if (!this.serverSearchIds.has(node.id)) return false;
+      }
+    }
+
+    return true;
+  }
+
+  apply(data) {
+    return data.filter(n => this.matches(n));
+  }
+}
+
+// ==================== Scene Controller ====================
+
+class SceneController {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a0f);
+    this.scene.fog = new THREE.FogExp2(0x0a0a0f, 0.002);
+
+    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    this.camera.position.set(0, 100, 300);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById("canvas-container").appendChild(this.renderer.domElement);
+
+    this.nodeObjects = [];
+    this.edgeObjects = [];
+    this.nodePositions = new Map();
+    this.nodeVelocities = new Map();
+    this.hoveredNode = null;
+    this.selectedNode = null;
+
+    this.raycaster = new THREE.Raycaster();
+    this.mouse = new THREE.Vector2();
+
+    // Orbit state
+    this._isDragging = false;
+    this._prevMouse = { x: 0, y: 0 };
+    this._spherical = { theta: 0, phi: Math.PI / 3, radius: 350 };
+    this._target = new THREE.Vector3(0, 0, 0);
+
+    this._addLights();
+    this._updateCamera();
+    this._bindEvents();
+  }
+
+  _addLights() {
+    const a = new THREE.AmbientLight(0x404060, 0.6);
+    this.scene.add(a);
+    const l1 = new THREE.PointLight(0xffffff, 0.8, 1000);
+    l1.position.set(200, 200, 200);
+    this.scene.add(l1);
+    const l2 = new THREE.PointLight(0x4a9eff, 0.4, 800);
+    l2.position.set(-200, -100, -200);
+    this.scene.add(l2);
+  }
+
+  _updateCamera() {
+    const s = this._spherical;
+    const t = this._target;
+    this.camera.position.x = t.x + s.radius * Math.sin(s.phi) * Math.cos(s.theta);
+    this.camera.position.y = t.y + s.radius * Math.cos(s.phi);
+    this.camera.position.z = t.z + s.radius * Math.sin(s.phi) * Math.sin(s.theta);
+    this.camera.lookAt(t);
+  }
+
+  _bindEvents() {
+    const el = this.renderer.domElement;
+
+    el.addEventListener("mousedown", (e) => {
+      if (e.button === 0 && !this.hoveredNode) {
+        this._isDragging = true;
+        this._prevMouse = { x: e.clientX, y: e.clientY };
+      }
+    });
+
+    el.addEventListener("mousemove", (e) => {
+      if (this._isDragging) {
+        const dx = e.clientX - this._prevMouse.x;
+        const dy = e.clientY - this._prevMouse.y;
+        this._spherical.theta -= dx * 0.005;
+        this._spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this._spherical.phi + dy * 0.005));
+        this._prevMouse = { x: e.clientX, y: e.clientY };
+        this._updateCamera();
+      }
+    });
+
+    el.addEventListener("mouseup", () => { this._isDragging = false; });
+    el.addEventListener("mouseleave", () => { this._isDragging = false; });
+
+    el.addEventListener("wheel", (e) => {
+      this._spherical.radius *= e.deltaY > 0 ? 1.1 : 0.9;
+      this._spherical.radius = Math.max(10, Math.min(1000, this._spherical.radius));
+      this._updateCamera();
+    });
+
+    el.addEventListener("mousemove", (e) => this._onMouseMove(e));
+    el.addEventListener("click", () => this._onClick());
+  }
+
+  _onMouseMove(event) {
+    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    const meshes = this.nodeObjects.filter(o => o.isMesh);
+    const hits = this.raycaster.intersectObjects(meshes);
+    const tooltip = document.getElementById("tooltip");
+
+    if (hits.length > 0) {
+      const obj = hits[0].object;
+      const nd = obj.userData.nodeData;
+      if (this.hoveredNode !== obj) {
+        if (this.hoveredNode && this.hoveredNode !== this.selectedNode) {
+          this.hoveredNode.material.emissiveIntensity = 0.2;
+        }
+        this.hoveredNode = obj;
+        if (obj !== this.selectedNode) {
+          obj.material.emissiveIntensity = 0.5;
+        }
+      }
+      tooltip.style.display = "block";
+      tooltip.style.left = event.clientX + 15 + "px";
+      tooltip.style.top = event.clientY + 15 + "px";
+      tooltip.innerHTML = `<strong>${nd.label || "Unnamed"}</strong><br>Level: ${nd.level} | Importance: ${nd.importance}`;
+    } else {
+      if (this.hoveredNode && this.hoveredNode !== this.selectedNode) {
+        this.hoveredNode.material.emissiveIntensity = 0.2;
+      }
+      this.hoveredNode = null;
+      tooltip.style.display = "none";
+    }
+  }
+
+  _onClick() {
+    if (this.hoveredNode) {
+      this.selectedNode = this.hoveredNode;
+      this._updateHighlight();
+      showDetailPanel(this.hoveredNode.userData.nodeData);
+    }
+  }
+
+  _updateHighlight() {
+    this.nodeObjects.forEach(obj => {
+      if (obj.isMesh && obj.userData.nodeData) {
+        if (obj === this.selectedNode) {
+          obj.material.emissiveIntensity = 0.8;
+        } else if (obj !== this.hoveredNode) {
+          obj.material.emissiveIntensity = 0.2;
+        }
+      }
+    });
+  }
+
+  clear() {
+    this.nodeObjects.forEach(obj => this.scene.remove(obj));
+    this.edgeObjects.forEach(obj => this.scene.remove(obj));
+    this.nodeObjects = [];
+    this.edgeObjects = [];
+    this.nodePositions.clear();
+    this.nodeVelocities.clear();
+  }
+
+  buildFromData(data) {
+    this.clear();
+
+    if (data.length === 0) {
+      console.log("[scene] No data to build");
+      return;
+    }
+
+    const levelGroups = {};
+    const levelCounters = {};
+    const levelCounts = {};
+    for (const node of data) {
+      if (!node) continue;
+      const lvl = node.level ?? 3;
+      if (!levelGroups[lvl]) { levelGroups[lvl] = []; levelCounters[lvl] = 0; levelCounts[lvl] = 0; }
+      levelGroups[lvl].push(node);
+      levelCounts[lvl]++;
+    }
+
+    const shellRadii = computeShellRadii(levelCounts);
+    this.shellRadii = shellRadii;
+
+    for (const node of data) {
+      if (!node) continue;
+
+      const lvl = node.level ?? 3;
+      const count = levelCounts[lvl];
+      const idx = levelCounters[lvl]++;
+      const radius = shellRadii[lvl] ?? 120;
+
+      const pos = fibonacciSphere(idx, count, radius);
+      // Add tiny random jitter to prevent exact overlaps
+      if (count > 1) {
+        pos.x += (Math.random() - 0.5) * 2;
+        pos.y += (Math.random() - 0.5) * 2;
+        pos.z += (Math.random() - 0.5) * 2;
+      }
+      this.nodePositions.set(node.id, pos);
+      this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
+
+      const size = getNodeSize(node);
+      const customType = node.metadata?.customType;
+      let color, shape;
+
+      if (customType && CUSTOM_TYPE_COLORS[customType]) {
+        color = CUSTOM_TYPE_COLORS[customType];
+        shape = CUSTOM_TYPE_SHAPES[customType] ?? "sphere";
+      } else {
+        color = LEVEL_COLORS[node.level] ?? 0x888888;
+        shape = TYPE_SHAPES[node.type] ?? "sphere";
+      }
+
+      const geometry = getGeometry(shape, size);
+      const material = new THREE.MeshPhongMaterial({
+        color, emissive: color, emissiveIntensity: 0.2, transparent: true, opacity: 0.9,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.copy(pos);
+      mesh.userData = { nodeId: node.id, nodeData: node };
+      this.scene.add(mesh);
+      this.nodeObjects.push(mesh);
+
+      const label = createTextSprite(node.label || node.id.slice(0, 8), color);
+      label.position.copy(pos);
+      label.position.y += size + 5;
+      label.userData = { nodeId: node.id, nodeData: node };
+      this.scene.add(label);
+      this.nodeObjects.push(label);
+    }
+
+    console.log(`[scene] Built ${data.length} nodes → ${this.nodeObjects.filter(o => o.isMesh).length} meshes`);
+  }
+
+  buildEdges(linkData) {
+    const seen = new Set();
+    linkData.forEach(link => {
+      const key = `${link.source}-${link.target}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const sp = this.nodePositions.get(link.source);
+      const tp = this.nodePositions.get(link.target);
+      if (!sp || !tp) return;
+
+      const isParent = link.type === "parent";
+      const color = isParent ? 0x4a9eff : 0x666666;
+      const opacity = isParent ? 0.4 : 0.2;
+
+      const g = new THREE.BufferGeometry().setFromPoints([sp, tp]);
+      const m = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+      const line = new THREE.Line(g, m);
+      line.userData = { source: link.source, target: link.target };
+      this.scene.add(line);
+      this.edgeObjects.push(line);
+    });
+  }
+
+  runSimulation(iterations, linkData) {
+    const ids = Array.from(this.nodePositions.keys());
+    const radii = this.shellRadii || {};
+
+    const nodeLevels = new Map();
+    for (const id of ids) {
+      const mesh = this.nodeObjects.find(o => o.isMesh && o.userData.nodeId === id);
+      nodeLevels.set(id, mesh?.userData?.nodeData?.level ?? 3);
+    }
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const temp = 1 - iter / iterations;
+
+      for (const id of ids) {
+        const pos = this.nodePositions.get(id);
+        const vel = this.nodeVelocities.get(id);
+        const lvlA = nodeLevels.get(id) ?? 3;
+        const wA = Math.max(0.4, 1.0 - lvlA * 0.12);
+        const kA = 80 + lvlA * 10;
+
+        for (const oid of ids) {
+          if (oid === id) continue;
+          const op = this.nodePositions.get(oid);
+          const dx = pos.x - op.x, dy = pos.y - op.y, dz = pos.z - op.z;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+          const lvlB = nodeLevels.get(oid) ?? 3;
+          const wB = Math.max(0.4, 1.0 - lvlB * 0.12);
+          const kB = 80 + lvlB * 10;
+          const k = (kA + kB) / 2;
+          const f = (k * k) / dist * ((wA + wB) / 2);
+          vel.x += (dx / dist) * f * 0.008;
+          vel.y += (dy / dist) * f * 0.008;
+          vel.z += (dz / dist) * f * 0.008;
+        }
+      }
+
+      if (linkData) {
+        linkData.forEach(link => {
+          const sp = this.nodePositions.get(link.source);
+          const tp = this.nodePositions.get(link.target);
+          if (!sp || !tp) return;
+          const dx = tp.x - sp.x, dy = tp.y - sp.y, dz = tp.z - sp.z;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+          const lvlA = nodeLevels.get(link.source) ?? 3;
+          const lvlB = nodeLevels.get(link.target) ?? 3;
+          const restLen = 40 + (lvlA + lvlB) * 8;
+          const f = (dist - restLen) * 0.06;
+          const sv = this.nodeVelocities.get(link.source);
+          const tv = this.nodeVelocities.get(link.target);
+          sv.x += dx * f * 0.01; sv.y += dy * f * 0.01; sv.z += dz * f * 0.01;
+          tv.x -= dx * f * 0.01; tv.y -= dy * f * 0.01; tv.z -= dz * f * 0.01;
+        });
+      }
+
+      for (const id of ids) {
+        const pos = this.nodePositions.get(id);
+        const vel = this.nodeVelocities.get(id);
+        const lvl = nodeLevels.get(id) ?? 3;
+        const targetRadius = radii[lvl] ?? 120;
+        const curDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
+
+        const shellForce = (targetRadius - curDist) * 0.01;
+        vel.x += (pos.x / curDist) * shellForce;
+        vel.y += (pos.y / curDist) * shellForce;
+        vel.z += (pos.z / curDist) * shellForce;
+
+        vel.x *= 0.9; vel.y *= 0.9; vel.z *= 0.9;
+        const maxStep = 8 * temp + 1;
+        vel.x = Math.max(-maxStep, Math.min(maxStep, vel.x));
+        vel.y = Math.max(-maxStep, Math.min(maxStep, vel.y));
+        vel.z = Math.max(-maxStep, Math.min(maxStep, vel.z));
+
+        pos.add(vel);
+
+        const maxRadius = Math.max(targetRadius + 80, targetRadius * 1.3);
+        const newDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
+        if (newDist > maxRadius) {
+          const scale = maxRadius / newDist;
+          pos.x *= scale; pos.y *= scale; pos.z *= scale;
+        }
+      }
+    }
+
+    this.nodeObjects.forEach(obj => {
+      if (obj.userData.nodeId) {
+        const pos = this.nodePositions.get(obj.userData.nodeId);
+        if (pos) {
+          obj.position.copy(pos);
+          if (obj.isSprite && obj.userData.nodeData) {
+            obj.position.y += getNodeSize(obj.userData.nodeData) + 5;
+          }
+        }
+      }
+    });
+
+    this._syncEdges();
+
+    // Log final positions for debugging
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    ids.forEach(id => {
+      const p = this.nodePositions.get(id);
+      if (!p) return;
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+      if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+    });
+    let maxDist = 0;
+    ids.forEach(id => {
+      const p = this.nodePositions.get(id);
+      if (!p) return;
+      const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+      if (d > maxDist) maxDist = d;
+    });
+    console.log(`[scene] Sim bounds: X[${minX.toFixed(1)}, ${maxX.toFixed(1)}] Y[${minY.toFixed(1)}, ${maxY.toFixed(1)}] Z[${minZ.toFixed(1)}, ${maxZ.toFixed(1)}] maxRadius=${maxDist.toFixed(1)}`);
+  }
+
+  _syncEdges() {
+    this.edgeObjects.forEach(line => {
+      const s = this.nodePositions.get(line.userData.source);
+      const t = this.nodePositions.get(line.userData.target);
+      if (s && t) {
+        const arr = line.geometry.attributes.position.array;
+        arr[0] = s.x; arr[1] = s.y; arr[2] = s.z;
+        arr[3] = t.x; arr[4] = t.y; arr[5] = t.z;
+        line.geometry.attributes.position.needsUpdate = true;
+      }
+    });
+  }
+
+  updateVisibility(filterEngine) {
+    const filtered = filterEngine.apply(nodeData);
+    const filteredIds = new Set(filtered.map(n => n.id));
+
+    let visibleCount = 0;
+    this.nodeObjects.forEach(obj => {
+      if (!obj.userData.nodeId) return;
+      const v = filteredIds.has(obj.userData.nodeId);
+      obj.visible = v;
+      if (v && obj.isMesh) visibleCount++;
+    });
+
+    this.edgeObjects.forEach(line => {
+      line.visible = filteredIds.has(line.userData.source) && filteredIds.has(line.userData.target);
+    });
+
+    console.log(`[scene] Visibility: ${visibleCount}/${this.nodeObjects.filter(o => o.isMesh).length} meshes visible (${filtered.length} nodes in list)`);
+    buildNodeList();
+  }
+
+  focusOnNode(nodeId) {
+    const mesh = this.nodeObjects.find(o => o.isMesh && o.userData.nodeId === nodeId);
+    if (!mesh) return;
+
+    this.selectedNode = mesh;
+    this._updateHighlight();
+    showDetailPanel(mesh.userData.nodeData);
+    buildNodeList();
+
+    const target = mesh.position.clone();
+    const size = getNodeSize(mesh.userData.nodeData);
+    const offset = size * 4 + 30;
+    this._animateCamera(target, offset);
+  }
+
+  _animateCamera(target, offset) {
+    const start = this.camera.position.clone();
+    const end = new THREE.Vector3(target.x + offset * 0.5, target.y + offset * 0.3, target.z + offset);
+    const duration = 600;
+    const startTime = performance.now();
+
+    const step = (now) => {
+      const t = Math.min((now - startTime) / duration, 1);
+      const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      this.camera.position.lerpVectors(start, end, ease);
+      this.camera.lookAt(target);
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        // Update orbit target to node position and recalc spherical state
+        this._target.copy(target);
+        const dx = end.x - this._target.x;
+        const dy = end.y - this._target.y;
+        const dz = end.z - this._target.z;
+        this._spherical.radius = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        this._spherical.theta = Math.atan2(dz, dx);
+        this._spherical.phi = Math.acos(Math.max(-1, Math.min(1, dy / (this._spherical.radius || 1))));
+      }
+    };
+
+    requestAnimationFrame(step);
+  }
+
+  render() {
+    this.nodeObjects.forEach(obj => {
+      if (obj.isMesh && obj.userData.nodeData) {
+        obj.rotation.y += 0.002;
+        obj.rotation.x += 0.001;
+      }
+    });
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  resize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+// ==================== Globals ====================
+
+let filterEngine;
+let sceneCtrl;
+let nodeData = [];
+let linkData = [];
+let statsData = null;
+let editingNode = null;
+let currentScope = "project";
+let availableScopes = [];
+
+// ==================== Init ====================
+
+function init() {
+  filterEngine = new NodeFilterEngine();
+  sceneCtrl = new SceneController();
+
+  // Wire filter engine to trigger view updates
+  filterEngine.onUpdate = () => {
+    sceneCtrl.updateVisibility(filterEngine);
+  };
+
+  setupEventListeners();
+  loadData();
+}
+
+// ==================== Event Setup ====================
+
+function setupEventListeners() {
+  window.addEventListener("resize", () => sceneCtrl.resize());
+
+  document.getElementById("search-input").addEventListener("input", (e) => {
+    filterEngine.setSearchQuery(e.target.value);
+    filterEngine.setServerSearchIds(null);
+    sceneCtrl.updateVisibility(filterEngine);
+  });
+
+  document.getElementById("search-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      if (filterEngine.searchMode === "text") {
+        sceneCtrl.updateVisibility(filterEngine);
+      } else {
+        performServerSearch(filterEngine.searchQuery);
+      }
+    }
+  });
+
+  document.getElementById("close-detail").addEventListener("click", () => {
+    document.getElementById("detail-panel").classList.remove("open");
+    sceneCtrl.selectedNode = null;
+    editingNode = null;
+    sceneCtrl._updateHighlight();
+  });
+
+  document.getElementById("edit-node").addEventListener("click", () => {
+    if (sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeData) {
+      toggleEditMode(sceneCtrl.selectedNode.userData.nodeData);
+    }
+  });
+
+  document.getElementById("delete-node").addEventListener("click", () => {
+    if (sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeData) {
+      deleteNode(sceneCtrl.selectedNode.userData.nodeData);
+    }
+  });
+
+  document.getElementById("inject-node").addEventListener("click", () => {
+    if (sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeData) {
+      injectNode(sceneCtrl.selectedNode.userData.nodeData);
+    }
+  });
+
+  document.getElementById("toggle-sidebar").addEventListener("click", () => {
+    const sidebar = document.getElementById("sidebar");
+    sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
+  });
+
+  // Consolidated filter button handler
+  document.getElementById("sidebar").addEventListener("click", (e) => {
+    const btn = e.target.closest(".filter-btn");
+    if (!btn) return;
+
+    if (btn.dataset.scope !== undefined) {
+      const scope = btn.dataset.scope;
+      if (scope === currentScope) return;
+      currentScope = scope;
+      document.querySelectorAll("#scope-filters .filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filterEngine.setSearchQuery("");
+      filterEngine.setServerSearchIds(null);
+      document.getElementById("search-input").value = "";
+      document.getElementById("search-info").textContent = "";
+      loadData();
+    } else if (btn.dataset.level !== undefined) {
+      filterEngine.toggleLevel(parseInt(btn.dataset.level));
+      btn.classList.toggle("active");
+    } else if (btn.dataset.type !== undefined) {
+      filterEngine.toggleType(btn.dataset.type);
+      btn.classList.toggle("active");
+    } else if (btn.dataset.customType !== undefined) {
+      filterEngine.toggleCustomType(btn.dataset.customType);
+      btn.classList.toggle("active");
+    } else if (btn.dataset.shape !== undefined) {
+      filterEngine.toggleShape(btn.dataset.shape);
+      btn.classList.toggle("active");
+    }
+  });
+
+  // Search mode toggles
+  document.querySelectorAll(".search-mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".search-mode-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filterEngine.setSearchMode(btn.dataset.mode);
+      filterEngine.setServerSearchIds(null);
+      const info = document.getElementById("search-info");
+      if (filterEngine.searchMode === "text") {
+        info.textContent = "";
+      } else if (filterEngine.searchMode === "embedding") {
+        info.textContent = "Semantic search via embeddings \u2014 type query and press Search";
+      } else if (filterEngine.searchMode === "bm25") {
+        info.textContent = "Full-text search via BM25 index \u2014 type query and press Search";
+      }
+      sceneCtrl.updateVisibility(filterEngine);
+    });
+  });
+
+  // Search button
+  document.getElementById("search-btn").addEventListener("click", () => {
+    if (filterEngine.searchMode === "text") {
+      sceneCtrl.updateVisibility(filterEngine);
+    } else {
+      performServerSearch(filterEngine.searchQuery);
+    }
+  });
+
+  // Node list click
+  document.getElementById("node-list").addEventListener("click", (e) => {
+    const item = e.target.closest(".node-list-item");
+    if (!item) return;
+    sceneCtrl.focusOnNode(item.dataset.nodeId);
+  });
+
+  // Tab buttons
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const tab = btn.dataset.tab;
+      const visualizePanel = document.getElementById("visualize-panel");
+      const playbooksPanel = document.getElementById("playbooks-panel");
+      const settingsPanel = document.getElementById("settings-panel");
+      if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
+      if (playbooksPanel) playbooksPanel.classList.toggle("active", tab === "playbooks");
+      if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
+      if (tab === "settings") loadSettings();
+      if (tab === "playbooks") loadPlaybooks();
+    });
+  });
+
+  // Playbook search input
+  const pbSearch = document.getElementById("playbook-search-input");
+  if (pbSearch) {
+    pbSearch.addEventListener("input", () => renderPlaybooks(playbookData));
+  }
+}
+
+// ==================== Data Loading ====================
+
+async function loadData() {
+  try {
+    const [scopesRes, nodesRes, linksRes, statsRes] = await Promise.all([
+      fetch("/api/scopes"),
+      fetch(`/api/nodes?scope=${currentScope}`),
+      fetch(`/api/links?scope=${currentScope}`),
+      fetch(`/api/stats?scope=${currentScope}`),
+    ]);
+
+    if (!nodesRes.ok || !linksRes.ok || !statsRes.ok) {
+      throw new Error(`API error: nodes=${nodesRes.status}, links=${linksRes.status}, stats=${statsRes.status}`);
+    }
+
+    availableScopes = await scopesRes.json();
+    nodeData = await nodesRes.json();
+    linkData = await linksRes.json();
+    statsData = await statsRes.json();
+
+    document.getElementById("loading").style.display = "none";
+
+    console.log(`[data] Scope=${currentScope} nodes=${nodeData.length} links=${linkData.length} stats=${JSON.stringify({ total: statsData.totalNodes, levels: Object.keys(statsData.nodesPerLevel || {}), types: Object.keys(statsData.nodesPerType || {}), shapes: Object.keys(statsData.nodesPerShape || {}), customTypes: Object.keys(statsData.nodesPerCustomType || {}) })}`);
+
+    if (nodeData.length > 0) {
+      console.log(`[data] Sample node:`, { id: nodeData[0].id, label: nodeData[0].label, level: nodeData[0].level, type: nodeData[0].type, importance: nodeData[0].importance, customType: nodeData[0].metadata?.customType });
+    }
+
+    try {
+      sceneCtrl.buildFromData(nodeData);
+      sceneCtrl.buildEdges(linkData);
+      sceneCtrl.runSimulation(100, linkData);
+    } catch (vizErr) {
+      console.error("[viewer] Visualization error:", vizErr);
+    }
+
+    try {
+      buildUI();
+    } catch (uiErr) {
+      console.error("[viewer] UI build error:", uiErr);
+    }
+
+    sceneCtrl.updateVisibility(filterEngine);
+  } catch (err) {
+    console.error("[viewer] Load error:", err);
+    document.getElementById("loading").textContent = `Error: ${err.message}. Is the server running?`;
+    document.getElementById("loading").style.display = "block";
+  }
+}
+
+// ==================== Layout Helpers ====================
+
+function fibonacciSphere(index, count, radius) {
+  if (count <= 1) return new THREE.Vector3(0, 0, 0);
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const y = 1 - (index / (count - 1)) * 2;
+  const r = Math.sqrt(1 - y * y);
+  const theta = goldenAngle * index;
+  return new THREE.Vector3(
+    r * Math.cos(theta) * radius,
+    y * radius,
+    r * Math.sin(theta) * radius
+  );
+}
+
+function computeShellRadii(levelCounts) {
+  const sortedLevels = Object.keys(levelCounts).map(Number).sort((a, b) => a - b);
+  if (sortedLevels.length === 0) return {};
+  const maxCount = Math.max(...sortedLevels.map(l => levelCounts[l]));
+  const baseRadius = Math.max(40, Math.sqrt(maxCount) * 10);
+  const radii = {};
+  sortedLevels.forEach((lvl, i) => {
+    radii[lvl] = baseRadius + i * 60;
+  });
+  return radii;
+}
+
+// ==================== Visualization Helpers ====================
+
+function getNodeSize(node) {
+  const base = 3 + node.importance * 2;
+  const accessBoost = Math.min(node.accessCount * 0.5, 10);
+  return Math.max(3, Math.min(base + accessBoost, 25));
+}
+
+function getNodeShape(node) {
+  const customType = node.metadata?.customType;
+  if (customType && CUSTOM_TYPE_SHAPES[customType]) {
+    return CUSTOM_TYPE_SHAPES[customType];
+  }
+  return TYPE_SHAPES[node.type] ?? "sphere";
+}
+
+function getGeometry(shape, size) {
+  switch (shape) {
+    case "box": return new THREE.BoxGeometry(size * 1.5, size * 1.5, size * 1.5);
+    case "octahedron": return new THREE.OctahedronGeometry(size);
+    case "dodecahedron": return new THREE.DodecahedronGeometry(size);
+    case "icosahedron": return new THREE.IcosahedronGeometry(size);
+    case "torus": return new THREE.TorusGeometry(size, size * 0.4, 16, 100);
+    default: return new THREE.SphereGeometry(size, 16, 16);
+  }
+}
+
+function createTextSprite(text, color) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = 256;
+  canvas.height = 64;
+
+  ctx.fillStyle = "rgba(0,0,0,0)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = "bold 24px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const hex = "#" + color.toString(16).padStart(6, "0");
+  ctx.fillStyle = hex;
+  ctx.fillText(text.length > 25 ? text.slice(0, 25) + "..." : text, 128, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.8 });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(30, 7.5, 1);
+  return sprite;
+}
+
+// ==================== UI Builders ====================
+
+function buildUI() {
+  buildScopeButtons();
+  buildStats();
+  buildFilters();
+  buildLegend();
+  buildNodeList();
+}
+
+function buildScopeButtons() {
+  const container = document.getElementById("scope-filters");
+  container.innerHTML = availableScopes.map(s =>
+    `<button class="filter-btn ${s.scope === currentScope ? 'active' : ''}" data-scope="${s.scope}">${s.scope}</button>`
+  ).join("");
+}
+
+function buildStats() {
+  if (!statsData) return;
+  const container = document.getElementById("stats-container");
+  container.innerHTML = `
+    <div class="stat-row"><span class="stat-label">Total Nodes</span><span class="stat-value">${statsData.totalNodes}</span></div>
+    <div class="stat-row"><span class="stat-label">Avg Importance</span><span class="stat-value">${statsData.avgImportance}</span></div>
+    <div class="stat-row"><span class="stat-label">Avg Usefulness</span><span class="stat-value">${statsData.avgUsefulness}</span></div>
+    <div class="stat-row"><span class="stat-label">Total Accesses</span><span class="stat-value">${statsData.totalAccessCount}</span></div>
+    <div class="stat-row"><span class="stat-label">Sticky Nodes</span><span class="stat-value">${statsData.stickyCount}</span></div>
+  `;
+}
+
+function buildFilters() {
+  if (!statsData) return;
+
+  filterEngine.initFromStats(statsData);
+
+  // Level filters
+  const levels = Object.keys(statsData.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
+  const levelContainer = document.getElementById("level-filters");
+  levelContainer.innerHTML = levels.map(l =>
+    `<button class="filter-btn active" data-level="${l}">L${l} (${statsData.nodesPerLevel[l]})</button>`
+  ).join("");
+
+  // Type filters
+  const types = Object.keys(statsData.nodesPerType || {}).sort();
+  const typeContainer = document.getElementById("type-filters");
+  typeContainer.innerHTML = types.map(t =>
+    `<button class="filter-btn active" data-type="${t}">${t} (${statsData.nodesPerType[t]})</button>`
+  ).join("");
+
+  // Custom type filters
+  const customTypes = Object.keys(statsData.nodesPerCustomType || {}).sort();
+  const customTypeContainer = document.getElementById("custom-type-filters");
+  if (customTypeContainer) {
+    customTypeContainer.innerHTML = customTypes.map(ct =>
+      `<button class="filter-btn active" data-custom-type="${ct}">${ct} (${statsData.nodesPerCustomType[ct]})</button>`
+    ).join("");
+  }
+
+  // Shape filters
+  const shapes = Object.keys(statsData.nodesPerShape || {}).sort();
+  const shapeContainer = document.getElementById("shape-filters");
+  if (shapeContainer) {
+    const shapeLabels = {
+      sphere: "Sphere", box: "Box", octahedron: "Octahedron",
+      dodecahedron: "Dodecahedron", icosahedron: "Icosahedron", torus: "Torus",
+    };
+    shapeContainer.innerHTML = shapes.map(s =>
+      `<button class="filter-btn active" data-shape="${s}">${shapeLabels[s] || s} (${statsData.nodesPerShape[s]})</button>`
+    ).join("");
+  }
+}
+
+function buildLegend() {
+  if (!statsData) return;
+  const legend = document.getElementById("legend");
+  let html = "";
+  for (const [level, color] of Object.entries(LEVEL_COLORS)) {
+    if (statsData.nodesPerLevel[level]) {
+      const hex = "#" + color.toString(16).padStart(6, "0");
+      html += `<div class="legend-item"><div class="legend-dot" style="background: ${hex}"></div><span class="legend-label">Level ${level}</span></div>`;
+    }
+  }
+  html += `<div style="margin-top: 10px;">`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 50%;"></div><span class="legend-label">Sphere = Note</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Event/Episode</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Diamond = Concept/Summary</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Pentagon = Skill</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus = Middle-Term</span></div>`;
+  html += `</div>`;
+  legend.innerHTML = html;
+}
+
+function buildNodeList() {
+  const container = document.getElementById("node-list");
+  const countEl = document.getElementById("node-list-count");
+  const filtered = filterEngine.apply(nodeData);
+
+  countEl.textContent = `(${filtered.length})`;
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.level !== b.level) return a.level - b.level;
+    return b.importance - a.importance;
+  });
+
+  container.innerHTML = sorted.map(node => {
+    const color = LEVEL_COLORS[node.level] ?? 0x888888;
+    const hex = "#" + color.toString(16).padStart(6, "0");
+    const isSelected = sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeId === node.id;
+
+    let customIndicator = "";
+    if (node.metadata?.customType) {
+      const ct = node.metadata.customType;
+      if (ct === 'middle-term') {
+        customIndicator = ' <span style="color: #ff6b6b; font-size: 10px;">[MT]</span>';
+      } else {
+        customIndicator = ` <span style="color: #ff6b6b; font-size: 10px;">[${ct}]</span>`;
+      }
+    }
+    if (node.type === 'skill') {
+      customIndicator += ' <span style="color: #fbbf24; font-size: 10px;">[SKILL]</span>';
+    }
+
+    return `
+      <div class="node-list-item ${isSelected ? 'selected' : ''}" data-node-id="${node.id}">
+        <div class="node-label">${escapeHtml(node.label || "Unnamed")}${customIndicator}</div>
+        <div class="node-meta">L${node.level} · ${node.type || "unknown"} · imp: ${node.importance}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ==================== Detail Panel ====================
+
+function showDetailPanel(node) {
+  const panel = document.getElementById("detail-panel");
+  const title = document.getElementById("detail-title");
+  const content = document.getElementById("detail-content");
+
+  title.textContent = node.label || "Unnamed Node";
+
+  const created = new Date(node.createdAt).toLocaleString();
+  const updated = new Date(node.updatedAt).toLocaleString();
+
+  let metadataHtml = "";
+  if (node.metadata && node.metadata.customType) {
+    const meta = node.metadata;
+    metadataHtml = `
+      <div class="detail-section">
+        <h4>Metadata (${escapeHtml(meta.customType)})</h4>
+        <div class="stat-row"><span class="stat-label">Custom Type</span><span class="stat-value">${escapeHtml(meta.customType)}</span></div>
+        ${meta.sessionId ? `<div class="stat-row"><span class="stat-label">Session ID</span><span class="stat-value" style="font-family: monospace; font-size: 11px;">${escapeHtml(meta.sessionId)}</span></div>` : ""}
+        ${meta.contextTokens ? `<div class="stat-row"><span class="stat-label">Context Tokens</span><span class="stat-value">${meta.contextTokens}</span></div>` : ""}
+        ${meta.compactionPrompt ? `<div class="detail-section"><h4>Compaction Prompt</h4><div class="content-full" style="max-height: 200px;">${escapeHtml(meta.compactionPrompt)}</div></div>` : ""}
+      </div>
+    `;
+  }
+
+  let skillHtml = "";
+  if (node.type === 'skill') {
+    const triggers = node.metadata?.triggers;
+    const triggerHtml = triggers
+      ? `<div class="stat-row"><span class="stat-label">Triggers</span><span class="stat-value">${Array.isArray(triggers) ? triggers.map(escapeHtml).join(', ') : escapeHtml(String(triggers))}</span></div>`
+      : '';
+    skillHtml = `
+      <div class="detail-section">
+        <h4>Skill Info</h4>
+        <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value" style="color: #fbbf24;">Skill</span></div>
+        ${node.summary ? `<div class="stat-row"><span class="stat-label">Description</span><span class="stat-value">${escapeHtml(node.summary)}</span></div>` : ''}
+        ${triggerHtml}
+      </div>
+    `;
+  }
+
+  content.innerHTML = `
+    <div class="detail-section">
+      <h4>ID</h4>
+      <div class="detail-value" style="font-family: monospace; font-size: 11px;">${node.id}</div>
+    </div>
+    <div class="detail-section">
+      <h4>Metrics</h4>
+      <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${node.level}</span></div>
+      <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value">${node.type || "none"}${node.metadata?.customType ? ' <span style="color: #ff6b6b;">[' + escapeHtml(node.metadata.customType) + ']</span>' : ""}</span></div>
+      <div class="stat-row"><span class="stat-label">Importance</span><span class="stat-value">${node.importance}</span></div>
+      <div class="stat-row"><span class="stat-label">Usefulness Score</span><span class="stat-value">${node.usefulnessScore}</span></div>
+      <div class="stat-row"><span class="stat-label">Access Count</span><span class="stat-value">${node.accessCount}</span></div>
+      <div class="stat-row"><span class="stat-label">Times Used</span><span class="stat-value">${node.timesUsed}</span></div>
+      <div class="stat-row"><span class="stat-label">Times Helpful</span><span class="stat-value">${node.timesHelpful}</span></div>
+      <div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-value">${node.confidence}</span></div>
+      <div class="stat-row"><span class="stat-label">Sticky</span><span class="stat-value">${node.sticky ? "Yes" : "No"}</span></div>
+      <div class="stat-row"><span class="stat-label">Content Length</span><span class="stat-value">${node.contentLength} chars</span></div>
+    </div>
+    ${metadataHtml}
+    ${skillHtml}
+    <div class="detail-section">
+      <h4>Timestamps</h4>
+      <div class="detail-value">Created: ${created}</div>
+      <div class="detail-value">Updated: ${updated}</div>
+    </div>
+     <div class="detail-section">
+       <h4>Content (${node.contentLength} chars)</h4>
+       <div class="content-full">${escapeHtml(node.content)}</div>
+     </div>
+   `;
+
+  panel.classList.add("open");
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ==================== Edit / Delete / Inject ====================
+
+function toggleEditMode(node) {
+  if (editingNode && editingNode.id === node.id) {
+    cancelEdit();
+    return;
+  }
+  editingNode = node;
+  showEditForm(node);
+}
+
+function showEditForm(node) {
+  const panel = document.getElementById("detail-panel");
+  const title = document.getElementById("detail-title");
+  const content = document.getElementById("detail-content");
+
+  title.textContent = "Edit: " + (node.label || "Unnamed Node");
+
+  const types = ["note", "event", "episode", "concept", "summary", "core", "improvement", "howto", "skill"];
+
+  content.innerHTML = `
+    <div class="edit-field">
+      <label>Label</label>
+      <input type="text" id="edit-label" value="${escapeHtml(node.label || "")}">
+    </div>
+    <div class="edit-field">
+      <label>Type</label>
+      <select id="edit-type">
+        ${types.map(t => `<option value="${t}" ${node.type === t ? "selected" : ""}>${t}</option>`).join("")}
+      </select>
+    </div>
+    <div class="edit-field">
+      <label>Level</label>
+      <input type="number" id="edit-level" value="${node.level}" min="0" max="10">
+    </div>
+    <div class="edit-field">
+      <label>Importance</label>
+      <input type="number" id="edit-importance" value="${node.importance}" min="0" max="10" step="0.1">
+    </div>
+    ${node.summary !== undefined ? `
+    <div class="edit-field">
+      <label>Summary</label>
+      <input type="text" id="edit-summary" value="${escapeHtml(node.summary || "")}">
+    </div>
+    ` : ""}
+    <div class="edit-field">
+      <label>Content</label>
+      <textarea id="edit-content" rows="12">${escapeHtml(node.content || "")}</textarea>
+    </div>
+    <div class="edit-field">
+      <div class="checkbox-row">
+        <input type="checkbox" id="edit-sticky" ${node.sticky ? "checked" : ""}>
+        <label for="edit-sticky" style="margin: 0;">Sticky (prevent compression)</label>
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="btn-save" id="save-node-btn">Save</button>
+      <button class="btn-cancel" id="cancel-edit-btn">Cancel</button>
+    </div>
+    <div id="edit-status" style="margin-top: 8px; font-size: 12px; text-align: center;"></div>
+  `;
+
+  document.getElementById("save-node-btn").addEventListener("click", saveNode);
+  document.getElementById("cancel-edit-btn").addEventListener("click", cancelEdit);
+}
+
+async function saveNode() {
+  const statusEl = document.getElementById("edit-status");
+  if (!editingNode) return;
+
+  statusEl.textContent = "Saving...";
+  statusEl.style.color = "#888";
+
+  const body = {
+    label: document.getElementById("edit-label").value,
+    type: document.getElementById("edit-type").value,
+    level: parseInt(document.getElementById("edit-level").value),
+    importance: parseFloat(document.getElementById("edit-importance").value),
+    content: document.getElementById("edit-content").value,
+    sticky: document.getElementById("edit-sticky").checked,
+  };
+
+  const summaryEl = document.getElementById("edit-summary");
+  if (summaryEl) body.summary = summaryEl.value;
+
+  try {
+    const res = await fetch(`/api/nodes/${editingNode.id}?scope=${currentScope}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = await res.json();
+
+    if (result.success) {
+      statusEl.textContent = "Saved! Reloading...";
+      statusEl.style.color = "#4f4";
+      await loadData();
+      editingNode = null;
+      const updated = nodeData.find(n => n.id === editingNode?.id || n.id === body.label);
+      if (updated) {
+        const mesh = sceneCtrl.nodeObjects.find(o => o.isMesh && o.userData.nodeId === updated.id);
+        if (mesh) {
+          sceneCtrl.selectedNode = mesh;
+          showDetailPanel(updated);
+        }
+      }
+    } else {
+      statusEl.textContent = "Error: " + (result.error || "Unknown");
+      statusEl.style.color = "#f44";
+    }
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+    statusEl.style.color = "#f44";
+  }
+}
+
+function cancelEdit() {
+  editingNode = null;
+  if (sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeData) {
+    showDetailPanel(sceneCtrl.selectedNode.userData.nodeData);
+  }
+}
+
+async function deleteNode(node) {
+  if (!confirm(`Delete node "${node.label || node.id}"? This cannot be undone.`)) return;
+
+  try {
+    const res = await fetch(`/api/nodes/${node.id}?scope=${currentScope}`, {
+      method: "DELETE",
+    });
+    const result = await res.json();
+
+    if (result.success) {
+      document.getElementById("detail-panel").classList.remove("open");
+      sceneCtrl.selectedNode = null;
+      editingNode = null;
+      await loadData();
+    } else {
+      alert("Delete failed: " + (result.error || "Unknown"));
+    }
+  } catch (e) {
+    alert("Delete error: " + e.message);
+  }
+}
+
+async function injectNode(node) {
+  const statusEl = document.getElementById("inject-status");
+  try {
+    statusEl.textContent = "Injecting...";
+    statusEl.style.display = "block";
+    statusEl.style.color = "#888";
+
+    const res = await fetch("/api/inject", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: node.id, scope: currentScope }),
+    });
+    const result = await res.json();
+
+    if (result.success) {
+      statusEl.textContent = "Injected!";
+      statusEl.style.color = "#4f4";
+      setTimeout(() => { statusEl.style.display = "none"; }, 2000);
+    } else {
+      statusEl.textContent = "Error: " + (result.error || "Unknown");
+      statusEl.style.color = "#f44";
+    }
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+    statusEl.style.color = "#f44";
+  }
+}
+
+// ==================== Server Search ====================
+
+async function performServerSearch(query) {
+  const info = document.getElementById("search-info");
+  if (!query || query.length < 2) {
+    filterEngine.setServerSearchIds(null);
+    info.textContent = "";
+    info.classList.remove("loading");
+    sceneCtrl.updateVisibility(filterEngine);
+    return;
+  }
+
+  filterEngine.setServerSearchIds(null);
+  sceneCtrl.updateVisibility(filterEngine);
+
+  info.classList.add("loading");
+  info.textContent = filterEngine.searchMode === "embedding" ? "Searching embeddings..." : "Searching BM25 index...";
+  info.style.color = "#888";
+
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${filterEngine.searchMode}&scope=${currentScope}`);
+    if (!res.ok) {
+      filterEngine.setServerSearchIds(null);
+      info.textContent = "Search error: server returned " + res.status;
+      info.style.color = "#f44";
+      sceneCtrl.updateVisibility(filterEngine);
+      return;
+    }
+    const results = await res.json();
+
+    if (!Array.isArray(results)) {
+      filterEngine.setServerSearchIds(null);
+      info.textContent = "Search error: unexpected response format";
+      info.style.color = "#f44";
+    } else if (results.length === 0) {
+      filterEngine.setServerSearchIds(new Set());
+      info.textContent = "No results found";
+      info.style.color = "#f44";
+    } else {
+      filterEngine.setServerSearchIds(new Set(results.map(r => r.id)));
+      info.textContent = `${results.length} result(s) found`;
+      info.style.color = "#4f4";
+    }
+    sceneCtrl.updateVisibility(filterEngine);
+  } catch (e) {
+    filterEngine.setServerSearchIds(null);
+    info.textContent = "Search failed: " + e.message;
+    info.style.color = "#f44";
+  } finally {
+    info.classList.remove("loading");
+  }
+}
+
+// ==================== Playbooks ====================
+
+let playbookData = [];
+
+async function loadPlaybooks() {
+  const container = document.getElementById('playbook-list');
+  container.innerHTML = '<div style="color:#888;font-size:12px;text-align:center;padding:20px;">Loading playbooks...</div>';
+
+  try {
+    const res = await fetch(`/api/playbooks?scope=${currentScope}`);
+    if (!res.ok) {
+      container.innerHTML = '<div style="color:#f44;font-size:12px;text-align:center;padding:20px;">Failed to load playbooks</div>';
+      return;
+    }
+    playbookData = await res.json();
+    renderPlaybooks(playbookData);
+  } catch (e) {
+    container.innerHTML = `<div style="color:#f44;font-size:12px;text-align:center;padding:20px;">Error: ${e.message}</div>`;
+  }
+}
+
+function renderPlaybooks(playbooks) {
+  const container = document.getElementById('playbook-list');
+  const searchQ = (document.getElementById('playbook-search-input').value || '').toLowerCase();
+
+  const filtered = searchQ
+    ? playbooks.filter(p =>
+        p.name.toLowerCase().includes(searchQ) ||
+        p.description.toLowerCase().includes(searchQ) ||
+        (p.tags || []).some(t => t.toLowerCase().includes(searchQ))
+      )
+    : playbooks;
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="color:#888;font-size:12px;text-align:center;padding:20px;">No playbooks found.</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(renderPlaybookCard).join('');
+
+  // Wire delete buttons after render
+  container.querySelectorAll('.pb-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deletePlaybook(btn.dataset.pbId));
+  });
+}
+
+function renderPlaybookCard(pb) {
+  const tags = (pb.tags || []).map(t => `<span class="pb-tag">${t}</span>`).join('');
+  const steps = (pb.steps || []).map(s =>
+    `<div class="pb-step">
+      <span class="step-tool">${s.toolName}</span>
+      ${s.critical ? '<span class="step-critical">\u26a0</span>' : ''}
+      <span>${s.description}</span>
+    </div>`
+  ).join('');
+  const triggers = (pb.triggers || []).map(t => {
+    if (t.type === 'task_keyword') return `<div class="pb-trigger">\ud83d\udd11 ${(t.keywords || []).join(', ')}</div>`;
+    if (t.type === 'tool_sequence') return `<div class="pb-trigger">\ud83d\udd27 ${(t.pattern || []).join(' \u2192 ')}</div>`;
+    return `<div class="pb-trigger">\ud83d\udccb ${t.type}</div>`;
+  }).join('');
+
+  return `<div class="playbook-card">
+    <div class="pb-header">
+      <div>
+        <div class="pb-name">${pb.name}</div>
+        <div class="pb-desc">${pb.description}</div>
+      </div>
+      <button class="pb-delete-btn" data-pb-id="${pb.id}">Delete</button>
+    </div>
+    <div class="pb-meta">
+      <span>\u26a1 ${pb.executionCount || 0} runs</span>
+      ${pb.avgDurationMs ? `<span>\u23f1 ${(pb.avgDurationMs / 1000).toFixed(1)}s avg</span>` : ''}
+      ${pb.lastExecutedAt ? `<span>\ud83d\udd50 ${new Date(pb.lastExecutedAt).toLocaleDateString()}</span>` : ''}
+    </div>
+    ${triggers ? `<div class="pb-triggers">${triggers}</div>` : ''}
+    <div class="pb-steps">${steps}</div>
+    ${tags ? `<div class="pb-tags">${tags}</div>` : ''}
+  </div>`;
+}
+
+async function deletePlaybook(id) {
+  if (!confirm('Delete this playbook?')) return;
+  try {
+    const res = await fetch(`/api/playbooks/${id}?scope=${currentScope}`, { method: 'DELETE' });
+    if (res.ok) {
+      playbookData = playbookData.filter(p => p.id !== id);
+      renderPlaybooks(playbookData);
+    } else {
+      alert('Failed to delete playbook');
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// Playbook search input
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('playbook-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      renderPlaybooks(playbookData);
+    });
+  }
+});
+
+// ==================== Animation Loop ====================
+
+function animate() {
+  requestAnimationFrame(animate);
+  sceneCtrl.render();
+}
+
+// ==================== Settings ====================
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      document.getElementById('visualize-panel').classList.toggle('active', tab === 'visualize');
+      document.getElementById('playbooks-panel').classList.toggle('active', tab === 'playbooks');
+      document.getElementById('settings-panel').classList.toggle('active', tab === 'settings');
+      if (tab === 'settings') loadSettings();
+      if (tab === 'playbooks') loadPlaybooks();
+    });
+  });
+
+  document.getElementById('save-config').addEventListener('click', saveSettings);
+});
+
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/config');
+    const config = await res.json();
+    document.getElementById('defaultTtlDays').value = config.defaultTtlDays ?? 0;
+    document.getElementById('autoRetrieve-enabled').value = String(config.autoRetrieve?.enabled ?? false);
+    document.getElementById('autoRetrieve-candidateCount').value = config.autoRetrieve?.candidateCount ?? 30;
+    document.getElementById('autoRetrieve-maxInjectNodes').value = config.autoRetrieve?.maxInjectNodes ?? 5;
+    document.getElementById('autoFileSummarization-enabled').value = String(config.autoFileSummarization?.enabled ?? false);
+    document.getElementById('ollama-enabled').value = String(config.ollama?.enabled ?? false);
+    document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
+    document.getElementById('ollama-baseUrl').value = config.ollama?.baseUrl ?? 'http://localhost:11434';
+    document.getElementById('llmCompression-enabled').value = String(config.llmCompression?.enabled ?? false);
+    document.getElementById('llmCompression-maxSummaryTokens').value = config.llmCompression?.maxSummaryTokens ?? 500;
+    document.getElementById('llmCompression-model').value = config.llmCompression?.model ?? '';
+    document.getElementById('autoDistill-enabled').value = String(config.autoDistill?.enabled ?? false);
+    document.getElementById('autoDistill-minLessons').value = config.autoDistill?.minLessons ?? 3;
+    document.getElementById('autoDistill-useLlm').value = String(config.autoDistill?.useLlm ?? false);
+    document.getElementById('predictiveRating-enabled').value = String(config.predictiveRating?.enabled ?? false);
+    document.getElementById('predictiveRating-decayDays').value = config.predictiveRating?.decayDays ?? 7;
+    document.getElementById('predictiveRating-positiveBoost').value = config.predictiveRating?.positiveBoost ?? 0.1;
+    document.getElementById('predictiveRating-negativePenalty').value = config.predictiveRating?.negativePenalty ?? 0.05;
+    document.getElementById('autoDiscover-enabled').value = String(config.autoDiscover?.enabled ?? false);
+    document.getElementById('autoDiscover-minSequenceLength').value = config.autoDiscover?.minSequenceLength ?? 3;
+    document.getElementById('autoDiscover-minRepeatCount').value = config.autoDiscover?.minRepeatCount ?? 2;
+    document.getElementById('autoDiscover-maxInjectPlaybooks').value = config.autoDiscover?.maxInjectPlaybooks ?? 3;
+  } catch (e) {
+    console.error('Failed to load config:', e);
+  }
+}
+
+async function saveSettings() {
+  const config = {
+    defaultTtlDays: parseInt(document.getElementById('defaultTtlDays').value) || 0,
+    autoRetrieve: {
+      enabled: document.getElementById('autoRetrieve-enabled').value === 'true',
+      candidateCount: parseInt(document.getElementById('autoRetrieve-candidateCount').value) || 30,
+      maxInjectNodes: parseInt(document.getElementById('autoRetrieve-maxInjectNodes').value) || 5,
+    },
+    autoFileSummarization: {
+      enabled: document.getElementById('autoFileSummarization-enabled').value === 'true',
+    },
+    ollama: {
+      enabled: document.getElementById('ollama-enabled').value === 'true',
+      model: document.getElementById('ollama-model').value || 'qwen2.5-coder:1.5b',
+      baseUrl: document.getElementById('ollama-baseUrl').value || 'http://localhost:11434',
+    },
+    llmCompression: {
+      enabled: document.getElementById('llmCompression-enabled').value === 'true',
+      maxSummaryTokens: parseInt(document.getElementById('llmCompression-maxSummaryTokens').value) || 500,
+      model: document.getElementById('llmCompression-model').value || undefined,
+    },
+    autoDistill: {
+      enabled: document.getElementById('autoDistill-enabled').value === 'true',
+      minLessons: parseInt(document.getElementById('autoDistill-minLessons').value) || 3,
+      useLlm: document.getElementById('autoDistill-useLlm').value === 'true',
+    },
+    predictiveRating: {
+      enabled: document.getElementById('predictiveRating-enabled').value === 'true',
+      decayDays: parseFloat(document.getElementById('predictiveRating-decayDays').value) || 7,
+      positiveBoost: parseFloat(document.getElementById('predictiveRating-positiveBoost').value) || 0.1,
+      negativePenalty: parseFloat(document.getElementById('predictiveRating-negativePenalty').value) || 0.05,
+    },
+    autoDiscover: {
+      enabled: document.getElementById('autoDiscover-enabled').value === 'true',
+      minSequenceLength: parseInt(document.getElementById('autoDiscover-minSequenceLength').value) || 3,
+      minRepeatCount: parseInt(document.getElementById('autoDiscover-minRepeatCount').value) || 2,
+      maxInjectPlaybooks: parseInt(document.getElementById('autoDiscover-maxInjectPlaybooks').value) || 3,
+    },
+  };
+  try {
+    const res = await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('save-message').textContent = 'Saved! Restart plugin to apply.';
+      } else {
+        document.getElementById('save-message').textContent = 'Error: ' + (data.error || 'Unknown');
+        document.getElementById('save-message').style.color = '#f44';
+      }
+      setTimeout(() => { document.getElementById('save-message').textContent = ''; document.getElementById('save-message').style.color = '#4f4'; }, 5000);
+    } else {
+      document.getElementById('save-message').textContent = 'HTTP Error: ' + res.status;
+      document.getElementById('save-message').style.color = '#f44';
+    }
+  } catch (e) {
+    console.error('Failed to save config:', e);
+  }
+}
+
+// ==================== Start ====================
+
+init();
+animate();

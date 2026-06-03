@@ -1,0 +1,89 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Management Viewer",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "view"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Plugin Tests",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "MCP Server",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "mcp"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "MCP Server (installed)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "~/.config/opencode/node_modules/opencode-fractal-memory/dist/mcp-server.js"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Build Project",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "build"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Tests (watch)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test", "--watch"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Tests (tools)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test", "src/tools/"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Tests (hooks)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test", "src/hooks/"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Tests (storage)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test", "src/storage/"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}

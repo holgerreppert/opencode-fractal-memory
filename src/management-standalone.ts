@@ -1,0 +1,39 @@
+#!/usr/bin/env bun
+import * as path from "node:path";
+import { memLog } from "./logging";
+import { Router } from "./management/router";
+import { registerRoutes } from "./management/routes";
+import { initDbPaths, serveFile } from "./management/helpers";
+
+const port = parseInt(process.env.MGMT_PORT || "8787");
+const projectDir = process.env.MGMT_PROJECT_DIR || process.cwd();
+const publicDir = path.join(__dirname, "..", "management", "public");
+
+initDbPaths(projectDir);
+
+const router = new Router();
+registerRoutes(router);
+
+Bun.serve({
+  port,
+  async fetch(req) {
+    const result = await router.handle(req);
+    if (result) return result;
+
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+
+    if (pathname === "/") {
+      return serveFile(path.join(publicDir, "index.html"));
+    }
+
+    const filePath = path.join(publicDir, pathname);
+    if (filePath.startsWith(publicDir)) {
+      return serveFile(filePath);
+    }
+
+    return new Response("Not found", { status: 404 });
+  },
+});
+
+memLog("info", "management", `Memory viewer running at http://localhost:${port}`);

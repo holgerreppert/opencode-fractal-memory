@@ -1,0 +1,1599 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { randomUUID } from "node:crypto";
+
+import { Database } from "bun:sqlite";
+
+import { runMigrations, getConfig, setConfig } from "./migrations";
+import { generateEmbedding, estimateTokens } from "../embeddings";
+import { getHNSWIndex } from "../hnsw-index";
+import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding } from "./utils";
+export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize };
+import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
+import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
+import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
+import { cosineSimilarity, updateBM25Index, removeBM25Index, rerankResults, computeFinalScores, calculateDynamicBm25Weight, computeBM25Scores, computeRecencyScore } from "./queries/search-helpers";
+import { CompressionHelper, COMPRESSION_LEVELS } from "./compression";
+export { CompressionHelper, COMPRESSION_LEVELS };
+import { memLog } from "../logging";
+
+// Re-export all types for external use
+export type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
+
+// Retry wrapper for database operations with exponential backoff
+async function withRetry<T>(
+  operation: () => T | Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 100
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+
+      const isBusyError =
+        error instanceof Error &&
+        (error.message.includes("database is locked") ||
+          error.message.includes("database is busy") ||
+          error.message.includes("SQLITE_BUSY") ||
+          error.message.includes("SQLITE_LOCKED"));
+
+      if (!isBusyError || attempt === maxRetries) {
+        throw error;
+      }
+
+      const delay = baseDelay * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+// Transaction wrapper for atomic operations
+async function withTransaction<T>(
+  db: Database,
+  operation: () => T | Promise<T>
+): Promise<T> {
+  db.run("BEGIN");
+  try {
+    const result = await operation();
+    db.run("COMMIT");
+    return result;
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+}
+
+// Retryable transaction: retries entire transaction on busy errors
+async function withRetryableTransaction<T>(
+  db: Database,
+  operation: () => T | Promise<T>,
+  maxRetries: number = 3
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await withTransaction(db, operation);
+    } catch (error) {
+      lastError = error as Error;
+
+      const isBusyError =
+        error instanceof Error &&
+        (error.message.includes("database is locked") ||
+          error.message.includes("database is busy") ||
+          error.message.includes("SQLITE_BUSY") ||
+          error.message.includes("SQLITE_LOCKED"));
+
+      if (!isBusyError || attempt === maxRetries) {
+        throw error;
+      }
+
+      const delay = 100 * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+const SEED_BLOCKS: Array<{ scope: MemoryScope; label: string }> = [
+  { scope: "global", label: "persona" },
+  { scope: "global", label: "human" },
+  { scope: "project", label: "project" },
+];
+
+function scopeDbPath(projectDirectory: string, scope: MemoryScope, globalDbPath?: string): string {
+  return scope === "global"
+    ? (globalDbPath ?? path.join(os.homedir(), ".config", "opencode", "memory.db"))
+    : path.join(projectDirectory, ".opencode", "memory.db");
+}
+
+function validateLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!/^[a-z0-9][a-z0-9-_:]{1,60}$/i.test(trimmed)) {
+    throw new Error(
+      `Invalid label "${label}". Use letters/numbers/dash/underscore/colon (2-61 chars).`,
+    );
+  }
+  return trimmed;
+}
+
+interface SqliteNode {
+  id: string;
+  scope: string;
+  label: string;
+  content: string;
+  summary: string | null;
+  level: number;
+  parent_ids: string | null;
+  embedding: string | null;
+  embedding_blob: Buffer | null;
+  created_at: number;
+  updated_at: number;
+  importance: number;
+  access_count: number;
+  last_accessed: number | null;
+  type: string | null;
+  metadata: string | null;
+  sticky: number;
+  confidence: number;
+  last_verified: number | null;
+  usefulness_score: number;
+  times_used: number;
+  times_helpful: number;
+}
+
+function rowToNode(row: SqliteNode): MemoryNode {
+  let embedding: number[] | null = null;
+  if (row.embedding_blob) {
+    embedding = blobToEmbedding(row.embedding_blob);
+  } else if (row.embedding) {
+    embedding = JSON.parse(row.embedding);
+  }
+  
+  return {
+    id: row.id,
+    scope: row.scope as MemoryScope,
+    label: row.label || undefined,
+    content: row.content,
+    summary: row.summary,
+    level: row.level as MemoryNodeLevel,
+    parentIds: row.parent_ids ? JSON.parse(row.parent_ids) : null,
+    embedding,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    importance: row.importance,
+    accessCount: row.access_count,
+    lastAccessed: row.last_accessed ? new Date(row.last_accessed) : null,
+    type: row.type as MemoryNodeType | null,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null,
+    sticky: Boolean(row.sticky),
+    confidence: row.confidence ?? 0.5,
+    lastVerified: row.last_verified ? new Date(row.last_verified) : null,
+    usefulnessScore: row.usefulness_score ?? 0,
+    timesUsed: row.times_used ?? 0,
+    timesHelpful: row.times_helpful ?? 0,
+  };
+}
+
+class SqliteMemoryStore {
+  private dbs: Map<string, Database> = new Map();
+  private idScopeCache: Map<string, MemoryScope> = new Map();
+  private projectDirectory: string;
+  private globalDbPath?: string;
+
+  constructor(projectDirectory: string, globalDbPath?: string) {
+    this.projectDirectory = projectDirectory;
+    this.globalDbPath = globalDbPath;
+  }
+
+  private async getDb(scope: MemoryScope): Promise<Database> {
+    const key = `${scope}:${this.projectDirectory}:${this.globalDbPath ?? ""}`;
+    if (this.dbs.has(key)) {
+      return this.dbs.get(key)!;
+    }
+
+    const dbPath = scopeDbPath(this.projectDirectory, scope, this.globalDbPath);
+
+    const dbDir = path.dirname(dbPath);
+    await fs.mkdir(dbDir, { recursive: true });
+
+    const db = new Database(dbPath);
+
+    // Enable WAL mode for better concurrent access
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA synchronous = NORMAL");
+    db.run("PRAGMA busy_timeout = 5000"); // 5 second timeout for locked database
+
+    runMigrations(db);
+
+    this.dbs.set(key, db);
+    return db;
+  }
+
+  async close(): Promise<void> {
+    for (const [key, db] of this.dbs) {
+      try {
+        db.close();
+      } catch (error) {
+        memLog("error", "storage", `Error closing database ${key}:`, { error });
+      }
+    }
+    this.dbs.clear();
+    this.idScopeCache.clear();
+  }
+
+  async ensureSeed(): Promise<void> {
+    for (const seed of SEED_BLOCKS) {
+      const db = await this.getDb(seed.scope);
+      const existing = db.query("SELECT id FROM memory_nodes WHERE label = ?").get(seed.label);
+      if (existing) continue;
+
+      const now = Date.now();
+      const id = randomUUID();
+      
+      await withRetry(() => {
+        db.run(
+          "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", null],
+        );
+      });
+    }
+  }
+
+  private async resolveScope(id: string): Promise<{ scope: MemoryScope; db: Database }> {
+    if (this.idScopeCache.has(id)) {
+      const scope = this.idScopeCache.get(id)!;
+      return { scope, db: await this.getDb(scope) };
+    }
+
+    for (const scope of ["global", "project"] as MemoryScope[]) {
+      const db = await this.getDb(scope);
+      const existing = db.query("SELECT id FROM memory_nodes WHERE id = ?").get(id) as { id: string } | null;
+      if (existing) {
+        this.idScopeCache.set(id, scope);
+        return { scope, db };
+      }
+    }
+
+    throw new Error(`Memory node not found: ${id}`);
+  }
+
+  async listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit: number = 50, offset: number = 0): Promise<MemoryNode[]> {
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    const nodes: MemoryNode[] = [];
+
+    for (const s of scopes) {
+      const db = await this.getDb(s);
+      const rows = await queryListNodes(db, s, level, limit, offset);
+      nodes.push(...rows);
+    }
+
+    return nodes;
+  }
+
+  async getNode(id: string): Promise<MemoryNode> {
+    let foundNode: MemoryNode | null = null;
+    let foundScope: MemoryScope | null = null;
+    
+    for (const scope of ["global", "project"] as MemoryScope[]) {
+      const node = await queryGetNode(await this.getDb(scope), id);
+      if (node) {
+        foundNode = node;
+        foundScope = scope;
+        break;
+      }
+    }
+    
+    if (!foundNode || !foundScope) {
+      throw new Error(`Memory node not found: ${id}`);
+    }
+    
+    const db = await this.getDb(foundScope);
+    const newAccessCount = foundNode.accessCount + 1;
+    const newConfidence = Math.min(1, foundNode.confidence + 0.01);
+    db.run(
+      "UPDATE memory_nodes SET access_count = ?, last_accessed = ?, confidence = ? WHERE id = ?",
+      [newAccessCount, Date.now(), newConfidence, id]
+    );
+    
+    return { ...foundNode, accessCount: newAccessCount, confidence: newConfidence };
+  }
+
+  async getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode> {
+    const db = await this.getDb(scope);
+    return queryGetNodeByLabelFull(db, scope, label);
+  }
+
+  async getNodeByPrefix(prefix: string): Promise<MemoryNode | null> {
+    const node = await queryGetNodeByPrefix(await this.getDb("global"), prefix)
+      ?? await queryGetNodeByPrefix(await this.getDb("project"), prefix);
+    return node;
+  }
+
+async createNode(node: CreateNodeInput): Promise<MemoryNode> {
+    const db = await this.getDb(node.scope);
+
+    return await withRetryableTransaction(db, async () => {
+      return await queryCreateNode(
+        db,
+        node,
+        (scope, id, content) => this.storeLinks(scope, id, content),
+        (scope, label, id) => this.updateLinksForNewNode(scope, label, id),
+        (db, id, content, label, scope) => updateBM25Index(db, id, content, label, scope)
+      );
+    });
+  }
+
+  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
+    const { db, scope } = await this.resolveScope(id);
+
+    await withRetryableTransaction(db, async () => {
+      await queryUpdateNode(db, id, updates);
+
+      if (updates.content !== undefined) {
+        await this.storeLinks(scope, id, updates.content);
+        const labelRow = db.query("SELECT label FROM memory_nodes WHERE id = ?").get(id) as { label: string } | null;
+        updateBM25Index(db, id, updates.content, labelRow?.label, scope);
+      }
+    });
+  }
+
+  async deleteNode(id: string): Promise<void> {
+    const { db, scope } = await this.resolveScope(id);
+
+    await withRetryableTransaction(db, async () => {
+      queryDeleteNode(db, id);
+      queryDeleteLinks(db, id);
+      removeBM25Index(db, id);
+    });
+
+    this.idScopeCache.delete(id);
+
+    const hnsw = getHNSWIndex();
+    await hnsw.removeNode(scope, id);
+  }
+
+  async getConfig(scope: MemoryScope, key: string, defaultValue: string): Promise<string> {
+    const db = await this.getDb(scope);
+    return getConfig(db, key, defaultValue);
+  }
+
+  async setConfig(scope: MemoryScope, key: string, value: string): Promise<void> {
+    const db = await this.getDb(scope);
+    await withRetry(() => setConfig(db, key, value));
+  }
+
+  async storeLinks(scope: MemoryScope, sourceId: string, content: string): Promise<void> {
+    const db = await this.getDb(scope);
+    await queryStoreLinks(db, sourceId, content, queryGetNodeByLabel);
+  }
+
+  async updateLinksForNewNode(scope: MemoryScope, label: string, nodeId: string): Promise<void> {
+    const db = await this.getDb(scope);
+    queryUpdateLinksForNewNode(db, label, nodeId);
+  }
+
+  async backfillLinks(scope: MemoryScope): Promise<void> {
+    const db = await this.getDb(scope);
+    const nodes = db.query("SELECT id, content FROM memory_nodes").all() as { id: string; content: string }[];
+    
+    for (const node of nodes) {
+      const links = extractLinks(node.content);
+      if (links.length === 0) continue;
+      
+      await withRetry(() => {
+        db.run("DELETE FROM memory_links WHERE source_id = ?", [node.id]);
+      });
+      
+      for (const label of links) {
+        let targetId: string | null = null;
+        try {
+          const target = db.query("SELECT id FROM memory_nodes WHERE label = ?").get(label) as { id: string } | null;
+          targetId = target?.id ?? null;
+        } catch { /* ignore */ }
+        
+        await withRetry(() => {
+          db.run(
+            "INSERT OR REPLACE INTO memory_links (source_id, target_label, target_id) VALUES (?, ?, ?)",
+            [node.id, label, targetId]
+          );
+        });
+      }
+    }
+  }
+
+  async getLinkedNodes(scope: MemoryScope, sourceId: string): Promise<MemoryNode[]> {
+    const db = await this.getDb(scope);
+    const rows = queryGetLinks(db, sourceId);
+    
+    const linkedNodes: MemoryNode[] = [];
+    for (const row of rows) {
+      if (row.target_id) {
+        try {
+          const node = await this.getNode(row.target_id);
+          linkedNodes.push(node);
+        } catch { /* Node was deleted */ }
+      }
+    }
+    
+    return linkedNodes;
+  }
+
+  async backfillBinaryEmbeddingsAndBM25(scope: MemoryScope): Promise<void> {
+    const db = await this.getDb(scope);
+    
+    const rows = db.query("SELECT id, label, content, embedding, embedding_blob FROM memory_nodes").all() as {
+      id: string;
+      label: string;
+      content: string;
+      embedding: string | null;
+      embedding_blob: Buffer | null;
+    }[];
+    
+    for (const row of rows) {
+      if (row.embedding && !row.embedding_blob) {
+        const embedding = JSON.parse(row.embedding) as number[];
+        const blob = embeddingToBlob(embedding);
+        await withRetry(() => {
+          db.run("UPDATE memory_nodes SET embedding_blob = ? WHERE id = ?", [blob, row.id]);
+        });
+      }
+      
+      updateBM25Index(db, row.id, row.content, row.label, scope);
+    }
+  }
+
+  async rebuildHNSWIndex(scope?: MemoryScope | "all"): Promise<void> {
+    const hnsw = getHNSWIndex();
+    const nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }> = [];
+    
+    const scopes: MemoryScope[] = scope === "all" || !scope ? ["global", "project"] : [scope];
+    
+    for (const s of scopes) {
+      const db = await this.getDb(s);
+      const rows = db.query("SELECT id, embedding, embedding_blob FROM memory_nodes WHERE embedding IS NOT NULL OR embedding_blob IS NOT NULL").all() as Array<{
+        id: string;
+        embedding: string | null;
+        embedding_blob: Buffer | null;
+      }>;
+      
+      for (const row of rows) {
+        let embedding: number[] | null = null;
+        if (row.embedding_blob) {
+          embedding = blobToEmbedding(row.embedding_blob);
+        } else if (row.embedding) {
+          embedding = JSON.parse(row.embedding);
+        }
+        
+        if (embedding) {
+          nodes.push({ id: row.id, embedding, scope: s });
+        }
+      }
+    }
+    
+    await hnsw.rebuild(nodes);
+  }
+
+  async searchByEmbedding(
+    query: number[],
+    limit: number = 5,
+    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean }
+  ): Promise<MemoryNode[]> {
+    const weights = options?.levelWeights ?? {};
+    const bm25Weight = options?.bm25Weight ?? 0;
+    const doRerank = options?.rerank ?? false;
+    const queryText = options?.queryText ?? '';
+    
+    const hnsw = getHNSWIndex();
+    const hnswResults = await hnsw.search(query, limit * 5);
+    
+    let scoredNodes: MemoryNode[] = [];
+    
+    if (hnswResults.length > 0) {
+      const candidateIds = new Set(hnswResults.map(r => r.id));
+      const hnswScoreMap = new Map(hnswResults.map(r => [r.id, r.score]));
+      
+      for (const scope of ["global", "project"] as MemoryScope[]) {
+        const db = await this.getDb(scope);
+        
+        const placeholders = Array.from(candidateIds).map(() => "?").join(",");
+        const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL)`).all(...Array.from(candidateIds)) as SqliteNode[];
+        
+        for (const row of rows) {
+          const level = row.level as MemoryNodeLevel;
+          
+          const node = rowToNode(row);
+          if (!node.embedding) continue;
+          
+          if (options?.minLevel !== undefined && level < options.minLevel) continue;
+          if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
+          if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
+          
+          let embedding = node.embedding;
+          if (row.embedding_blob) {
+            embedding = blobToEmbedding(row.embedding_blob);
+          }
+          
+          const hnswScore = hnswScoreMap.get(node.id) ?? 0;
+          
+          const levelWeight = weights[level] ?? 1;
+          const confidence = node.confidence ?? 0.5;
+          const confidenceWeight = 0.5 + 0.5 * confidence;
+          
+          scoredNodes.push({
+            ...node,
+            importance: hnswScore * levelWeight * confidenceWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          });
+        }
+      }
+    } else {
+      const minLevel = options?.minLevel ?? 0;
+      const maxLevel = options?.maxLevel ?? 5;
+      const minUsefulness = options?.minUsefulness ?? 0;
+      
+      for (const scope of ["global", "project"] as MemoryScope[]) {
+        const db = await this.getDb(scope);
+        const rows = db.query(
+          `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ?`
+        ).all(minLevel, maxLevel, minUsefulness) as SqliteNode[];
+        
+        for (const row of rows) {
+          const level = row.level as MemoryNodeLevel;
+          
+          const node = rowToNode(row);
+          if (!node.embedding) continue;
+          
+          let embedding = node.embedding;
+          if (row.embedding_blob) {
+            embedding = blobToEmbedding(row.embedding_blob);
+          }
+          
+          const semanticScore = cosineSimilarity(query, embedding);
+          const levelWeight = weights[level] ?? 1;
+          const confidence = node.confidence ?? 0.5;
+          const confidenceWeight = 0.5 + 0.5 * confidence;
+          
+          scoredNodes.push({
+            ...node,
+            importance: semanticScore * levelWeight * confidenceWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          });
+        }
+      }
+    }
+    
+    const finalNodes = computeFinalScores(scoredNodes, options);
+    
+    let finalResults = finalNodes.slice(0, limit);
+    if (doRerank && queryText.length > 0 && finalResults.length > 3) {
+      const reranked = rerankResults(queryText, finalResults, limit);
+      finalResults = reranked.map(r => ({
+        ...r.node,
+        importance: r.finalScore
+      }));
+    }
+    
+    const now = Date.now();
+    for (const node of finalResults) {
+      const db = await this.getDb(node.scope as MemoryScope);
+      db.run(`UPDATE memory_nodes SET times_used = times_used + 1, last_accessed = ? WHERE id = ?`, [now, node.id]);
+    }
+    return finalResults;
+  }
+
+  async getCompressionCandidates(
+    scope: MemoryScope | "all",
+    level: MemoryNodeLevel,
+    maxAgeMs?: number,
+    force?: boolean
+  ): Promise<MemoryNode[]> {
+    const nodes = await this.listNodes(scope, level);
+    return CompressionHelper.findCompressionCandidates(nodes, level, maxAgeMs, force);
+  }
+
+  async runCompression(
+    scope: MemoryScope | "all",
+    force?: boolean
+  ): Promise<{ compressed: number; created: number }> {
+    let compressed = 0;
+    let created = 0;
+    
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    
+    for (const s of scopes) {
+      for (const level of [0, 1, 2, 3] as MemoryNodeLevel[]) {
+        const config = COMPRESSION_LEVELS[level];
+        if (!config) continue;
+        
+        const candidates = await this.getCompressionCandidates(s, level, undefined, force);
+        
+        // Group candidates by similarity for fractal compression
+        // Using 0.3 threshold - nodes are "related" if moderately similar
+        const clusters = CompressionHelper.findRelatedNodes(candidates, 0.3);
+        
+        for (const cluster of clusters) {
+          const summary = CompressionHelper.generateStructuredSummary(cluster);
+          
+          let summaryEmbedding: number[] | null = null;
+          try {
+            summaryEmbedding = await generateEmbedding(summary);
+          } catch {
+            // Embedding generation failed, continue without it
+          }
+          
+          const summaryNode = await this.createNode({
+            scope: s,
+            label: `summary-l${config.nextLevel}-group-${Date.now()}`,
+            content: summary,
+            summary: `Fractal summary of ${cluster.length} related nodes`,
+            level: config.nextLevel as MemoryNodeLevel,
+            parentIds: cluster.map(node => node.id),
+            embedding: summaryEmbedding,
+            importance: Math.max(...cluster.map(n => n.importance)) * 0.9,
+            type: "summary",
+            metadata: null,
+          });
+          
+          for (const node of cluster) {
+            await this.updateNode(node.id, {
+              summary: `Group compressed into ${summaryNode.id.slice(0, 8)}`,
+            });
+          }
+          
+          compressed += cluster.length;
+          created++;
+        }
+      }
+    }
+    
+    return { compressed, created };
+  }
+
+  async runPatternExtraction(
+    scope: MemoryScope | "all",
+    minSourceCount: number = 2
+  ): Promise<{ created: number; sources: number }> {
+    let created = 0;
+    let sources = 0;
+    
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    
+    for (const s of scopes) {
+      const nodes = await this.listNodes(s, 0);
+      const eligibleNodes = nodes.filter(n => 
+        n.content.length > 50 && 
+        !n.sticky &&
+        n.type !== "summary"
+      );
+      
+      if (eligibleNodes.length < 2) continue;
+      
+      const patterns = CompressionHelper.extractPatterns(eligibleNodes);
+      const sourceNodeIds = eligibleNodes.map(n => n.id);
+      sources = sourceNodeIds.length;
+      
+      const totalPatternCount = 
+        patterns.decisions.size + 
+        patterns.preferences.size + 
+        patterns.conventions.size +
+        patterns.tools.size +
+        patterns.files.size;
+      
+      if (totalPatternCount === 0) continue;
+      
+      const summary = CompressionHelper.generatePatternSummary(patterns, sourceNodeIds);
+      
+      let summaryEmbedding: number[] | null = null;
+      try {
+        summaryEmbedding = await generateEmbedding(summary);
+      } catch {
+        // Embedding generation failed, continue without it
+      }
+      
+      const summaryNode = await this.createNode({
+        scope: s,
+        label: `patterns-${Date.now()}`,
+        content: summary,
+        summary: `Cross-layer patterns extracted from ${sourceNodeIds.length} nodes`,
+        level: 1,
+        parentIds: sourceNodeIds,
+        embedding: summaryEmbedding,
+        importance: 0.7,
+        type: "summary",
+        metadata: {
+          patternTypes: [
+            patterns.decisions.size > 0 ? "decisions" : null,
+            patterns.preferences.size > 0 ? "preferences" : null,
+            patterns.conventions.size > 0 ? "conventions" : null,
+            patterns.tools.size > 0 ? "tools" : null,
+            patterns.files.size > 0 ? "files" : null,
+          ].filter(Boolean),
+        },
+      });
+      
+      for (const node of eligibleNodes) {
+        await this.updateNode(node.id, {
+          summary: `Pattern extraction: ${summaryNode.id.slice(0, 8)}`,
+        });
+      }
+      
+      created++;
+    }
+    
+    return { created, sources };
+  }
+
+  async getFractalStats(scope: MemoryScope | "all"): Promise<FractalStats> {
+    const allNodes = await this.listNodes(scope);
+    
+    const nodesPerLevel: Record<MemoryNodeLevel, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let hasEmbeddings = 0;
+    const scopes = { global: 0, project: 0 };
+    const parentCounts: number[] = [];
+    let maxDepth = 0;
+
+    for (const node of allNodes) {
+      nodesPerLevel[node.level]++;
+      scopes[node.scope]++;
+      if (node.embedding) hasEmbeddings++;
+      
+      if (node.parentIds && node.parentIds.length > 0) {
+        parentCounts.push(node.parentIds.length);
+        const parentDepth = await this.getNodeDepth(node);
+        maxDepth = Math.max(maxDepth, parentDepth);
+      }
+    }
+
+    const totalNodes = allNodes.length;
+    const compressionRatios: Record<number, number> = {};
+    for (let level = 0; level < 5; level++) {
+      const current = nodesPerLevel[level as MemoryNodeLevel];
+      const next = nodesPerLevel[(level + 1) as MemoryNodeLevel];
+      compressionRatios[level] = next > 0 && current > 0 ? current / next : 0;
+    }
+
+    const fractalDimension = totalNodes > 1 && maxDepth > 0 
+      ? Math.log(totalNodes) / Math.log(1 + maxDepth)
+      : 0;
+    
+    const avgChildren = parentCounts.length > 0
+      ? parentCounts.reduce((a, b) => a + b, 0) / parentCounts.length
+      : 0;
+
+    return {
+      totalNodes,
+      nodesPerLevel,
+      compressionRatios,
+      fractalDimension: Math.round(fractalDimension * 100) / 100,
+      avgChildrenPerNode: Math.round(avgChildren * 100) / 100,
+      treeDepth: maxDepth,
+      hasEmbeddings,
+      scopes,
+    };
+  }
+
+  private async getNodeDepth(node: MemoryNode, visited = new Set<string>()): Promise<number> {
+    if (!node.parentIds || node.parentIds.length === 0) return 0;
+    if (visited.has(node.id)) return 0;
+    visited.add(node.id);
+
+    let maxParentDepth = 0;
+    for (const parentId of node.parentIds) {
+      try {
+        const parent = await this.getNode(parentId);
+        const parentDepth = await this.getNodeDepth(parent, visited);
+        maxParentDepth = Math.max(maxParentDepth, parentDepth);
+      } catch {
+        // Parent not found, skip
+      }
+    }
+    return 1 + maxParentDepth;
+  }
+
+  async retrieveFractal(id: string, maxDepth: number = 10): Promise<FractalRetrievalResult> {
+    const node = await this.getNode(id);
+    const path: MemoryNode[] = [];
+    const visited = new Set<string>();
+
+    let currentNode: MemoryNode | undefined = node;
+    let depth = 0;
+
+    while (currentNode && depth < maxDepth) {
+      path.push(currentNode);
+      if (!currentNode.parentIds || currentNode.parentIds.length === 0) break;
+      if (visited.has(currentNode.id)) break;
+      visited.add(currentNode.id);
+
+      const parentId = currentNode.parentIds[0];
+      if (!parentId) break;
+
+      try {
+        currentNode = await this.getNode(parentId);
+        depth++;
+      } catch {
+        break;
+      }
+    }
+
+    return {
+      node,
+      path,
+      depth,
+      relevanceScore: node.importance,
+    };
+  }
+
+  async detectTopicBoundaries(
+    scope: MemoryScope | "all",
+    minSimilarity: number = 0.7
+  ): Promise<MemoryNode[][]> {
+    const nodes = await this.listNodes(scope);
+    const nodesWithEmbeddings = nodes.filter(n => n.embedding && n.content.length > 50);
+    
+    if (nodesWithEmbeddings.length < 2) return [];
+
+    const sorted = [...nodesWithEmbeddings].sort((a, b) => 
+      b.createdAt.getTime() - a.createdAt.getTime()
+    );
+
+    const boundaries: MemoryNode[][] = [];
+    let currentCluster: MemoryNode[] = [sorted[0]!];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1]!;
+      const curr = sorted[i]!;
+      
+      if (!prev.embedding || !curr.embedding) continue;
+      
+      const similarity = cosineSimilarity(prev.embedding, curr.embedding);
+      
+      if (similarity >= minSimilarity) {
+        currentCluster.push(curr);
+      } else {
+        if (currentCluster.length >= 2) {
+          boundaries.push(currentCluster);
+        }
+        currentCluster = [curr];
+      }
+    }
+
+    if (currentCluster.length >= 2) {
+      boundaries.push(currentCluster);
+    }
+
+    return boundaries;
+  }
+  async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {
+    const db = await this.getDb("global");
+    await withRetry(() => {
+      db.run(
+        "INSERT INTO memory_usage_log (id, tool_name, timestamp, result_tokens, context_warning, success, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [randomUUID(), toolName, Date.now(), resultTokens, contextWarning ? 1 : 0, success ? 1 : 0, Math.round(durationMs)],
+      );
+    });
+  }
+
+  async getToolPatterns(_scope: MemoryScope | "all"): Promise<Array<{ toolName: string; count: number; avgTokens: number; avgDurationMs: number; warningRate: number; successRate: number }>> {
+    const db = await this.getDb("global");
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const rows = db.query(
+      "SELECT tool_name, COUNT(*) as count, AVG(result_tokens) as avg_tokens, AVG(duration_ms) as avg_duration, AVG(context_warning) as warning_rate, AVG(success) as success_rate FROM memory_usage_log WHERE timestamp > ? GROUP BY tool_name ORDER BY count DESC"
+    ).all(cutoff) as Array<{ tool_name: string; count: number; avg_tokens: number; avg_duration: number; warning_rate: number; success_rate: number }>;
+
+    return rows.map(r => ({
+      toolName: r.tool_name,
+      count: r.count,
+      avgTokens: Math.round(r.avg_tokens),
+      avgDurationMs: Math.round(r.avg_duration ?? 0),
+      warningRate: Math.round(r.warning_rate * 100),
+      successRate: Math.round(r.success_rate * 100),
+    }));
+  }
+
+  async getFrequentSequences(_scope: MemoryScope | "all", minCount: number = 3): Promise<Array<{ prev: string; next: string; count: number }>> {
+    const db = await this.getDb("global");
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const rows = db.query(
+      "SELECT tool_name, timestamp FROM memory_usage_log WHERE timestamp > ? ORDER BY timestamp ASC"
+    ).all(cutoff) as Array<{ tool_name: string; timestamp: number }>;
+
+    const pairs = new Map<string, number>();
+    for (let i = 0; i < rows.length - 1; i++) {
+      const prev = rows[i]!.tool_name;
+      const next = rows[i + 1]!.tool_name;
+      if (prev === next) continue;
+      const key = `${prev}→${next}`;
+      pairs.set(key, (pairs.get(key) ?? 0) + 1);
+    }
+
+    const result: Array<{ prev: string; next: string; count: number }> = [];
+    for (const [key, count] of pairs) {
+      if (count >= minCount) {
+        const [prev, next] = key.split("→");
+        result.push({ prev: prev!, next: next!, count });
+      }
+    }
+    result.sort((a, b) => b.count - a.count);
+    return result.slice(0, 10);
+  }
+
+  async pruneUsageLog(maxAgeMs?: number): Promise<number> {
+    const db = await this.getDb("global");
+    const threshold = maxAgeMs ?? 30 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - threshold;
+    const result = await withRetry(() => db.run("DELETE FROM memory_usage_log WHERE timestamp < ?", [cutoff]));
+    return result.changes;
+  }
+
+  private getToolCategory(toolName: string): string {
+    if (toolName.startsWith("memory_") || toolName.startsWith("journal_")) return "memory";
+    if (["read", "edit", "write", "glob", "grep", "search"].includes(toolName)) return "file";
+    if (["bash", "shell"].includes(toolName)) return "shell";
+    return "other";
+  }
+
+  async recordAgentToolCall(
+    sessionId: string,
+    toolName: string,
+    args: Record<string, unknown> | null,
+    output: string | null,
+    success: boolean | null,
+    durationMs: number | null
+  ): Promise<void> {
+    const db = await this.getGlobalDb();
+    const timestamp = Date.now();
+    const id = randomUUID();
+    const toolCategory = this.getToolCategory(toolName);
+
+    let filePath: string | null = null;
+    let command: string | null = null;
+
+    if (args) {
+      if (args.filePath && typeof args.filePath === "string") {
+        filePath = args.filePath;
+      } else if (args.path && typeof args.path === "string") {
+        filePath = args.path;
+      }
+      if (args.command && typeof args.command === "string") {
+        command = args.command.substring(0, 500);
+      }
+    }
+
+    const outputPreview = output ? output.substring(0, 500) : null;
+
+    await withRetry(() => {
+      db.run(
+        `INSERT INTO agent_tool_calls 
+         (id, session_id, timestamp, tool_name, args_json, output_preview, success, duration_ms, tool_category, file_path, command)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          sessionId,
+          timestamp,
+          toolName,
+          args ? JSON.stringify(args) : null,
+          outputPreview,
+          success !== null ? (success ? 1 : 0) : null,
+          durationMs ?? null,
+          toolCategory,
+          filePath,
+          command,
+        ]
+      );
+    });
+
+    if (sessionId) {
+      await this.incrementSessionToolCall(sessionId, toolName, success ?? true, filePath);
+    }
+  }
+
+  async createSessionMetrics(sessionId: string, startedAt?: number): Promise<void> {
+    const db = await this.getGlobalDb();
+    const timestamp = startedAt ?? Date.now();
+    await withRetry(() => {
+      db.run(
+        `INSERT OR REPLACE INTO session_metrics (session_id, started_at, status) VALUES (?, ?, 'active')`,
+        [sessionId, timestamp]
+      );
+    });
+  }
+
+  async updateSessionMetrics(
+    sessionId: string,
+    updates: Partial<{
+      endedAt: number;
+      totalToolCalls: number;
+      fileReads: number;
+      fileEdits: number;
+      bashCommands: number;
+      memoryTools: number;
+      failedTools: number;
+      uniqueFilesTouched: string[];
+      injectionCount: number;
+      injectedTokens: number;
+      taskDescription: string;
+      status: string;
+    }>
+  ): Promise<void> {
+    const db = await this.getGlobalDb();
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+
+    if (updates.endedAt !== undefined) {
+      setClauses.push("ended_at = ?");
+      values.push(updates.endedAt);
+    }
+    if (updates.totalToolCalls !== undefined) {
+      setClauses.push("total_tool_calls = ?");
+      values.push(updates.totalToolCalls);
+    }
+    if (updates.fileReads !== undefined) {
+      setClauses.push("file_reads = ?");
+      values.push(updates.fileReads);
+    }
+    if (updates.fileEdits !== undefined) {
+      setClauses.push("file_edits = ?");
+      values.push(updates.fileEdits);
+    }
+    if (updates.bashCommands !== undefined) {
+      setClauses.push("bash_commands = ?");
+      values.push(updates.bashCommands);
+    }
+    if (updates.memoryTools !== undefined) {
+      setClauses.push("memory_tools = ?");
+      values.push(updates.memoryTools);
+    }
+    if (updates.failedTools !== undefined) {
+      setClauses.push("failed_tools = ?");
+      values.push(updates.failedTools);
+    }
+    if (updates.uniqueFilesTouched !== undefined) {
+      setClauses.push("unique_files_touched = ?");
+      values.push(JSON.stringify(updates.uniqueFilesTouched));
+    }
+    if (updates.injectionCount !== undefined) {
+      setClauses.push("injection_count = ?");
+      values.push(updates.injectionCount);
+    }
+    if (updates.injectedTokens !== undefined) {
+      setClauses.push("injected_tokens = ?");
+      values.push(updates.injectedTokens);
+    }
+    if (updates.taskDescription !== undefined) {
+      setClauses.push("task_description = ?");
+      values.push(updates.taskDescription);
+    }
+    if (updates.status !== undefined) {
+      setClauses.push("status = ?");
+      values.push(updates.status);
+    }
+
+    if (setClauses.length === 0) return;
+
+    values.push(sessionId);
+    await withRetry(() => {
+      db.run(`UPDATE session_metrics SET ${setClauses.join(", ")} WHERE session_id = ?`, values as (string | number | null)[]);
+    });
+  }
+
+  async incrementSessionToolCall(
+    sessionId: string,
+    toolName: string,
+    success: boolean,
+    filePath?: string | null
+  ): Promise<void> {
+    const db = await this.getGlobalDb();
+    const session = db.query("SELECT * FROM session_metrics WHERE session_id = ?").get(sessionId) as {
+      total_tool_calls: number;
+      file_reads: number;
+      file_edits: number;
+      bash_commands: number;
+      memory_tools: number;
+      failed_tools: number;
+      unique_files_touched: string;
+    } | null;
+
+    if (!session) {
+      await this.createSessionMetrics(sessionId);
+      await this.incrementSessionToolCall(sessionId, toolName, success, filePath);
+      return;
+    }
+
+    const category = this.getToolCategory(toolName);
+    const updates: Partial<{
+      totalToolCalls: number;
+      fileReads: number;
+      fileEdits: number;
+      bashCommands: number;
+      memoryTools: number;
+      failedTools: number;
+      uniqueFilesTouched: string[];
+    }> = {
+      totalToolCalls: session.total_tool_calls + 1,
+    };
+
+    if (category === "file") {
+      if (toolName === "read") updates.fileReads = session.file_reads + 1;
+      else if (toolName === "edit") updates.fileEdits = session.file_edits + 1;
+    } else if (category === "shell") {
+      updates.bashCommands = session.bash_commands + 1;
+    } else if (category === "memory") {
+      updates.memoryTools = session.memory_tools + 1;
+    }
+
+    if (!success) {
+      updates.failedTools = session.failed_tools + 1;
+    }
+
+    if (filePath) {
+      const currentFiles: string[] = session.unique_files_touched
+        ? JSON.parse(session.unique_files_touched)
+        : [];
+      if (!currentFiles.includes(filePath)) {
+        updates.uniqueFilesTouched = [...currentFiles, filePath];
+      }
+    }
+
+    await this.updateSessionMetrics(sessionId, updates);
+  }
+
+  async getSessionStats(sessionId: string): Promise<{
+    sessionId: string;
+    startedAt: number;
+    endedAt: number | null;
+    status: string;
+    totalToolCalls: number;
+    fileReads: number;
+    fileEdits: number;
+    bashCommands: number;
+    memoryTools: number;
+    failedTools: number;
+    uniqueFilesTouched: string[];
+    injectionCount: number;
+    injectedTokens: number;
+    toolCalls: Array<{
+      toolName: string;
+      timestamp: number;
+      toolCategory: string;
+      filePath: string | null;
+      command: string | null;
+      success: boolean | null;
+    }>;
+  } | null> {
+    const db = await this.getGlobalDb();
+
+    const session = db.query("SELECT * FROM session_metrics WHERE session_id = ?").get(sessionId) as {
+      session_id: string;
+      started_at: number;
+      ended_at: number | null;
+      status: string;
+      total_tool_calls: number;
+      file_reads: number;
+      file_edits: number;
+      bash_commands: number;
+      memory_tools: number;
+      failed_tools: number;
+      unique_files_touched: string | null;
+      injection_count: number;
+      injected_tokens: number;
+    } | null;
+
+    if (!session) return null;
+
+    const toolCalls = db.query(
+      `SELECT tool_name, timestamp, tool_category, file_path, command, success 
+       FROM agent_tool_calls 
+       WHERE session_id = ? 
+       ORDER BY timestamp ASC`
+    ).all(sessionId) as Array<{
+      tool_name: string;
+      timestamp: number;
+      tool_category: string;
+      file_path: string | null;
+      command: string | null;
+      success: number | null;
+    }>;
+
+    return {
+      sessionId: session.session_id,
+      startedAt: session.started_at,
+      endedAt: session.ended_at,
+      status: session.status,
+      totalToolCalls: session.total_tool_calls,
+      fileReads: session.file_reads,
+      fileEdits: session.file_edits,
+      bashCommands: session.bash_commands,
+      memoryTools: session.memory_tools,
+      failedTools: session.failed_tools,
+      uniqueFilesTouched: session.unique_files_touched
+        ? JSON.parse(session.unique_files_touched)
+        : [],
+      injectionCount: session.injection_count,
+      injectedTokens: session.injected_tokens,
+      toolCalls: toolCalls.map((tc) => ({
+        toolName: tc.tool_name,
+        timestamp: tc.timestamp,
+        toolCategory: tc.tool_category,
+        filePath: tc.file_path,
+        command: tc.command,
+        success: tc.success !== null ? tc.success === 1 : null,
+      })),
+    };
+  }
+
+  async verifyNode(id: string): Promise<MemoryNode> {
+    for (const scope of ["global", "project"] as MemoryScope[]) {
+      const db = await this.getDb(scope);
+      const existing = db.query("SELECT * FROM memory_nodes WHERE id = ?").get(id) as SqliteNode | null;
+      
+      if (existing) {
+        const newConfidence = Math.min(1, (existing.confidence ?? 0.5) + 0.2);
+        await withRetry(() => {
+          db.run(
+            "UPDATE memory_nodes SET confidence = ?, last_verified = ? WHERE id = ?",
+            [newConfidence, Date.now(), id]
+          );
+        });
+        return rowToNode({ ...existing, confidence: newConfidence, last_verified: Date.now() });
+      }
+    }
+    throw new Error(`Memory node not found: ${id}`);
+  }
+
+  calculateNodeConfidence(node: MemoryNode): number {
+    const age = Date.now() - node.updatedAt.getTime();
+    const ageInDays = age / (24 * 60 * 60 * 1000);
+    
+    const baseConfidence = node.confidence;
+    
+    const decayFactor = Math.exp(-ageInDays / 365);
+    const ageConfidence = baseConfidence * decayFactor;
+    
+    const verifiedBonus = node.lastVerified
+      ? Math.max(0, 0.1 - (Date.now() - node.lastVerified.getTime()) / (24 * 60 * 60 * 1000 * 30))
+      : 0;
+    
+    const finalConfidence = Math.max(0, Math.min(1, ageConfidence + verifiedBonus));
+    return Math.round(finalConfidence * 100) / 100;
+  }
+
+  async drilldownQuery(
+    query: string,
+    maxResults: number = 20
+  ): Promise<Array<{ node: MemoryNode; relevance: number; path: MemoryNode[]; level: "summary" | "intermediate" | "detail" }>> {
+    const queryEmbedding = await generateEmbedding(query);
+    
+    const results: Array<{ node: MemoryNode; relevance: number; path: MemoryNode[]; level: "summary" | "intermediate" | "detail" }> = [];
+    const seenIds = new Set<string>();
+
+    const summaries = await this.searchByEmbedding(queryEmbedding, 5, { minLevel: 2, maxLevel: 4 });
+    for (const node of summaries) {
+      if (seenIds.has(node.id)) continue;
+      seenIds.add(node.id);
+      
+      const path = await this.getDrilldownPath(node.id, 3);
+      results.push({
+        node,
+        relevance: node.importance,
+        path,
+        level: "summary",
+      });
+    }
+
+    const intermediates = await this.searchByEmbedding(queryEmbedding, 10, { minLevel: 1, maxLevel: 1 });
+    for (const node of intermediates) {
+      if (seenIds.has(node.id)) continue;
+      if (results.length >= maxResults) break;
+      seenIds.add(node.id);
+      
+      const path = await this.getDrilldownPath(node.id, 2);
+      results.push({
+        node,
+        relevance: node.importance * 0.8,
+        path,
+        level: "intermediate",
+      });
+    }
+
+    const details = await this.searchByEmbedding(queryEmbedding, maxResults, { minLevel: 0, maxLevel: 0 });
+    for (const node of details) {
+      if (seenIds.has(node.id)) continue;
+      if (results.length >= maxResults) break;
+      seenIds.add(node.id);
+      
+      results.push({
+        node,
+        relevance: node.importance * 0.6,
+        path: [node],
+        level: "detail",
+      });
+    }
+
+    // Fallback: textual match for nodes without embeddings
+    if (results.length < maxResults) {
+      for (const scope of ["global", "project"] as MemoryScope[]) {
+        const db = await this.getDb(scope);
+        const rows = db.query(
+          "SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL)"
+        ).all(`%${query}%`, `%${query}%`) as SqliteNode[];
+        for (const row of rows) {
+          if (results.length >= maxResults) break;
+          const node = rowToNode(row);
+          if (seenIds.has(node.id)) continue;
+          seenIds.add(node.id);
+          results.push({
+            node,
+            relevance: 0.5,
+            path: [node],
+            level: "detail",
+          });
+        }
+        if (results.length >= maxResults) break;
+      }
+    }
+
+    return results.sort((a, b) => b.relevance - a.relevance).slice(0, maxResults);
+  }
+
+  private async getDrilldownPath(nodeId: string, maxDepth: number): Promise<MemoryNode[]> {
+    const path: MemoryNode[] = [];
+    let currentId: string | null = nodeId;
+    let depth = 0;
+    const visited = new Set<string>();
+
+    while (currentId && depth < maxDepth) {
+      if (visited.has(currentId)) break;
+      visited.add(currentId);
+
+      try {
+        const node = await this.getNode(currentId);
+        path.push(node);
+        
+        if (!node.parentIds || node.parentIds.length === 0) break;
+        currentId = node.parentIds[0] ?? null;
+        depth++;
+      } catch {
+        break;
+      }
+    }
+
+    return path;
+  }
+
+  async pruneNodes(
+    scope: MemoryScope | "all",
+    options: {
+      minAccessCount?: number;
+      maxAgeDays?: number;
+      minImportance?: number;
+      excludeSticky?: boolean;
+      excludeCore?: boolean;
+      dryRun?: boolean;
+    } = {}
+  ): Promise<{ prunable: MemoryNode[]; pruned: number }> {
+    const {
+      minAccessCount = 0,
+      maxAgeDays = 90,
+      minImportance = 0,
+      excludeSticky = true,
+      excludeCore = true,
+      dryRun = true,
+    } = options;
+
+    const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - maxAgeMs;
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    
+    const prunable: MemoryNode[] = [];
+    const coreLabels = new Set(["persona", "human", "current-state", "project"]);
+
+    for (const s of scopes) {
+      const nodes = await this.listNodes(s);
+      
+      for (const node of nodes) {
+        if (excludeSticky && node.sticky) continue;
+        
+        if (excludeCore && node.label && coreLabels.has(node.label)) continue;
+        
+        if (node.importance >= 0.9) continue;
+        
+        const isLowAccess = node.accessCount <= minAccessCount;
+        const isStale = node.updatedAt.getTime() < cutoffTime;
+        const isLowImportance = node.importance < minImportance;
+        
+        if ((isLowAccess || isStale) && isLowImportance) {
+          prunable.push(node);
+        }
+      }
+    }
+
+    let pruned = 0;
+    if (!dryRun) {
+      for (const node of prunable) {
+        const db = await this.getDb(node.scope);
+        withRetry(() => db.run("DELETE FROM memory_nodes WHERE id = ?", [node.id]));
+        pruned++;
+      }
+    }
+
+    return { prunable, pruned };
+  }
+
+  private async getGlobalDb(): Promise<Database> {
+    return this.getDb("global");
+  }
+
+  async logInjectionMetrics(
+    sessionId: string,
+    data: {
+      injectedNodeCount: number;
+      injectedTokens: number;
+      injectionMode: string;
+      queryText?: string;
+    }
+  ): Promise<void> {
+    const db = await this.getGlobalDb();
+    const id = randomUUID();
+    const timestamp = Date.now();
+    
+    await withRetry(() => {
+      db.run(
+        `INSERT INTO injection_metrics 
+         (id, session_id, timestamp, injected_node_count, injected_tokens, injection_mode, query_text, tool_calls, memory_tools_used, referenced_nodes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, '[]', '[]')`,
+        [id, sessionId, timestamp, data.injectedNodeCount, data.injectedTokens, data.injectionMode, data.queryText ?? null]
+      );
+    });
+  }
+
+  async getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>> {
+    try {
+      const db = await this.getGlobalDb();
+      return db.query(
+        "SELECT id, node_id as nodeId, scope, source, created_at as createdAt FROM pending_injections WHERE processed = 0 ORDER BY id ASC"
+      ).all() as Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>;
+    } catch {
+      return [];
+    }
+  }
+
+  async markInjectionProcessed(id: number): Promise<void> {
+    try {
+      const db = await this.getGlobalDb();
+      db.run("UPDATE pending_injections SET processed = 1 WHERE id = ?", [id]);
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
+    const db = await this.getGlobalDb();
+    const metrics = db.query(
+      "SELECT id, tool_calls, memory_tools_used FROM injection_metrics WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1"
+    ).get(sessionId) as { id: string; tool_calls: number; memory_tools_used: string } | null;
+
+    if (!metrics) return;
+
+    const tools = JSON.parse(metrics.memory_tools_used || '[]') as string[];
+    if (!tools.includes(toolName)) {
+      tools.push(toolName);
+    }
+
+    await withRetry(() => {
+      db.run(
+        "UPDATE injection_metrics SET tool_calls = ?, memory_tools_used = ? WHERE id = ?",
+        [metrics.tool_calls + 1, JSON.stringify(tools), metrics.id]
+      );
+    });
+  }
+
+  async finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void> {
+    const db = await this.getGlobalDb();
+    await withRetry(() => {
+      db.run(
+        "UPDATE injection_metrics SET effectiveness_score = ?, task_description = ? WHERE session_id = ?",
+        [effectivenessScore ?? null, taskDescription ?? null, sessionId]
+      );
+    });
+  }
+
+  async recordInjectionFeedback(
+    sessionId: string,
+    upvotes: number,
+    downvotes: number,
+    taskOutcome?: string,
+    neededNodes?: string[]
+  ): Promise<void> {
+    const db = await this.getGlobalDb();
+    await withRetry(() => {
+      db.run(
+        `UPDATE injection_metrics 
+         SET injection_upvotes = ?, injection_downvotes = ?, task_outcome = ?, needed_nodes = ?
+         WHERE session_id = ?`,
+        [upvotes, downvotes, taskOutcome ?? null, neededNodes ? JSON.stringify(neededNodes) : null, sessionId]
+      );
+    });
+  }
+
+  async getInjectionMetrics(limit = 100): Promise<Array<{
+    sessionId: string;
+    timestamp: number;
+    injectedNodeCount: number;
+    injectedTokens: number;
+    injectionMode: string;
+    toolCalls: number;
+    effectivenessScore: number | null;
+  }>> {
+    const db = await this.getGlobalDb();
+    const rows = db.query(
+      `SELECT session_id, timestamp, injected_node_count, injected_tokens, injection_mode, tool_calls, effectiveness_score
+       FROM injection_metrics 
+       ORDER BY timestamp DESC 
+       LIMIT ?`
+    ).all(limit) as Array<{
+      session_id: string;
+      timestamp: number;
+      injected_node_count: number;
+      injected_tokens: number;
+      injection_mode: string;
+      tool_calls: number;
+      effectiveness_score: number | null;
+    }>;
+
+    return rows.map(row => ({
+      sessionId: row.session_id,
+      timestamp: row.timestamp,
+      injectedNodeCount: row.injected_node_count,
+      injectedTokens: row.injected_tokens,
+      injectionMode: row.injection_mode,
+      toolCalls: row.tool_calls,
+      effectivenessScore: row.effectiveness_score,
+    }));
+  }
+
+  async getSessionMetrics(sessionId: string): Promise<{
+    totalInjections: number;
+    totalToolCalls: number;
+    memoryToolsUsed: string[];
+    avgEffectiveness: number | null;
+  }> {
+    const db = await this.getGlobalDb();
+    const row = db.query(
+      `SELECT 
+         COUNT(*) as total_injections,
+         SUM(tool_calls) as total_tool_calls,
+         AVG(effectiveness_score) as avg_effectiveness
+       FROM injection_metrics 
+       WHERE session_id = ?`
+    ).get(sessionId) as {
+      total_injections: number;
+      total_tool_calls: number | null;
+      avg_effectiveness: number | null;
+    };
+
+    const toolsRow = db.query(
+      `SELECT memory_tools_used FROM injection_metrics WHERE session_id = ? LIMIT 1`
+    ).get(sessionId) as { memory_tools_used: string } | null;
+
+    const memoryToolsUsed = toolsRow ? JSON.parse(toolsRow.memory_tools_used || '[]') as string[] : [];
+
+    return {
+      totalInjections: row.total_injections,
+      totalToolCalls: row.total_tool_calls ?? 0,
+      memoryToolsUsed,
+      avgEffectiveness: row.avg_effectiveness,
+    };
+  }
+}
+
+
+export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): MemoryStore {
+  return new SqliteMemoryStore(projectDirectory, globalDbPath);
+}

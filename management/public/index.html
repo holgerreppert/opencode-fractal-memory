@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fractal Memory Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0f; color: #e0e0e0; font-family: 'Inter', -apple-system, sans-serif; overflow: hidden; }
+    #canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+    canvas { display: block; }
+
+    #sidebar {
+      position: fixed; top: 0; left: 0; width: 280px; height: 100vh;
+      background: rgba(15, 15, 25, 0.95); border-right: 1px solid rgba(255,255,255,0.1);
+      padding: 20px; overflow-y: auto; z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+    #sidebar h1 { font-size: 18px; margin-bottom: 4px; color: #fff; }
+    #sidebar .subtitle { font-size: 12px; color: #888; margin-bottom: 20px; }
+
+    .section { margin-bottom: 20px; }
+    .section h3 { font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+    .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .stat-label { font-size: 13px; color: #888; }
+    .stat-value { font-size: 13px; color: #fff; font-weight: 500; }
+
+    .filter-group { display: flex; flex-wrap: wrap; gap: 6px; }
+    .filter-btn {
+      padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
+      background: transparent; color: #ccc; font-size: 12px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover { background: rgba(255,255,255,0.1); }
+    .filter-btn.active { background: rgba(100, 150, 255, 0.3); border-color: rgba(100, 150, 255, 0.5); color: #fff; }
+
+    .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .legend-label { font-size: 12px; color: #ccc; }
+
+    #search-input {
+      width: 100%; padding: 8px 12px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);
+      color: #fff; font-size: 13px; outline: none;
+    }
+    #search-input:focus { border-color: rgba(100, 150, 255, 0.5); }
+    .search-mode-btn { padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: #888; font-size: 11px; cursor: pointer; transition: all 0.2s; flex: 1; }
+    .search-mode-btn:hover { background: rgba(255,255,255,0.1); color: #ccc; }
+    .search-mode-btn.active { background: rgba(100, 150, 255, 0.3); border-color: rgba(100, 150, 255, 0.5); color: #fff; }
+    #search-info { font-size: 11px; color: #666; margin-top: 4px; text-align: center; min-height: 16px; }
+    #search-info.loading::before {
+      content: ''; display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(100,150,255,0.3); border-top-color: #4a9eff;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+      margin-right: 6px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .search-btn {
+      width: 100%; margin-top: 6px; padding: 6px; border-radius: 6px;
+      border: 1px solid rgba(100,150,255,0.5); background: rgba(100,150,255,0.2);
+      color: #fff; font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .search-btn:hover { background: rgba(100,150,255,0.4); }
+
+    #detail-panel {
+      position: fixed; top: 0; right: 0; width: 360px; height: 100vh;
+      background: rgba(15, 15, 25, 0.95); border-left: 1px solid rgba(255,255,255,0.1);
+      padding: 20px; overflow-y: auto; z-index: 100;
+      backdrop-filter: blur(10px); transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
+    #detail-panel.open { transform: translateX(0); }
+    #detail-panel .close-btn {
+      position: absolute; top: 15px; right: 15px; background: none; border: none;
+      color: #888; font-size: 20px; cursor: pointer;
+    }
+    #detail-panel .close-btn:hover { color: #fff; }
+    #detail-panel h2 { font-size: 16px; margin-bottom: 15px; color: #fff; word-break: break-word; }
+    #detail-panel .detail-section { margin-bottom: 15px; }
+    #detail-panel .detail-section h4 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+    #detail-panel .detail-value { font-size: 13px; color: #ccc; }
+#detail-panel .content-full {
+       background: rgba(255,255,255,0.03); border-radius: 6px; padding: 12px;
+       font-size: 12px; line-height: 1.5; color: #aaa; max-height: 60vh;
+       overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+     }
+
+    .edit-btn {
+      position: absolute; top: 15px; right: 45px; background: none; border: none;
+      color: #888; font-size: 14px; cursor: pointer;
+    }
+    .edit-btn:hover { color: #fff; }
+    .delete-btn {
+      position: absolute; top: 15px; right: 75px; background: none; border: none;
+      color: #f44; font-size: 14px; cursor: pointer;
+    }
+    .delete-btn:hover { color: #f66; }
+
+    .inject-btn {
+      position: absolute; top: 15px; right: 105px; background: none; border: none;
+      color: #4f4; font-size: 12px; cursor: pointer;
+    }
+    .inject-btn:hover { color: #6f6; }
+    #inject-status {
+      position: absolute; top: 40px; right: 105px; font-size: 11px; color: #4f4;
+      display: none; pointer-events: none;
+    }
+
+    .edit-field { margin-bottom: 12px; }
+    .edit-field label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; text-transform: uppercase; }
+    .edit-field input[type="text"], .edit-field input[type="number"], .edit-field select {
+      width: 100%; padding: 6px 8px; border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);
+      color: #fff; font-size: 12px;
+    }
+    .edit-field input:focus, .edit-field select:focus { border-color: rgba(100, 150, 255, 0.5); outline: none; }
+    .edit-field textarea {
+      width: 100%; padding: 8px; border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);
+      color: #fff; font-size: 12px; font-family: monospace; line-height: 1.5;
+      resize: vertical; min-height: 120px;
+    }
+    .edit-field textarea:focus { border-color: rgba(100, 150, 255, 0.5); outline: none; }
+    .edit-field .checkbox-row { display: flex; align-items: center; gap: 8px; }
+    .edit-field .checkbox-row input[type="checkbox"] { width: auto; }
+
+    .edit-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .edit-actions button {
+      flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer;
+    }
+    .btn-save { background: rgba(100, 150, 255, 0.3); color: #fff; }
+    .btn-save:hover { background: rgba(100, 150, 255, 0.5); }
+    .btn-cancel { background: rgba(255,255,255,0.1); color: #ccc; }
+    .btn-cancel:hover { background: rgba(255,255,255,0.2); }
+    .btn-delete { background: rgba(255, 60, 60, 0.2); color: #f66; }
+    .btn-delete:hover { background: rgba(255, 60, 60, 0.4); }
+
+    #tooltip {
+      position: fixed; background: rgba(0,0,0,0.9); color: #fff; padding: 8px 12px;
+      border-radius: 6px; font-size: 12px; pointer-events: none; z-index: 200;
+      display: none; max-width: 250px; border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    #loading {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: #888; font-size: 14px; z-index: 300;
+    }
+
+    .toggle-sidebar {
+      position: fixed; top: 15px; left: 290px; z-index: 150;
+      background: rgba(15, 15, 25, 0.9); border: 1px solid rgba(255,255,255,0.1);
+      color: #ccc; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+      font-size: 12px;
+    }
+    .toggle-sidebar:hover { background: rgba(255,255,255,0.1); }
+
+    /* Tabs */
+    .tab-buttons { display: flex; gap: 4px; margin-bottom: 16px; }
+    .tab-btn {
+      flex: 1; padding: 8px 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+      background: transparent; color: #888; font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .tab-btn:hover { background: rgba(255,255,255,0.1); }
+    .tab-btn.active { background: rgba(100, 150, 255, 0.3); border-color: rgba(100, 150, 255, 0.5); color: #fff; }
+
+    /* Settings Panel */
+    .settings-panel { display: none; }
+    .settings-panel.active { display: block; }
+    .config-field { margin-bottom: 12px; }
+    .config-field label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+    .config-field input[type="text"], .config-field input[type="number"], .config-field select {
+      width: 100%; padding: 6px 8px; border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05);
+      color: #fff; font-size: 12px;
+    }
+    .config-field input:focus, .config-field select:focus { border-color: rgba(100, 150, 255, 0.5); outline: none; }
+    .save-btn {
+      width: 100%; padding: 8px; border-radius: 6px; border: none;
+      background: rgba(100, 150, 255, 0.3); color: #fff; font-size: 13px; cursor: pointer;
+    }
+    .save-btn:hover { background: rgba(100, 150, 255, 0.5); }
+    .save-message { font-size: 11px; color: #4f4; margin-top: 8px; text-align: center; }
+
+    /* Playbook styles */
+    .playbook-card {
+      background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px;
+      margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.08);
+      transition: border-color 0.2s;
+    }
+    .playbook-card:hover { border-color: rgba(100,150,255,0.3); }
+    .playbook-card .pb-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .playbook-card .pb-name { font-size: 14px; color: #fff; font-weight: 500; }
+    .playbook-card .pb-desc { font-size: 11px; color: #888; margin-top: 2px; }
+    .playbook-card .pb-meta { font-size: 10px; color: #666; margin-top: 6px; }
+    .playbook-card .pb-meta span { display: inline-block; margin-right: 12px; }
+    .playbook-card .pb-tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .playbook-card .pb-tag {
+      padding: 2px 8px; border-radius: 10px; background: rgba(100,150,255,0.15);
+      color: rgba(100,150,255,0.8); font-size: 10px;
+    }
+    .playbook-card .pb-steps { margin-top: 8px; }
+    .playbook-card .pb-step {
+      padding: 4px 8px; margin: 2px 0; border-radius: 4px;
+      background: rgba(255,255,255,0.03); font-size: 11px; color: #aaa;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .playbook-card .pb-step .step-tool {
+      padding: 1px 6px; border-radius: 4px; background: rgba(100,150,255,0.2);
+      color: #4a9eff; font-size: 10px; font-weight: 500;
+    }
+    .playbook-card .pb-step .step-critical {
+      color: #f66; font-size: 10px; font-weight: 700;
+    }
+    .playbook-card .pb-delete-btn {
+      background: none; border: 1px solid rgba(255,60,60,0.3); color: #f66;
+      padding: 2px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    }
+    .playbook-card .pb-delete-btn:hover { background: rgba(255,60,60,0.2); }
+    .playbook-card .pb-triggers { margin-top: 6px; }
+    .playbook-card .pb-trigger { font-size: 10px; color: #888; font-style: italic; }
+
+    #node-list {
+      max-height: 40vh; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+    }
+    .node-list-item {
+      padding: 8px 10px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05);
+      transition: background 0.15s;
+    }
+    .node-list-item:hover { background: rgba(255,255,255,0.08); }
+    .node-list-item.selected { background: rgba(100, 150, 255, 0.2); }
+    .node-list-item .node-label { font-size: 12px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .node-list-item .node-meta { font-size: 10px; color: #666; margin-top: 2px; }
+    .node-list-count { font-size: 11px; color: #666; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="loading">Loading memory nodes...</div>
+
+  <div id="sidebar">
+    <h1>Fractal Memory</h1>
+    <div class="subtitle"><span id="version">3D Node Visualization</span></div>
+
+    <div class="tab-buttons">
+      <button class="tab-btn active" data-tab="visualize">Visualize</button>
+      <button class="tab-btn" data-tab="playbooks">Playbooks</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </div>
+
+    <!-- Visualize Panel -->
+    <div id="visualize-panel" class="settings-panel active">
+
+    <div class="section">
+      <h3>Scope</h3>
+      <div class="filter-group" id="scope-filters"></div>
+    </div>
+
+    <div class="section">
+      <input type="text" id="search-input" placeholder="Search nodes...">
+      <div style="display:flex; gap:4px; margin-top:6px;">
+        <button class="search-mode-btn active" data-mode="text">Text</button>
+        <button class="search-mode-btn" data-mode="embedding">Embedding</button>
+        <button class="search-mode-btn" data-mode="bm25">BM25</button>
+      </div>
+      <button class="search-btn" id="search-btn">Search</button>
+      <div id="search-info"></div>
+    </div>
+
+    <div class="section">
+      <h3>Statistics</h3>
+      <div id="stats-container"></div>
+    </div>
+
+    <div class="section">
+      <h3>Filter by Level</h3>
+      <div class="filter-group" id="level-filters"></div>
+    </div>
+
+    <div class="section">
+      <h3>Filter by Type</h3>
+      <div class="filter-group" id="type-filters"></div>
+    </div>
+
+    <div class="section">
+      <h3>Filter by Custom Type</h3>
+      <div class="filter-group" id="custom-type-filters"></div>
+    </div>
+
+    <div class="section">
+      <h3>Filter by Shape</h3>
+      <div class="filter-group" id="shape-filters"></div>
+    </div>
+
+    <div class="section">
+      <h3>Legend</h3>
+      <div id="legend"></div>
+    </div>
+
+    <div class="section">
+      <h3>Nodes <span class="node-list-count" id="node-list-count"></span></h3>
+      <div id="node-list"></div>
+    </div>
+    </div>
+
+    <!-- Playbooks Panel -->
+    <div id="playbooks-panel" class="settings-panel">
+      <div class="section">
+        <h3>Playbooks</h3>
+        <div style="margin-bottom: 10px;">
+          <input type="text" id="playbook-search-input" placeholder="Search playbooks..." style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;outline:none;">
+        </div>
+        <div id="playbook-list"></div>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="settings-panel">
+      <div class="section">
+        <h3>Per-Node TTL</h3>
+        <div class="config-field">
+          <label>Default TTL (days, 0 = no expiry)</label>
+          <input type="number" id="defaultTtlDays" min="0" max="3650">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Auto-Retrieve</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="autoRetrieve-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Candidate Count</label>
+          <input type="number" id="autoRetrieve-candidateCount" min="5" max="100">
+        </div>
+        <div class="config-field">
+          <label>Max Inject Nodes</label>
+          <input type="number" id="autoRetrieve-maxInjectNodes" min="1" max="20">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Auto File Summarization</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="autoFileSummarization-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Ollama</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="ollama-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Model</label>
+          <input type="text" id="ollama-model" placeholder="qwen2.5-coder:1.5b">
+        </div>
+        <div class="config-field">
+          <label>Base URL</label>
+          <input type="text" id="ollama-baseUrl" placeholder="http://localhost:11434">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>LLM Compression</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="llmCompression-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Max Summary Tokens</label>
+          <input type="number" id="llmCompression-maxSummaryTokens" min="100" max="4000">
+        </div>
+        <div class="config-field">
+          <label>Model (optional)</label>
+          <input type="text" id="llmCompression-model" placeholder="default session model">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Auto Distill</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="autoDistill-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Min Lessons</label>
+          <input type="number" id="autoDistill-minLessons" min="1" max="20">
+        </div>
+        <div class="config-field">
+          <label>Use LLM</label>
+          <select id="autoDistill-useLlm">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Predictive Rating</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="predictiveRating-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Decay Days</label>
+          <input type="number" id="predictiveRating-decayDays" min="1" max="90">
+        </div>
+        <div class="config-field">
+          <label>Positive Boost</label>
+          <input type="number" id="predictiveRating-positiveBoost" min="0" max="1" step="0.05">
+        </div>
+        <div class="config-field">
+          <label>Negative Penalty</label>
+          <input type="number" id="predictiveRating-negativePenalty" min="0" max="1" step="0.05">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Auto Discover (Playbooks)</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="autoDiscover-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Min Sequence Length</label>
+          <input type="number" id="autoDiscover-minSequenceLength" min="2" max="10">
+        </div>
+        <div class="config-field">
+          <label>Min Repeat Count</label>
+          <input type="number" id="autoDiscover-minRepeatCount" min="1" max="10">
+        </div>
+        <div class="config-field">
+          <label>Max Inject Playbooks</label>
+          <input type="number" id="autoDiscover-maxInjectPlaybooks" min="0" max="10">
+        </div>
+      </div>
+
+      <button class="save-btn" id="save-config">Save Settings</button>
+      <div class="save-message" id="save-message"></div>
+    </div>
+  </div>
+
+  <button class="toggle-sidebar" id="toggle-sidebar">☰</button>
+
+  <div id="detail-panel">
+    <button class="close-btn" id="close-detail">×</button>
+    <button class="delete-btn" id="delete-node" title="Delete node">🗑</button>
+    <button class="edit-btn" id="edit-node" title="Edit node">✎</button>
+    <button class="inject-btn" id="inject-node" title="Inject into agent context">→ Agent</button>
+    <div id="inject-status"></div>
+    <h2 id="detail-title"></h2>
+    <div id="detail-content"></div>
+  </div>
+
+  <div id="tooltip"></div>
+
+  <script src="three.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

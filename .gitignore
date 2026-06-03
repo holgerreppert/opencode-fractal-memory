@@ -1,0 +1,9 @@
+node_modules/
+dist/
+models/
+.opencode/
+memory.db
+*.tgz
+*.log
+.env
+.DS_Store
