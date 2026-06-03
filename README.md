@@ -351,19 +351,42 @@ A local web UI for browsing, searching, and editing memory — available when th
 bun run view
 ```
 
-Opens at [http://localhost:8787](http://localhost:8787).
+Opens at [http://localhost:8787](http://localhost:8787). The server also starts automatically with OpenCode.
 
-### Features
+### Usage
 
-<img src="./docs/pictures/management_app.png" width="700" alt="Management App Screenshot">
+**3D Graph** — the default view shows memory nodes as spheres connected by `[[wiki-link]]` relationships:
+- **Drag** to rotate the scene
+- **Scroll** to zoom in/out
+- **Left-click** a node to select and inspect it
+- **Right-click drag** to pan
+- Nodes are color-coded by type (note, skill, playbook, rule)
 
-- **3D graph visualization** — nodes arranged by type and connected by links, draggable and zoomable
-- **Search** — search nodes by label or content
-- **Inspect** — click any node to see full content, metadata, and embeddings
-- **Edit** — update node content, summary, importance, and type
-- **Manage** — view the full node tree with level, access count, and timestamps
+**Search** — find nodes by content, label, or type:
+- Type a query and press Enter
+- Results show relevance scores and preview snippets
+- Click a result to navigate to it in the graph
 
-The management server starts automatically when the plugin loads in OpenCode. Use `bun run view` to open it in a browser outside of OpenCode.
+**Inspect** — when you click a node (graph or search results):
+- View full content and summary
+- See metadata JSON (type, importance, access count, timestamps)
+- View embedding vector (truncated)
+- See linked nodes and navigate between them
+
+**Edit** — modify node fields directly:
+- Update content, summary, importance, or type
+- Changes persist immediately to the SQLite database
+- Embedding auto-regenerates on content change
+
+**Inject** — push a node directly into the agent's context:
+- Click "Inject" on any node
+- The node appears in the agent's next prompt
+- Useful for reminding the agent of past decisions mid-session
+
+**Manage** — the node list view shows all nodes with:
+- Scope (global vs project), level, access count
+- Last accessed and last verified timestamps
+- Actions: edit, delete, verify, inject
 
 ## How Plugin Initialization Works
 
