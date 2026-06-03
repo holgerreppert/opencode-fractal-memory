@@ -65,13 +65,14 @@ Models download on first run. Use `--ignore-scripts` if installing via Bun (Bun 
 
 ### MCP server setup
 
+Enables memory tools in IDEs that support the Model Context Protocol (Cursor, Windsurf, etc.):
+
 ```json
 {
-  "plugins": ["opencode-fractal-memory"],
   "mcp": {
     "fractal-memory": {
       "type": "local",
-      "command": ["bun", "run", "<path-to-plugin>/dist/mcp-server.js"],
+      "command": ["bun", "run", "~/.config/opencode/node_modules/opencode-fractal-memory/dist/mcp-server.js"],
       "enabled": true
     }
   }
@@ -352,6 +353,27 @@ Opens at [http://localhost:8787](http://localhost:8787).
 - **Manage** — view the full node tree with level, access count, and timestamps
 
 The management server starts automatically when the plugin loads in OpenCode. Use `bun run view` to open it in a browser outside of OpenCode.
+
+## How Plugin Initialization Works
+
+When OpenCode loads the plugin, `initStorage()` runs automatically:
+
+1. **SQLite database** — created at `<project>/.opencode/memory.db` with all tables and indexes
+2. **Seed nodes** — rule nodes, built-in playbooks (6), and skills (9) inserted into `memory_nodes`
+3. **Model files** — `ensureModels()` checks `~/.config/opencode/models/` and downloads ONNX + tokenizer (~24 MB) if missing
+4. **Agent files** — `ensureAgentFiles()` copies `agent/` directory to `~/.config/opencode/agent/`
+5. **Command files** — `ensureCommandFiles()` copies `commands/` directory to `~/.config/opencode/commands/`
+6. **Background embeddings** — after 1s, generates embeddings for nodes that lack them
+7. **Auto-retrieve hook** — if enabled in config, injects relevant context into prompts
+
+All of this happens automatically — no manual intervention required.
+
+## Logs
+
+| Log | Path | Contents |
+|-----|------|----------|
+| Memory | `~/.config/opencode/memory.log` | Plugin operations, errors, injection events |
+| OpenCode | `~/.local/share/opencode/log/` | Application lifecycle, tool calls |
 
 ## Development
 
