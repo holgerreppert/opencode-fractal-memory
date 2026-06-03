@@ -30,10 +30,16 @@ Holger
 - **BM25 full-text search** — keyword search as a fallback, hybrid-scored with embeddings for best results
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
 - **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels)
-- **Auto-retrieve** — context-aware injection of relevant memories into the prompt
+- **Auto-retrieve** — context-aware injection of relevant memories, skills, and playbooks into the prompt
+- **Ollama reranking** — re-ranks memory search results with a local LLM for better relevance
+- **LLM compression** — uses LLM to generate richer summaries instead of regex extraction
+- **Auto-distill** — automatically extracts actionable rules from lesson nodes
+- **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
+- **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
 - **Journal** — append-only searchable journal entries with semantic search
-- **Playbooks** — reusable workflow templates discovered and executed by the agent
-- **Management server** — local web UI (port 8787) for browsing and editing memory
+- **Playbooks** — reusable workflow templates (sticky memory nodes) proposed by the agent
+- **Management server** — local web UI (port 8787) for browsing, searching, and editing memory
+- **Sub-agents** — `memory-hints` and `memory-researcher` agents for guided memory interaction
 
 ## Installation
 
@@ -80,20 +86,132 @@ Create `~/.config/opencode/opencode-mem.json` to customize:
 {
   "autoRetrieve": {
     "enabled": true,
-    "maxTokens": 2000,
-    "highContextThreshold": 0.7,
-    "criticalContextThreshold": 0.85
+    "candidateCount": 30,
+    "maxInjectNodes": 5,
+    "maxInjectPlaybooks": 3
   },
   "ollama": {
     "enabled": false,
-    "model": "qwen2.5-coder:1.5b"
+    "baseUrl": "http://localhost:11434",
+    "model": "qwen2.5-coder:1.5b",
+    "mode": "binary"
   },
   "llmCompression": {
     "enabled": false,
+    "model": "qwen2.5-coder:1.5b",
     "maxSummaryTokens": 500
   },
-  "cacheSize": 100,
-  "cacheTTLHours": 24
+  "autoDistill": {
+    "enabled": false,
+    "minLessons": 3,
+    "useLlm": false
+  },
+  "predictiveRating": {
+    "enabled": false,
+    "decayDays": 7,
+    "confidenceThreshold": 0.3,
+    "positiveBoost": 0.1,
+    "negativePenalty": 0.05
+  },
+  "cacheSize": 8,
+  "cacheTTLHours": 2,
+  "autoCompressThreshold": 0.7,
+  "highContextThreshold": 0.6,
+  "criticalContextThreshold": 0.8,
+  "defaultTtlDays": 0
+}
+```
+
+### Config reference
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `autoRetrieve.enabled` | bool | `false` | Enable automatic memory injection into prompts |
+| `autoRetrieve.candidateCount` | int | `30` | Number of candidates to fetch for injection |
+| `autoRetrieve.maxInjectNodes` | int | `5` | Max memory nodes to inject per turn |
+| `autoRetrieve.maxInjectPlaybooks` | int | `3` | Max matching playbooks to list |
+| `ollama.enabled` | bool | `false` | Use local LLM for reranking search results |
+| `ollama.baseUrl` | string | `http://localhost:11434` | Ollama server URL |
+| `ollama.model` | string | `qwen2.5-coder:1.5b` | Model for reranking |
+| `ollama.mode` | enum | `"binary"` | `"binary"` (relevant/not) or `"score"` (0-1 rating) |
+| `llmCompression.enabled` | bool | `false` | Use LLM for richer compression summaries |
+| `llmCompression.maxSummaryTokens` | int | `500` | Max tokens per LLM-generated summary |
+| `autoDistill.enabled` | bool | `false` | Auto-extract rules from lesson nodes |
+| `autoDistill.minLessons` | int | `3` | Min lessons before extraction |
+| `autoDistill.useLlm` | bool | `false` | Use LLM for more specific rules |
+| `predictiveRating.enabled` | bool | `false` | Auto-decay and boost node usefulness |
+| `predictiveRating.decayDays` | int | `7` | Days until usefulness decay |
+| `cacheSize` | int | `8` | Max cached nodes in LRU cache |
+| `cacheTTLHours` | int | `2` | Cache entry TTL in hours |
+| `autoCompressThreshold` | float | `0.7` | Context usage ratio triggering auto-compression |
+| `highContextThreshold` | float | `0.6` | Token usage ratio for high context warning |
+| `criticalContextThreshold` | float | `0.8` | Token usage ratio for critical warning |
+| `defaultTtlDays` | int | `0` | Default TTL for new nodes (0 = no expiry) |
+
+## Advanced Features
+
+### Ollama Reranking
+
+When enabled in config, auto-retrieve results are re-ranked by a local LLM (via Ollama) for better relevance. The reranker scores candidates against the user's query and only keeps the most relevant ones:
+
+```json
+{
+  "ollama": {
+    "enabled": true,
+    "baseUrl": "http://localhost:11434",
+    "model": "qwen2.5-coder:1.5b",
+    "mode": "binary"
+  }
+}
+```
+
+In `"binary"` mode, the LLM labels each candidate as relevant or not. In `"score"` mode, it assigns a 0-1 relevance score.
+
+### LLM Compression
+
+Instead of regex-based compression (which extracts keywords), LLM compression generates richer natural-language summaries:
+
+```json
+{
+  "llmCompression": {
+    "enabled": true,
+    "model": "qwen2.5-coder:1.5b",
+    "maxSummaryTokens": 500
+  }
+}
+```
+
+Invoke manually with `memory_llm_compress`.
+
+### Auto-Distill
+
+Periodically extracts actionable rules from `lesson`-type nodes created by `memory_reflect`. Rules are stored as `rule:standard:*` / `rule:suggestion:*` nodes for immediate injection:
+
+```json
+{
+  "autoDistill": {
+    "enabled": true,
+    "minLessons": 3,
+    "useLlm": false
+  }
+}
+```
+
+Set `useLlm: true` for LLM-generated rules instead of keyword extraction.
+
+### Predictive Rating
+
+Automatically adjusts node usefulness scores over time. Frequently accessed nodes get boosted; nodes that haven't been touched in `decayDays` get gradually decayed:
+
+```json
+{
+  "predictiveRating": {
+    "enabled": true,
+    "decayDays": 7,
+    "confidenceThreshold": 0.3,
+    "positiveBoost": 0.1,
+    "negativePenalty": 0.05
+  }
 }
 ```
 
@@ -105,22 +223,40 @@ Create `~/.config/opencode/opencode-mem.json` to customize:
 |---|---|
 | `memory_set` | Create or update a memory node |
 | `memory_get` | Get a single node by ID or label |
+| `memory_fetch` | Fetch a node by exact label |
 | `memory_search` | Search nodes by text, embedding, or BM25 |
 | `memory_delete` | Delete a node by ID or label |
 | `memory_list` | List nodes with optional scope/level filters |
+| `memory_replace` | Replace content in a memory node |
+| `memory_rate` | Rate a node's usefulness (helps ranking) |
+| `memory_prune` | Find and remove stale/unused nodes |
 | `memory_inject` | Inject relevant memories into the prompt with token budgeting |
+| `memory_injection_debug` | Show what was injected in the last session |
+| `memory_injection_feedback` | Rate injected memory usefulness |
+| `memory_injection_stats` | View injection efficiency metrics |
 | `memory_drilldown` | Retrieve a node with its source chain (fractal retrieval) |
+| `memory_drilldown_query` | Top-down drilldown by query (find + expand) |
+| `memory_detect_topics` | Detect topic clusters in memory |
 | `memory_stats` | Show memory statistics (nodes per level, compression ratios) |
+| `memory_dashboard` | Display memory dashboard with visual overview |
+| `memory_tool_stats` | View tool call statistics and efficiency |
+| `memory_session_stats` | Get statistics about the current session |
 | `memory_compress` | Compress old nodes into higher-level summaries |
+| `memory_llm_compress` | LLM-powered compression (richer summaries) |
 | `memory_extract_patterns` | Extract cross-topic pattern summaries |
+| `memory_distill` | Extract actionable rules from lesson nodes |
+| `memory_summarize` | Generate an LLM prompt to summarize a node |
 | `memory_check_context` | Check token usage of memory nodes |
 | `memory_total_tokens` | Complete token analysis (memory + conversation) |
 | `memory_generate_embeddings` | Generate embeddings for nodes that lack them |
+| `memory_middle_term` | View context snapshots before compaction |
+| `memory_cache_status` | Show working-memory cache usage |
 | `memory_skill_load` | Load a skill's instructions by name |
 | `memory_playbook_execute` | Execute a playbook workflow |
-| `memory_injection_debug` | Show what was injected in the last session |
 | `memory_verify` | Verify that a node's information is correct |
 | `memory_reflect` | Analyze a session and create lesson nodes |
+| `memory_help` | Show all available memory commands |
+| `memory_version` | Show installed plugin version |
 
 ### Playbook tools
 
@@ -181,6 +317,17 @@ memory_set(
   sticky: true
 )
 ```
+
+## Sub-agents
+
+The plugin ships with two agent instruction files for specialized memory interaction:
+
+| Agent | File | Purpose |
+|---|---|---|
+| `memory-hints` | `agent/memory-hints.md` | System-level hints for using memory effectively — injected by the agent when memory-related context is needed |
+| `memory-researcher` | `agent/memory-researcher.md` | Analyzes and reports on fractal memory state — invoked via `memory_skill_load(name="memory-researcher")` |
+
+These are loaded by OpenCode's agent system and provide structured guidance for memory operations.
 
 ## Management App
 
