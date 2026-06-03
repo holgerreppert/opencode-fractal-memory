@@ -161,6 +161,28 @@ memory_set(
 )
 ```
 
+## Management App
+
+A local web UI for browsing, searching, and editing memory — available when the plugin is active.
+
+### Starting
+
+```bash
+bun run view
+```
+
+Opens at [http://localhost:8787](http://localhost:8787).
+
+### Features
+
+- **3D graph visualization** — nodes arranged by type and connected by links, draggable and zoomable
+- **Search** — search nodes by label or content
+- **Inspect** — click any node to see full content, metadata, and embeddings
+- **Edit** — update node content, summary, importance, and type
+- **Manage** — view the full node tree with level, access count, and timestamps
+
+The management server starts automatically when the plugin loads in OpenCode. Use `bun run view` to open it in a browser outside of OpenCode.
+
 ## Development
 
 ```bash
