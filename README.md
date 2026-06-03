@@ -92,7 +92,7 @@ Enables memory tools in IDEs that support the Model Context Protocol (Cursor, Wi
 
 ## Configuration
 
-Create `~/.config/opencode/opencode-mem.json` to customize:
+Create `~/.config/opencode/opencode-mem.json` to customize (optional — all defaults work out of the box):
 
 ```json
 {
@@ -110,7 +110,6 @@ Create `~/.config/opencode/opencode-mem.json` to customize:
   },
   "llmCompression": {
     "enabled": false,
-    "model": "qwen2.5-coder:1.5b",
     "maxSummaryTokens": 500
   },
   "autoDistill": {
@@ -125,19 +124,22 @@ Create `~/.config/opencode/opencode-mem.json` to customize:
     "positiveBoost": 0.1,
     "negativePenalty": 0.05
   },
+  "maxInjectionTokens": 8000,
+  "coreInjectionTokens": 2000,
   "cacheSize": 8,
   "cacheTTLHours": 2,
   "autoCompressThreshold": 0.7,
   "highContextThreshold": 0.6,
   "criticalContextThreshold": 0.8,
-  "defaultTtlDays": 0
+  "defaultTtlDays": 0,
+  "enableMiddleTermCapture": true
 }
 ```
 
 ### Config reference
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+|---|---|---|---|---|
 | `autoRetrieve.enabled` | bool | `false` | Enable automatic memory injection into prompts |
 | `autoRetrieve.candidateCount` | int | `30` | Number of candidates to fetch for injection |
 | `autoRetrieve.maxInjectNodes` | int | `5` | Max memory nodes to inject per turn |
@@ -147,18 +149,26 @@ Create `~/.config/opencode/opencode-mem.json` to customize:
 | `ollama.model` | string | `qwen2.5-coder:1.5b` | Model for reranking |
 | `ollama.mode` | enum | `"binary"` | `"binary"` (relevant/not) or `"score"` (0-1 rating) |
 | `llmCompression.enabled` | bool | `false` | Use LLM for richer compression summaries |
+| `llmCompression.model` | string | _none_ | LLM model name (uses ollama if not set) |
 | `llmCompression.maxSummaryTokens` | int | `500` | Max tokens per LLM-generated summary |
 | `autoDistill.enabled` | bool | `false` | Auto-extract rules from lesson nodes |
 | `autoDistill.minLessons` | int | `3` | Min lessons before extraction |
 | `autoDistill.useLlm` | bool | `false` | Use LLM for more specific rules |
 | `predictiveRating.enabled` | bool | `false` | Auto-decay and boost node usefulness |
 | `predictiveRating.decayDays` | int | `7` | Days until usefulness decay |
+| `predictiveRating.confidenceThreshold` | float | `0.3` | Min confidence to count as relevant |
+| `predictiveRating.positiveBoost` | float | `0.1` | Usefulness boost on positive rate |
+| `predictiveRating.negativePenalty` | float | `0.05` | Usefulness penalty on negative rate |
+| `maxInjectionTokens` | int | `8000` | Max tokens allowed in a single injection |
+| `coreInjectionTokens` | int | `2000` | Tokens reserved for core rules in injection |
 | `cacheSize` | int | `8` | Max cached nodes in LRU cache |
 | `cacheTTLHours` | int | `2` | Cache entry TTL in hours |
 | `autoCompressThreshold` | float | `0.7` | Context usage ratio triggering auto-compression |
 | `highContextThreshold` | float | `0.6` | Token usage ratio for high context warning |
 | `criticalContextThreshold` | float | `0.8` | Token usage ratio for critical warning |
 | `defaultTtlDays` | int | `0` | Default TTL for new nodes (0 = no expiry) |
+| `enableMiddleTermCapture` | bool | `true` | Save middle-term snapshots before compression |
+| `autoFileSummarization.enabled` | bool | `false` | Auto-summarize files on read |
 
 ## Advanced Features
 
