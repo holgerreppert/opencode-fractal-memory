@@ -1,7 +1,7 @@
 import { createSqliteMemoryStore as createMemoryStore, type MemoryStore, type MemoryScope } from "../storage/sqlite";
 import { loadMemConfig, type MemConfig } from "../config";
 import { generateEmbedding } from "../embeddings";
-import { ensureModels } from "../ensure-models";
+import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
 import { createAutoRetrieveHook } from "../hooks";
 import { loadConfig } from "../journal";
 import { createJournalStore, type JournalContext } from "../journal";
@@ -17,6 +17,8 @@ export async function initStorage(directory: string): Promise<MemoryStore> {
   const store = createMemoryStore(directory);
   await store.ensureSeed();
   await ensureModels();
+  await ensureAgentFiles().catch(() => {});
+  await ensureCommandFiles().catch(() => {});
   return store;
 }
 

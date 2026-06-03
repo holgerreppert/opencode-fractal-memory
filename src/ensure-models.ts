@@ -1,6 +1,10 @@
-import { mkdir, writeFile, access } from "node:fs/promises";
-import { join } from "path";
+import { mkdir, writeFile, access, cp } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "os";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const BASE = join(homedir(), ".config", "opencode", "models", "Xenova", "all-MiniLM-L6-v2");
 const ONNX_DIR = join(BASE, "onnx");
@@ -57,4 +61,18 @@ export async function ensureModels(): Promise<void> {
     const mb = (stat.size / 1024 / 1024).toFixed(1);
     process.stdout.write(`${mb} MB\n`);
   }
+}
+
+export async function ensureAgentFiles(): Promise<void> {
+  const srcAgent = join(__dirname, "..", "agent");
+  const dstAgent = join(homedir(), ".config", "opencode", "agent");
+  await mkdir(dstAgent, { recursive: true });
+  await cp(srcAgent, dstAgent, { recursive: true, force: true });
+}
+
+export async function ensureCommandFiles(): Promise<void> {
+  const srcCommands = join(__dirname, "..", "commands");
+  const dstCommands = join(homedir(), ".config", "opencode", "commands");
+  await mkdir(dstCommands, { recursive: true });
+  await cp(srcCommands, dstCommands, { recursive: true, force: true });
 }
