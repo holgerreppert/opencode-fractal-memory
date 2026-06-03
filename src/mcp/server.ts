@@ -4,6 +4,13 @@ import { createSqliteMemoryStore } from "../storage/sqlite";
 import type { MemoryScope } from "../storage/sqlite";
 import { withMcpLogging, mcpLog } from "./logging";
 import { nodeToPlain, ensureScope, resourceStats } from "./transform";
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
+import * as fs from "node:fs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8")) as { version: string };
 
 let store: ReturnType<typeof createSqliteMemoryStore>;
 
@@ -11,7 +18,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
   store = createSqliteMemoryStore(projectDir, globalDbPath);
 
   const server = new McpServer(
-    { name: "opencode-fractal-memory", version: "0.1.0" },
+    { name: "opencode-fractal-memory", version: pkg.version },
     { capabilities: { tools: {}, resources: {} } }
   );
 
