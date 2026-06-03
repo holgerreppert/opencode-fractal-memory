@@ -175,6 +175,8 @@ Opens at [http://localhost:8787](http://localhost:8787).
 
 ### Features
 
+<img src="./docs/pictures/management_app.png" width="700" alt="Management App Screenshot">
+
 - **3D graph visualization** — nodes arranged by type and connected by links, draggable and zoomable
 - **Search** — search nodes by label or content
 - **Inspect** — click any node to see full content, metadata, and embeddings
