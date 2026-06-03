@@ -22,6 +22,9 @@ Have phun
 
 Holger
 
+PS.: Did I mention that this is alpha? So feel free to post issues with suggestions
+if you find bugs or if you just want to suggest improvements 
+
 
 ## Features
 
