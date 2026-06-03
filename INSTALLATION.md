@@ -2,9 +2,11 @@
 
 ## Prerequisites
 
-- [OpenCode](https://opencode.ai/) v1.0.115 or later
-- [Bun](https://bun.sh/) runtime (required for the plugin)
-- Node.js v18+ (for manual installs via npm)
+| Requirement | Version | Notes |
+|---|---|---|
+| **OpenCode** | v1.15.13+ | SDK peer dependency |
+| **Bun** | >=1.0.0 | Plugin runtime |
+| **Node.js** | >=18 | For npm-based installs only |
 
 ## Installation
 

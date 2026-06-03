@@ -44,6 +44,14 @@ if you find bugs or if you just want to suggest improvements
 - **Management server** — local web UI (port 8787) for browsing, searching, and editing memory
 - **Sub-agents** — `memory-hints` and `memory-researcher` agents for guided memory interaction
 
+## Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| **OpenCode** | v1.15.13+ | SDK peer dependency |
+| **Bun** | >=1.0.0 | Plugin runtime |
+| **Node.js** | >=18 | For npm-based installs only |
+
 ## Installation
 
 ### For OpenCode users
