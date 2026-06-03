@@ -1,6 +1,6 @@
 {
   "name": "opencode-fractal-memory",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Fractal memory system for OpenCode with semantic search and automatic compression.",
   "main": "dist/plugin.js",
   "type": "module",
@@ -25,13 +25,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/holgerreppert/opencode-fractal-memory"
+    "url": "git+https://github.com/holgerreppert/opencode-fractal-memory.git"
   },
   "trustedDependencies": [],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build && npm run typecheck",
-    "postinstall": "mkdir -p ~/.config/opencode/agent ~/.config/opencode/commands && cp -f agent/*.md ~/.config/opencode/agent/ && cp -f commands/*.md ~/.config/opencode/commands/ && bun run scripts/download-models.ts",
+    "postinstall": "node scripts/postinstall.cjs",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "view": "bun run dist/management-standalone.js",

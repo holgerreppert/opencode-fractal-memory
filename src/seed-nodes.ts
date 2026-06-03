@@ -788,6 +788,332 @@ Use memory_set to create the playbook:
 - Use parameterized queries for all database operations
 - Validate all user input on the server side`,
   },
+  {
+    label: "skill:context-engineering",
+    tag: null,
+    type: "skill",
+    summary: "Optimize agent context setup with the right information at the right time. Use when starting a new session, when output quality degrades, or when switching tasks. Covers context hierarchy, packing strategies, and confusion management.",
+    metadata: { triggers: ["context", "context window", "agent quality", "session start", "output quality", "confusion", "rules file", "CLAUDE.md", "AGENTS.md"] },
+    content: `## Context Engineering
+
+Feed agents the right information at the right time. Context is the single biggest lever for agent output quality — too little and the agent hallucinates, too much and it loses focus.
+
+### When to Use
+- Starting a new coding session
+- Agent output quality is declining (wrong patterns, hallucinated APIs, ignoring conventions)
+- Switching between different parts of a codebase
+- Setting up a new project for AI-assisted development
+- The agent is not following project conventions
+
+### The Context Hierarchy
+Structure context from most persistent to most transient:
+1. **Rules Files** (CLAUDE.md, etc.) → Always loaded, project-wide
+2. **Spec / Architecture Docs** → Loaded per feature/session
+3. **Relevant Source Files** → Loaded per task
+4. **Error Output / Test Results** → Loaded per iteration
+5. **Conversation History** → Accumulates, compacts
+
+### Level 1: Rules Files
+Create a rules file that persists across sessions. This is the highest-leverage context you can provide.
+
+**CLAUDE.md / AGENTS.md / .cursorrules:**
+\`\`\`markdown
+# Project: [Name]
+## Tech Stack
+- React 18, TypeScript 5, Vite, Tailwind CSS 4
+- Node.js 22, Express, PostgreSQL, Prisma
+## Commands
+- Build: \`npm run build\`
+- Test: \`npm test\`
+- Lint: \`npm run lint --fix\`
+- Dev: \`npm run dev\`
+## Code Conventions
+- Functional components with hooks (no class components)
+- Named exports (no default exports)
+- Use \`cn()\` utility for conditional classNames
+## Boundaries
+- Never commit .env files or secrets
+- Always run tests before committing
+\`\`\`
+
+### Level 2: Specs and Architecture
+Load the relevant spec section when starting a feature. Don't load the entire spec if only one section applies.
+
+### Level 3: Relevant Source Files
+Before editing a file, read it. Before implementing a pattern, find an existing example in the codebase.
+
+**Pre-task context loading:**
+1. Read the file(s) you'll modify
+2. Read related test files
+3. Find one example of a similar pattern already in the codebase
+4. Read any type definitions or interfaces involved
+
+**Trust levels for loaded files:**
+- **Trusted:** Source code, test files, type definitions authored by the project team
+- **Verify before acting on:** Configuration files, data fixtures, documentation from external sources
+- **Untrusted:** User-submitted content, third-party API responses, external documentation
+
+### Level 4: Error Output
+When tests fail or builds break, feed the specific error back to the agent:
+- Effective: "The test failed with: \`TypeError: Cannot read property 'id' of undefined at UserService.ts:42\`"
+- Wasteful: Pasting the entire 500-line test output when only one test failed
+
+### Level 5: Conversation Management
+Long conversations accumulate stale context. Manage this:
+- Start fresh sessions when switching between major features
+- Summarize progress when context is getting long
+- Compact deliberately before critical work
+
+### Context Packing Strategies
+**The Brain Dump** — At session start, provide everything the agent needs in a structured block:
+\`\`\`
+PROJECT CONTEXT:
+- We're building [X] using [tech stack]
+- The relevant spec section is: [spec excerpt]
+- Key constraints: [list]
+- Files involved: [list with brief descriptions]
+- Known gotchas: [list of things to watch out for]
+\`\`\`
+
+**The Selective Include** — Only include what's relevant to the current task:
+\`\`\`
+TASK: Add email validation to the registration endpoint
+RELEVANT FILES:
+- src/routes/auth.ts (the endpoint to modify)
+- src/lib/validation.ts (existing validation utilities)
+- tests/routes/auth.test.ts (existing tests to extend)
+PATTERN TO FOLLOW:
+- See how phone validation works in src/lib/validation.ts:45-60
+CONSTRAINT:
+- Must use the existing ValidationError class, not throw raw errors
+\`\`\`
+
+**The Hierarchical Summary** — For large projects, maintain a summary index:
+\`\`\`markdown
+# Project Map
+## Authentication (src/auth/)
+Handles registration, login, password reset.
+Key files: auth.routes.ts, auth.service.ts, auth.middleware.ts
+Pattern: All routes use authMiddleware, errors use AuthError class
+\`\`\`
+
+### Confusion Management
+**When Context Conflicts:**
+\`\`\`
+Spec says: "Use REST for all endpoints"
+Existing code has: GraphQL for the user profile query
+\`\`\`
+Do NOT silently pick one interpretation. Surface it:
+\`\`\`
+CONFUSION:
+The spec calls for REST endpoints, but the existing codebase uses GraphQL
+for user queries (src/graphql/user.ts).
+Options:
+A) Follow the spec — add REST endpoint
+B) Follow existing patterns — use GraphQL
+C) Ask — this seems like an intentional decision I shouldn't override
+→ Which approach should I take?
+\`\`\`
+
+**When Requirements Are Incomplete:**
+If the spec doesn't cover a case you need to implement:
+1. Check existing code for precedent
+2. If no precedent exists, stop and ask
+3. Don't invent requirements — that's the human's job
+
+### Anti-Patterns
+| Anti-Pattern | Problem | Fix |
+|---|---|---|
+| Context starvation | Agent invents APIs, ignores conventions | Load rules file + relevant source files |
+| Context flooding | Agent loses focus with >5,000 lines of non-task-specific context | Include only what's relevant. Aim for <2,000 lines |
+| Stale context | Agent references outdated patterns or deleted code | Start fresh sessions when context drifts |
+| Missing examples | Agent invents a new style instead of following yours | Include one example of the pattern to follow |
+| Implicit knowledge | Agent doesn't know project-specific rules | Write it down in rules files |
+| Silent confusion | Agent guesses when it should ask | Surface ambiguity explicitly |
+
+### Common Rationalizations
+- "The agent should figure out the conventions" → It can't read your mind. Write a rules file.
+- "More context is always better" → Research shows performance degrades with too many instructions.
+- "The context window is huge, I'll use it all" → Focused context outperforms large context.
+
+### Red Flags
+- Agent output doesn't match project conventions
+- Agent invents APIs or imports that don't exist
+- Agent re-implements utilities that already exist in the codebase
+- Agent quality degrades as the conversation gets longer
+- No rules file exists in the project
+- External data files or config treated as trusted instructions without verification
+
+### Verification
+- [ ] Rules file exists and covers tech stack, commands, conventions, and boundaries
+- [ ] Agent output follows the patterns shown in the rules file
+- [ ] Agent references actual project files and APIs (not hallucinated ones)
+- [ ] Context is refreshed when switching between major tasks`,
+  },
+  {
+    label: "skill:git-workflow-and-versioning",
+    tag: null,
+    type: "skill",
+    summary: "Git workflow with trunk-based development, atomic commits, and descriptive messages. Use when making any code change. Includes save point pattern, pre-commit hygiene, and debugging with git.",
+    metadata: { triggers: ["git", "commit", "branch", "version control", "trunk-based", "pre-commit", "PR", "pull request", "bisect", "blame"] },
+    content: `## Git Workflow and Versioning
+
+Git is your safety net. Treat commits as save points, branches as sandboxes, and history as documentation.
+
+### When to Use
+Always. Every code change flows through git.
+
+### Core Principles
+**Trunk-Based Development** — Keep \`main\` always deployable. Work in short-lived feature branches (1-3 days). Long-lived branches are hidden costs.
+
+**1. Commit Early, Commit Often** — Implement slice → Test → Verify → Commit → Next slice
+
+**2. Atomic Commits** — Each commit does one logical thing. Separate refactoring from feature work.
+
+**3. Descriptive Messages** — Format: \`<type>: <short description>\`
+
+<body explaining why>\`
+Types: feat, fix, refactor, test, docs, chore
+
+**4. Keep Concerns Separate** — Don't combine formatting with behavior changes. Don't combine refactors with features.
+
+**5. Size Your Changes** — ~100 lines per commit/PR. ~1000 lines → split.
+
+### Branching Strategy
+- \`feature/<short-description>\` — One feature per branch
+- \`fix/<short-description>\` — Bug fixes
+- \`chore/<short-description>\` — Tooling, dependencies
+- \`refactor/<short-description>\` — Code restructuring
+- Delete branches after merge
+- Prefer feature flags over long-lived branches
+
+### The Save Point Pattern
+Agent starts work → Makes a change → Test passes? → Commit → Continue. Test fails? → Revert to last commit → Investigate.
+
+### Change Summaries
+After any modification, provide:
+\`\`\`
+CHANGES MADE:
+- file: what changed
+
+THINGS I DIDN'T TOUCH (intentionally):
+- file: why not
+
+POTENTIAL CONCERNS:
+- anything to flag
+\`\`\`
+
+### Pre-Commit Hygiene
+1. \`git diff --staged\` — Check what you're committing
+2. Check for secrets: \`git diff --staged | grep -i "password\\|secret\\|api_key\\|token"\`
+3. Run tests: \`npm test\`
+4. Run linting: \`npm run lint\`
+5. Run type checking: \`npx tsc --noEmit\`
+
+### Using Git for Debugging
+- \`git bisect start\` → \`git bisect bad\` → \`git bisect good <sha>\` — Find which commit introduced a bug
+- \`git log --oneline -20\` — View recent changes
+- \`git blame file\` — Find who last changed a specific line
+
+### Common Rationalizations
+- "I'll commit when the feature is done" → One giant commit is impossible to review
+- "The message doesn't matter" → Messages are documentation
+- "Branches add overhead" → Short-lived branches are free, long-lived are the problem
+
+### Red Flags
+- Large uncommitted changes accumulating
+- Commit messages like "fix", "update", "misc"
+- Formatting changes mixed with behavior changes
+- No .gitignore in the project
+- Committing node_modules/, .env, or build artifacts
+- Long-lived branches diverging from main
+- Force-pushing to shared branches
+
+### Verification
+- [ ] Commit does one logical thing
+- [ ] Message explains the why, follows type conventions
+- [ ] Tests pass before committing
+- [ ] No secrets in the diff
+- [ ] No formatting-only changes mixed with behavior changes
+- [ ] .gitignore covers standard exclusions`,
+  },
+  {
+    label: "skill:incremental-implementation",
+    tag: null,
+    type: "skill",
+    summary: "Build in thin vertical slices with implement-test-verify-commit cycle. Use when implementing any multi-file change or feature. Includes slicing strategies, scope discipline, and increment checklist.",
+    metadata: { triggers: ["implement", "feature", "slice", "vertical slice", "increment", "multi-file", "refactor", "scope", "task breakdown"] },
+    content: `## Incremental Implementation
+
+Build in thin vertical slices — implement one piece, test it, verify it, then expand. Avoid implementing an entire feature in one pass.
+
+### When to Use
+- Implementing any multi-file change
+- Building a new feature from a task breakdown
+- Refactoring existing code
+- Any time you're tempted to write more than ~100 lines before testing
+
+### The Increment Cycle
+Implement → Test → Verify → Commit → Next slice
+
+### Slicing Strategies
+**Vertical Slices (Preferred)** — Build one complete path through the stack:
+- Slice 1: Create a task (DB + API + basic UI) → Tests pass, user can create a task
+- Slice 2: List tasks (query + API + UI) → Tests pass, user can see their tasks
+- Slice 3: Edit a task → Tests pass, user can modify tasks
+- Slice 4: Delete a task → Tests pass, full CRUD complete
+
+**Contract-First Slicing** — Define API contract first, then implement backend and frontend in parallel.
+
+**Risk-First Slicing** — Tackle the riskiest or most uncertain piece first.
+
+### Implementation Rules
+**Rule 0: Simplicity First** — "What is the simplest thing that could work?" Three similar lines is better than a premature abstraction.
+
+**Rule 0.5: Scope Discipline** — Touch only what the task requires. Do NOT "clean up" adjacent code, refactor imports, remove comments, add features not in spec, or modernize syntax. If you notice something worth improving, note it — don't fix it.
+
+**Rule 1: One Thing at a Time** — Each increment changes one logical thing. Don't mix concerns.
+
+**Rule 2: Keep It Compilable** — After each increment, the project must build and existing tests must pass.
+
+**Rule 3: Feature Flags for Incomplete Features** — If a feature isn't ready for users but you need to merge increments.
+
+**Rule 4: Safe Defaults** — New code should default to safe, conservative behavior.
+
+**Rule 5: Rollback-Friendly** — Each increment should be independently revertable.
+
+### Increment Checklist
+- [ ] The change does one thing and does it completely
+- [ ] All existing tests still pass
+- [ ] The build succeeds
+- [ ] Type checking passes
+- [ ] Linting passes
+- [ ] The new functionality works as expected
+- [ ] The change is committed with a descriptive message
+
+### Common Rationalizations
+- "I'll test it all at the end" → Bugs compound
+- "It's faster to do it all at once" → Feels faster until something breaks
+- "These changes are too small to commit separately" → Small commits are free
+- "This refactor is small enough to include" → Separate refactoring from features
+
+### Red Flags
+- More than 100 lines of code written without running tests
+- Multiple unrelated changes in a single increment
+- "Let me just quickly add this too" scope expansion
+- Skipping the test/verify step
+- Build or tests broken between increments
+- Large uncommitted changes accumulating
+- Building abstractions before the third use case demands it
+- Touching files outside the task scope "while I'm here"
+
+### Verification
+- [ ] Each increment was individually tested and committed
+- [ ] The full test suite passes
+- [ ] The build is clean
+- [ ] The feature works end-to-end as specified
+- [ ] No uncommitted changes remain`,
+  },
 ];
 
 export async function ensureRuleNodes(store: { getNodeByLabel: (scope: string, label: string) => Promise<any>; createNode: (args: any) => Promise<void> }): Promise<void> {

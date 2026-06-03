@@ -84,6 +84,65 @@
       "runtimeArgs": ["test", "src/storage/"],
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Publish: Typecheck",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "typecheck"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Publish: Test",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Publish: Pack",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["pack"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Publish: npm publish",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["publish"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Publish: Force publish",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["publish", "--force"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Publish Release",
+      "configurations": [
+        "Build Project",
+        "Publish: Typecheck",
+        "Publish: Test",
+        "Publish: Pack",
+        "Publish: npm publish"
+      ],
+      "preLaunchTask": "Publish Release",
+      "stopAll": true
     }
   ]
 }
