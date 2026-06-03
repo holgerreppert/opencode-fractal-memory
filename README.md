@@ -2,6 +2,27 @@
 
 Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, automatic compression, and multi-level retrieval.
 
+# about me and the usage
+
+I made this because I needed a longterm memory at first.
+Then while working with it I extended it's functionality.
+It might be a little bit overwhelming but if you work with it you will
+start to love it.
+You can tell the coding agent to make a memory of everything.
+And later on you can tell it to read it.
+You can also use the management app that includes a nice threejs visualization
+and searching from there in the memory nodes.
+You can also inject nodes directly to the agent from there.
+You can edit the nodes too.
+I think I forgot to mention some of features here.
+I'll update this project constantly.
+Feel free to use it and tell me how much you hate or like it ;)
+
+Have phun
+
+Holger
+
+
 ## Features
 
 - **Memory nodes** — structured persistent memory with labels, content, metadata, and type system
