@@ -15,7 +15,9 @@ const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../package.js
 let store: ReturnType<typeof createSqliteMemoryStore>;
 
 export async function createMemoryMcpServer(projectDir: string, globalDbPath: string): Promise<McpServer> {
+  mcpLog("info", "Creating memory store", { projectDir });
   store = createSqliteMemoryStore(projectDir, globalDbPath);
+  mcpLog("info", "Memory store created");
 
   const server = new McpServer(
     { name: "opencode-fractal-memory", version: pkg.version },

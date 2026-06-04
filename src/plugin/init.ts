@@ -14,10 +14,15 @@ import { setCacheConfig } from "../cache";
 import { setContextLimit, setHighContextThreshold, setCriticalContextThreshold, setMaxInjectionTokens, setCoreInjectionTokens, setAutoCompressThreshold } from "./state";
 
 export async function initStorage(directory: string): Promise<MemoryStore> {
+  memLog("info", "init", "Creating memory store", { directory });
   const store = createMemoryStore(directory);
+  memLog("info", "init", "Ensuring seed nodes");
   await store.ensureSeed();
+  memLog("info", "init", "Ensuring models");
   await ensureModels();
+  memLog("info", "init", "Ensuring agent files");
   await ensureAgentFiles().catch(() => {});
+  memLog("info", "init", "Ensuring command files");
   await ensureCommandFiles().catch(() => {});
   return store;
 }
@@ -35,6 +40,7 @@ export async function loadPluginConfig(directory: string): Promise<MemConfig> {
 }
 
 export async function seedRuleNodes(store: MemoryStore): Promise<void> {
+  let created = 0;
   for (const seed of SEED_NODES) {
     try {
       await store.getNodeByLabel("global", seed.label);
@@ -51,16 +57,22 @@ export async function seedRuleNodes(store: MemoryStore): Promise<void> {
         importance: 1,
         metadata: seed.metadata ?? null,
       });
+      created++;
     }
   }
+  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created });
 }
 
 export async function backfillData(store: MemoryStore): Promise<void> {
   for (const scope of ["global", "project"] as MemoryScope[]) {
+    memLog("info", "init", `Backfilling links for ${scope}`);
     await store.backfillLinks(scope);
+    memLog("info", "init", `Backfilling embeddings and BM25 for ${scope}`);
     await store.backfillBinaryEmbeddingsAndBM25(scope);
   }
+  memLog("info", "init", "Rebuilding HNSW index");
   await store.rebuildHNSWIndex();
+  memLog("info", "init", "HNSW index rebuilt");
 }
 
 export function scheduleBackgroundEmbeddings(store: MemoryStore): void {
@@ -98,9 +110,12 @@ export function startManagementIfEnabled(store: MemoryStore, directory: string):
   loadConfig().then(c => {
     const mgmtConfig = c.management;
     if (mgmtConfig?.enabled === true) {
+      memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787 });
       startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
+    } else {
+      memLog("info", "init", "Management server disabled");
     }
-  }).catch(() => { /* config not available */ });
+  }).catch(() => { memLog("info", "init", "Management server config not available"); });
 }
 
 export function createAutoRetrieveIfEnabled(
