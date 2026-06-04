@@ -6,25 +6,27 @@ import { memLog, perfNow } from "../logging";
 import { VERSION } from "../version";
 
 function showToast(serverUrl: URL, version: string) {
-  const url = `${serverUrl.origin}/tui/show-toast`;
-  fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: "Fractal Memory",
-      message: `v${version} loaded`,
-      variant: "info" as const,
-    }),
-  }).catch(() => {
-    // silently ignore — TUI may not be available in headless mode
-  });
+  setTimeout(() => {
+    const url = `${serverUrl.origin}/tui/show-toast`;
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Fractal Memory",
+        message: `v${version} loaded`,
+        variant: "info" as const,
+      }),
+    }).catch((err) => {
+      memLog("warn", "init", "Toast notification failed", { error: String(err), serverUrl: serverUrl.origin });
+    });
+  }, 2000);
 }
 
 export const MemoryPlugin: Plugin = async (ctx) => {
   const { directory, client } = ctx;
   const t0 = perfNow();
 
-  memLog("info", "init", "Plugin initialization started", { directory });
+  memLog("info", "init", "Plugin initialization started", { directory, serverUrl: ctx.serverUrl.origin });
 
   let t = perfNow();
   const store = await initStorage(directory);
