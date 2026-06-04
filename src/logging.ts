@@ -2,9 +2,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const LOG_FILE = path.join(os.homedir(), ".config", "opencode", "memory-plugin.log");
-const CONTEXT_DUMP_FILE = path.join(os.homedir(), ".config", "opencode", "context_dump.log");
+const LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
+const LOG_FILE = path.join(LOG_DIR, "memory-plugin.log");
+const CONTEXT_DUMP_FILE = path.join(LOG_DIR, "context-dump.log");
 const MAX_LOG_SIZE = 5 * 1024 * 1024;
+
+try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 

@@ -2,8 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const MCP_LOG_FILE = path.join(os.homedir(), ".config", "opencode", "fractal-memory-server.log");
+const MCP_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
+const MCP_LOG_FILE = path.join(MCP_LOG_DIR, "mcp-server.log");
 const MAX_LOG_SIZE = 1024 * 1024;
+
+try { fs.mkdirSync(MCP_LOG_DIR, { recursive: true }); } catch {}
 
 export function mcpLog(level: string, msg: string, data?: Record<string, unknown>): void {
   try {

@@ -60,11 +60,11 @@ Add the plugin name to `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "plugins": ["opencode-fractal-memory"]
+  "plugin": ["opencode-fractal-memory"]
 }
 ```
 
-OpenCode installs it automatically at startup. Model files (~24 MB) download on first plugin load via `ensureModels()` — no manual steps needed.
+OpenCode installs it automatically at startup from npm. Model files (~24 MB) download on first plugin load via `ensureModels()` — no manual steps needed.
 
 ### For development / manual install
 
@@ -317,6 +317,9 @@ Skills are specialized instruction sets stored as memory nodes. When a task matc
 | `svelte-core-bestpractices` | svelte, component, runes |
 | `svelte-code-writer` | svelte 5, sveltekit, component |
 | `customize-opencode` | opencode config, agent, plugin |
+| `context-engineering` | context, prompt, system message |
+| `git-workflow-and-versioning` | git, commit, branch, version, publish |
+| `incremental-implementation` | step by step, increment, gradual |
 
 ### Loading a skill
 
@@ -410,13 +413,20 @@ When OpenCode loads the plugin, `initStorage()` runs automatically:
 6. **Background embeddings** — after 1s, generates embeddings for nodes that lack them
 7. **Auto-retrieve hook** — if enabled in config, injects relevant context into prompts
 
+Every initialization step is logged with timing in `logs/memory-plugin.log`, making it easy to diagnose startup issues.
+
 All of this happens automatically — no manual intervention required.
 
 ## Logs
 
+All plugin logs are consolidated under `~/.config/opencode/logs/`:
+
 | Log | Path | Contents |
 |-----|------|----------|
-| Memory | `~/.config/opencode/memory.log` | Plugin operations, errors, injection events |
+| Plugin | `logs/memory-plugin.log` | Plugin operations, init steps with timing, auto-retrieve, session events |
+| MCP server | `logs/mcp-server.log` | MCP tool calls, resources, errors |
+| Injection debug | `logs/memory-injection.log` | Full auto-retrieve injection payloads (rotated at 1 MB) |
+| Context dump | `logs/context-dump.log` | Full context snapshots for debugging |
 | OpenCode | `~/.local/share/opencode/log/` | Application lifecycle, tool calls |
 
 ## Development

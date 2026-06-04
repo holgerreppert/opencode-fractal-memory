@@ -10,7 +10,11 @@ import { detectRelevantSkills, detectRelevantPlaybooks } from "./detection";
 import { formatPlaybooksAsAvailable, formatSkillsAsAvailable } from "./formatting";
 import { formatNodeForInjection } from "./content";
 
-const INJECTION_LOG_FILE = path.join(os.homedir(), ".config", "opencode", "memory-injection.log");
+const INJECTION_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
+const INJECTION_LOG_FILE = path.join(INJECTION_LOG_DIR, "memory-injection.log");
+const INJECTION_LOG_MAX_SIZE = 1024 * 1024;
+
+try { fs.mkdirSync(INJECTION_LOG_DIR, { recursive: true }); } catch {}
 
 export interface AutoRetrieveDeps {
   store: MemoryStore;
@@ -198,6 +202,12 @@ ${JSON.stringify(memoriesJson, null, 2)}
 
         const debugLine = `[${new Date().toISOString()}] Query: ${userText.slice(0, 100)}...\n${fullBlock}\n\n`;
         try {
+          try {
+            const stat = fs.statSync(INJECTION_LOG_FILE);
+            if (stat.size > INJECTION_LOG_MAX_SIZE) {
+              fs.renameSync(INJECTION_LOG_FILE, INJECTION_LOG_FILE + ".old");
+            }
+          } catch { }
           fs.appendFileSync(INJECTION_LOG_FILE, debugLine);
         } catch { /* silent fail */ }
 
