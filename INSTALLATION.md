@@ -16,7 +16,7 @@ Add the plugin name to your `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "plugins": ["opencode-fractal-memory"]
+  "plugin": ["opencode-fractal-memory"]
 }
 ```
 
@@ -69,7 +69,7 @@ Replace `<path-to-plugin>` with the actual install path (e.g., `~/.config/openco
 Check that the plugin loaded:
 
 ```bash
-tail -f ~/.config/opencode/memory.log
+tail -f ~/.config/opencode/logs/memory-plugin.log
 ```
 
 You should see initialization messages like:
@@ -105,7 +105,7 @@ Type `/memory-` in OpenCode to see available commands:
 ### Plugin Not Loading
 1. Check OpenCode config has correct JSON syntax
 2. Verify bun is installed: `bun --version`
-3. Check logs: `tail ~/.config/opencode/memory.log`
+  3. Check logs: `tail ~/.config/opencode/logs/memory-plugin.log`
 
 ### Model Download Fails
 The plugin uses HuggingFace CDN. If downloads fail:

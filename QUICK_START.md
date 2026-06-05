@@ -101,7 +101,8 @@ Playbooks are reusable workflows stored as sticky memory nodes (type: `"playbook
 
 ## Management Viewer
 
-To visualize memory as a 3D graph:
+Auto-starts when `management.enabled: true` is set in your config. To launch manually:
+
 ```bash
 bun run view
 ```

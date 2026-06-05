@@ -168,6 +168,8 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `criticalContextThreshold` | float | `0.8` | Token usage ratio for critical warning |
 | `defaultTtlDays` | int | `0` | Default TTL for new nodes (0 = no expiry) |
 | `enableMiddleTermCapture` | bool | `true` | Save middle-term snapshots before compression |
+| `management.enabled` | bool | `false` | Auto-start the management web UI on plugin init |
+| `management.port` | int | `8787` | Port for the management server |
 | `autoFileSummarization.enabled` | bool | `false` | Auto-summarize files on read |
 
 ## Advanced Features
@@ -360,11 +362,13 @@ A local web UI for browsing, searching, and editing memory — available when th
 
 ### Starting
 
+The server starts automatically when `management.enabled: true` is set in your config (see [Configuration](#configuration)), or manually:
+
 ```bash
 bun run view
 ```
 
-Opens at [http://localhost:8787](http://localhost:8787). The server also starts automatically with OpenCode.
+Opens at [http://localhost:8787](http://localhost:8787). The server starts as a background process and auto-stops on plugin shutdown.
 
 ### Usage
 
