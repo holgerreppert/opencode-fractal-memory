@@ -3,6 +3,7 @@ import { initStorage, loadPluginConfig, seedRuleNodes, backfillData, scheduleBac
 import { createHookHandlers } from "./hooks";
 import { createToolMap } from "./tools";
 import { memLog, perfNow } from "../logging";
+import { stopManagementServer } from "../management-server";
 
 export const MemoryPlugin: Plugin = async (ctx) => {
   const { directory, client } = ctx;
@@ -58,6 +59,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     ...(autoRetrieveHook || {}),
     tool: toolMap,
     cleanup: async () => {
+      stopManagementServer();
       await store.close();
     },
   };
