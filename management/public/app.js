@@ -17,7 +17,13 @@ const TYPE_SHAPES = {
   improvement: "sphere",
   howto: "sphere",
   skill: "icosahedron",
+  playbook: "torus",
   unknown: "sphere",
+};
+
+const TYPE_COLORS = {
+  skill: 0xfbbf24,
+  playbook: 0xff8c00,
 };
 
 const CUSTOM_TYPE_COLORS = {
@@ -36,6 +42,7 @@ class NodeFilterEngine {
     this.types = new Set();
     this.customTypes = new Set();
     this.shapes = new Set();
+    this.projects = new Set();
     this.searchQuery = "";
     this.searchMode = "text";
     this.serverSearchIds = null;
@@ -47,17 +54,31 @@ class NodeFilterEngine {
     this.types.clear();
     this.customTypes.clear();
     this.shapes.clear();
+    this.projects.clear();
 
     Object.keys(stats.nodesPerLevel || {}).map(Number).sort((a, b) => a - b).forEach(l => this.levels.add(l));
     Object.keys(stats.nodesPerType || {}).sort().forEach(t => this.types.add(t));
     Object.keys(stats.nodesPerCustomType || {}).sort().forEach(ct => this.customTypes.add(ct));
     Object.keys(stats.nodesPerShape || {}).sort().forEach(s => this.shapes.add(s));
+    Object.keys(stats.nodesPerProject || {}).sort().forEach(p => this.projects.add(p));
   }
 
   toggleLevel(v) { this._toggle(this.levels, v); this.changed(); }
   toggleType(v) { this._toggle(this.types, v); this.changed(); }
   toggleCustomType(v) { this._toggle(this.customTypes, v); this.changed(); }
   toggleShape(v) { this._toggle(this.shapes, v); this.changed(); }
+  toggleProject(v) { this._toggle(this.projects, v); this.changed(); }
+
+  clearAll() {
+    this.levels.clear();
+    this.types.clear();
+    this.customTypes.clear();
+    this.shapes.clear();
+    this.projects.clear();
+    this.searchQuery = "";
+    this.serverSearchIds = null;
+    this.changed();
+  }
 
   setSearchQuery(q) { this.searchQuery = (q || "").toLowerCase(); }
   setSearchMode(m) { this.searchMode = m; }
@@ -84,6 +105,11 @@ class NodeFilterEngine {
 
     if (this.shapes.size > 0) {
       if (!this.shapes.has(getNodeShape(node))) return false;
+    }
+
+    if (this.projects.size > 0) {
+      const p = node.projectName || "(default)";
+      if (!this.projects.has(p)) return false;
     }
 
     if (this.searchQuery) {
@@ -305,6 +331,9 @@ class SceneController {
       if (customType && CUSTOM_TYPE_COLORS[customType]) {
         color = CUSTOM_TYPE_COLORS[customType];
         shape = CUSTOM_TYPE_SHAPES[customType] ?? "sphere";
+      } else if (node.type && TYPE_COLORS[node.type]) {
+        color = TYPE_COLORS[node.type];
+        shape = TYPE_SHAPES[node.type] ?? "sphere";
       } else {
         color = LEVEL_COLORS[node.level] ?? 0x888888;
         shape = TYPE_SHAPES[node.type] ?? "sphere";
@@ -670,7 +699,21 @@ function setupEventListeners() {
     } else if (btn.dataset.shape !== undefined) {
       filterEngine.toggleShape(btn.dataset.shape);
       btn.classList.toggle("active");
+    } else if (btn.dataset.project !== undefined) {
+      filterEngine.toggleProject(btn.dataset.project);
+      btn.classList.toggle("active");
     }
+  });
+
+  // Clear all filters button
+  document.getElementById("clear-filters").addEventListener("click", () => {
+    filterEngine.initFromStats(statsData);
+    filterEngine.setSearchQuery("");
+    filterEngine.setServerSearchIds(null);
+    document.getElementById("search-input").value = "";
+    document.getElementById("search-info").textContent = "";
+    buildFilters();
+    sceneCtrl.updateVisibility(filterEngine);
   });
 
   // Search mode toggles
@@ -920,6 +963,16 @@ function buildFilters() {
       `<button class="filter-btn active" data-shape="${s}">${shapeLabels[s] || s} (${statsData.nodesPerShape[s]})</button>`
     ).join("");
   }
+
+  // Project filters
+  const projects = Object.keys(statsData.nodesPerProject || {}).sort();
+  const projectContainer = document.getElementById("project-filters");
+  if (projectContainer && projects.length > 1) {
+    projectContainer.closest(".section").style.display = "block";
+    projectContainer.innerHTML = projects.map(p =>
+      `<button class="filter-btn active" data-project="${p}">${p} (${statsData.nodesPerProject[p]})</button>`
+    ).join("");
+  }
 }
 
 function buildLegend() {
@@ -937,6 +990,7 @@ function buildLegend() {
   html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Event/Episode</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Diamond = Concept/Summary</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Pentagon = Skill</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus = Playbook</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus = Middle-Term</span></div>`;
   html += `</div>`;
   legend.innerHTML = html;
@@ -970,6 +1024,9 @@ function buildNodeList() {
     }
     if (node.type === 'skill') {
       customIndicator += ' <span style="color: #fbbf24; font-size: 10px;">[SKILL]</span>';
+    }
+    if (node.type === 'playbook') {
+      customIndicator += ' <span style="color: #ff8c00; font-size: 10px;">[PLAYBOOK]</span>';
     }
 
     return `
@@ -1023,6 +1080,28 @@ function showDetailPanel(node) {
     `;
   }
 
+  let playbookHtml = "";
+  if (node.type === 'playbook') {
+    const steps = node.metadata?.steps;
+    let stepsHtml = "";
+    if (steps && Array.isArray(steps)) {
+      stepsHtml = steps.map((s, i) => `
+        <div style="padding: 6px 8px; margin-bottom: 4px; background: rgba(255,140,0,0.1); border-radius: 4px; border-left: 3px solid #ff8c00;">
+          <div style="font-size: 12px; color: #ff8c00; font-weight: 600;">Step ${i + 1}: ${escapeHtml(s.description || s.toolName || "Unnamed")}</div>
+          <div style="font-size: 11px; color: #aaa; margin-top: 2px;">Tool: ${escapeHtml(s.toolName || "none")}${s.critical ? ' <span style="color: #f44;">[CRITICAL]</span>' : ''}</div>
+        </div>
+      `).join("");
+    } else {
+      stepsHtml = '<div style="font-size: 12px; color: #888;">No steps defined in metadata</div>';
+    }
+    playbookHtml = `
+      <div class="detail-section">
+        <h4>Playbook Steps</h4>
+        ${stepsHtml}
+      </div>
+    `;
+  }
+
   content.innerHTML = `
     <div class="detail-section">
       <h4>ID</h4>
@@ -1043,6 +1122,7 @@ function showDetailPanel(node) {
     </div>
     ${metadataHtml}
     ${skillHtml}
+    ${playbookHtml}
     <div class="detail-section">
       <h4>Timestamps</h4>
       <div class="detail-value">Created: ${created}</div>

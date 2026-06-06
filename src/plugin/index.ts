@@ -3,7 +3,7 @@ import { initStorage, loadPluginConfig, seedRuleNodes, backfillData, scheduleBac
 import { createHookHandlers } from "./hooks";
 import { createToolMap } from "./tools";
 import { memLog, perfNow } from "../logging";
-import { stopManagementServer } from "../management-server";
+import { stopManagementServer, ensureManagementServer } from "../management-server";
 
 export const MemoryPlugin: Plugin = async (ctx) => {
   const { directory, client } = ctx;
@@ -49,6 +49,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   const handlers = createHookHandlers(
     store, client, memConfig,
     ruleCache, ruleCacheDirty, sessionInjectionLock, latestUserMessage,
+    { start: ensureManagementServer, stop: stopManagementServer },
   );
   const toolMap = createToolMap(store, journalTools, client);
 
@@ -58,7 +59,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     ...handlers,
     ...(autoRetrieveHook || {}),
     tool: toolMap,
-    cleanup: async () => {
+    dispose: async () => {
       stopManagementServer();
       await store.close();
     },

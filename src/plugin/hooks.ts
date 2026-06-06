@@ -6,6 +6,8 @@ import { distillRules, predictiveRateToolCall, applyScoreDecay } from "../hooks"
 import * as fs from "node:fs";
 import type { CachedMemoryNode } from "../cache";
 
+let activeSessionCount = 0;
+
 export function createHookHandlers(
   store: MemoryStore,
   client: unknown,
@@ -14,6 +16,7 @@ export function createHookHandlers(
   ruleCacheDirty: { value: boolean },
   sessionInjectionLock: Map<string, boolean>,
   latestUserMessage: { value: string },
+  managementServer: { start: () => void; stop: () => void },
 ) {
   return {
     "experimental.chat.system.transform": async (input: any, output: any) => {
@@ -171,29 +174,39 @@ export function createHookHandlers(
         memLog("warn", "file-summary", "Failed to store file memory", { error: String(err) });
       }
     },
-    "session.created": async (event: { properties?: { info?: { id?: string } } }) => {
-      const sessionId = event.properties?.info?.id ?? "unknown";
-      await store.createSessionMetrics(sessionId);
-      setSessionId(sessionId);
-    },
-    "session.idle": async (event: { properties?: { sessionID?: string } }) => {
-      const sessionId = event.properties?.sessionID ?? "unknown";
-      await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
+    event: async (input: { event: { type: string; properties: Record<string, unknown> } }) => {
+      const { type, properties } = input.event;
 
-      if (memConfig?.autoDistill?.enabled) {
-        distillRules(store, memConfig.autoDistill, sessionId, client).then(msg =>
-          memLog("info", "auto-distill", msg)
-        ).catch(err =>
-          memLog("error", "auto-distill", "Failed", { error: String(err) })
-        );
-      }
+      if (type === "session.created") {
+        const sessionId = (properties.info as { id?: string } | undefined)?.id ?? "unknown";
+        await store.createSessionMetrics(sessionId);
+        setSessionId(sessionId);
+        activeSessionCount++;
+        managementServer.start();
+      } else if (type === "session.idle") {
+        const sessionId = (properties.sessionID as string | undefined) ?? "unknown";
+        await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
 
-      if (memConfig?.predictiveRating?.enabled) {
-        applyScoreDecay(store, memConfig.predictiveRating).then(msg =>
-          memLog("info", "predictive-rating", msg)
-        ).catch(err =>
-          memLog("error", "predictive-rating", "Decay failed", { error: String(err) })
-        );
+        if (memConfig?.autoDistill?.enabled) {
+          distillRules(store, memConfig.autoDistill, sessionId, client).then(msg =>
+            memLog("info", "auto-distill", msg)
+          ).catch(err =>
+            memLog("error", "auto-distill", "Failed", { error: String(err) })
+          );
+        }
+
+        if (memConfig?.predictiveRating?.enabled) {
+          applyScoreDecay(store, memConfig.predictiveRating).then(msg =>
+            memLog("info", "predictive-rating", msg)
+          ).catch(err =>
+            memLog("error", "predictive-rating", "Decay failed", { error: String(err) })
+          );
+        }
+      } else if (type === "session.deleted") {
+        activeSessionCount = Math.max(0, activeSessionCount - 1);
+        if (activeSessionCount === 0) {
+          managementServer.stop();
+        }
       }
     },
   };

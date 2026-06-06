@@ -377,12 +377,18 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 - **Scroll** to zoom in/out
 - **Left-click** a node to select and inspect it
 - **Right-click drag** to pan
-- Nodes are color-coded by type (note, skill, playbook, rule)
+- Nodes are color-coded by level and type (skill = gold icosahedron, playbook = orange torus, note = blue sphere)
+- Playbook nodes render as orange torus shapes with steps visible in the detail panel
 
-**Search** — find nodes by content, label, or type:
-- Type a query and press Enter
-- Results show relevance scores and preview snippets
-- Click a result to navigate to it in the graph
+**Filters** — narrow down visible nodes:
+- **Scope** (global/project)
+- **Level** (L0–L5), **Type** (note, skill, playbook, etc.), **Shape**, **Custom Type**
+- **Project** — when multiple projects exist, filter by project name
+- **Clear All Filters** button resets everything at once
+- **Search** — find nodes by content, label, or type:
+  - Type a query and press Enter
+  - Results show relevance scores and preview snippets
+  - Click a result to navigate to it in the graph
 
 **Inspect** — when you click a node (graph or search results):
 - View full content and summary
@@ -506,3 +512,21 @@ Unified SQLite database with `project_name` discriminator:
 ## License
 
 MIT
+
+## Changelog
+
+### v0.6.15 (2026-06-06)
+- **Project switcher** — filter memory nodes by project name in management UI
+- **Clear all filters** — one-click reset of all active filters
+- **Playbook nodes** — now render as orange torus with step details in management UI
+- **TYPE_COLORS** — playbooks (orange) and skills (gold) have dedicated colors in 3D scene
+- Backend: `project_name` in API responses, `GET /api/projects` endpoint
+
+### v0.6.14 (2026-06-06)
+- Session reference counter fix — management server only stops when all sessions end
+
+### v0.6.13 (2026-06-06)
+- Event hook refactor — management server lifecycle tied to real `session.created`/`session.deleted` events
+
+### v0.6.12 (2026-06-06)
+- Fixed management server lifecycle — SIGKILL instead of SIGTERM, proper event hooks

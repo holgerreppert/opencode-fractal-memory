@@ -5,7 +5,7 @@ import { Router } from "./router";
 import {
   queryNodes, getAvailableScopes, extractLinks, computeStats,
   readProjectConfig, writeProjectConfig, rowToNode,
-  withDb, jsonResponse, cosineSimilarity,
+  withDb, jsonResponse, cosineSimilarity, getAvailableProjects,
 } from "./helpers";
 
 function handleScopes(): Response {
@@ -179,11 +179,16 @@ async function handleNodeDelete(ctx: { params: Record<string, string>; scope: st
   });
 }
 
+function handleProjects(ctx: { scope: string }): Response {
+  return jsonResponse(getAvailableProjects(ctx.scope));
+}
+
 export function registerRoutes(router: Router): void {
   router.get(/^\/api\/scopes$/, () => handleScopes());
   router.get(/^\/api\/nodes$/, (_, ctx) => handleNodes(ctx));
   router.get(/^\/api\/links$/, (_, ctx) => handleLinks(ctx));
   router.get(/^\/api\/stats$/, (_, ctx) => handleStats(ctx));
+  router.get(/^\/api\/projects$/, (_, ctx) => handleProjects(ctx));
 
   router.get(/^\/api\/config$/, () => handleConfigGet());
   router.put(/^\/api\/config$/, (req) => handleConfigSave(req));

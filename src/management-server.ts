@@ -8,6 +8,18 @@ interface ManagementConfig {
 
 let activeProcess: import("bun").Subprocess | null = null;
 
+let mgmtConfig: { enabled: boolean; port: number; directory: string } | null = null;
+
+export function isManagementServerRunning(): boolean {
+  return activeProcess !== null;
+}
+
+export function ensureManagementServer(): void {
+  if (mgmtConfig && mgmtConfig.enabled) {
+    startManagementServer(null as any, mgmtConfig.directory, { enabled: true, port: mgmtConfig.port });
+  }
+}
+
 export function startManagementServer(
   _store: unknown,
   directory: string,
@@ -19,6 +31,8 @@ export function startManagementServer(
   }
 
   const standalonePath = path.join(__dirname, "management-standalone.js");
+
+  mgmtConfig = { enabled: config.enabled, port: config.port, directory };
 
   try {
     const proc = Bun.spawn(["bun", standalonePath], {
@@ -50,7 +64,7 @@ export function startManagementServer(
 export function stopManagementServer(): void {
   if (activeProcess) {
     try {
-      activeProcess.kill("SIGTERM");
+      activeProcess.kill("SIGKILL");
       memLog("info", "management", `Management server process ${activeProcess.pid} killed`);
     } catch (err) {
       memLog("warn", "management", "Error killing management server", {

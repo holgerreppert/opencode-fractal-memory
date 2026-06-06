@@ -79,6 +79,7 @@ export function rowToNode(r: any) {
     parentIds: r.parent_ids ? JSON.parse(r.parent_ids) : null,
     contentLength: r.content_length,
     metadata: r.metadata ? JSON.parse(r.metadata) : null,
+    projectName: r.project_name ?? null,
   };
 }
 
@@ -89,7 +90,7 @@ export function queryNodes(scope: string) {
     SELECT id, label, content, summary, level, type, importance,
            usefulness_score, times_used, times_helpful, access_count,
            sticky, confidence, created_at, updated_at, parent_ids,
-           LENGTH(content) as content_length, metadata
+           LENGTH(content) as content_length, metadata, project_name
     FROM memory_nodes
     WHERE scope = ?
     ORDER BY level, importance DESC
@@ -180,6 +181,7 @@ export function computeStats(nodes: any[]) {
   const nodesPerType: Record<string, number> = {};
   const nodesPerCustomType: Record<string, number> = {};
   const nodesPerShape: Record<string, number> = {};
+  const nodesPerProject: Record<string, number> = {};
   let totalImportance = 0;
   let totalUsefulness = 0;
   let totalAccessCount = 0;
@@ -194,6 +196,8 @@ export function computeStats(nodes: any[]) {
     }
     const shape = resolveNodeShape(node);
     nodesPerShape[shape] = (nodesPerShape[shape] ?? 0) + 1;
+    const project = node.projectName || "(default)";
+    nodesPerProject[project] = (nodesPerProject[project] ?? 0) + 1;
     totalImportance += node.importance;
     totalUsefulness += node.usefulnessScore;
     totalAccessCount += node.accessCount;
@@ -206,11 +210,25 @@ export function computeStats(nodes: any[]) {
     nodesPerType,
     nodesPerCustomType,
     nodesPerShape,
+    nodesPerProject,
     avgImportance: Math.round((totalImportance / n) * 100) / 100,
     avgUsefulness: Math.round((totalUsefulness / n) * 100) / 100,
     totalAccessCount,
     stickyCount,
   };
+}
+
+export function getAvailableProjects(scope: string): string[] {
+  const db = openDb(scope);
+  if (!db) return [];
+  const rows = db.query(`
+    SELECT DISTINCT COALESCE(project_name, '') as project_name
+    FROM memory_nodes
+    WHERE scope = ?
+    ORDER BY project_name
+  `).all(scope) as { project_name: string }[];
+  db.close();
+  return rows.map(r => r.project_name || "(default)");
 }
 
 export function readProjectConfig(): Record<string, unknown> {
