@@ -3,7 +3,7 @@ import { memLog } from "../logging";
 import { generateEmbedding } from "../embeddings";
 import { Router } from "./router";
 import {
-  queryNodes, queryPlaybooks, getAvailableScopes, extractLinks, computeStats,
+  queryNodes, getAvailableScopes, extractLinks, computeStats,
   readProjectConfig, writeProjectConfig, rowToNode,
   withDb, jsonResponse, cosineSimilarity,
 } from "./helpers";
@@ -24,10 +24,6 @@ function handleLinks(ctx: { scope: string }): Response {
 function handleStats(ctx: { scope: string }): Response {
   const nodes = queryNodes(ctx.scope);
   return jsonResponse(computeStats(nodes));
-}
-
-function handlePlaybooks(ctx: { scope: string }): Response {
-  return jsonResponse(queryPlaybooks(ctx.scope));
 }
 
 function handleConfigGet(): Response {
@@ -188,7 +184,6 @@ export function registerRoutes(router: Router): void {
   router.get(/^\/api\/nodes$/, (_, ctx) => handleNodes(ctx));
   router.get(/^\/api\/links$/, (_, ctx) => handleLinks(ctx));
   router.get(/^\/api\/stats$/, (_, ctx) => handleStats(ctx));
-  router.get(/^\/api\/playbooks$/, (_, ctx) => handlePlaybooks(ctx));
 
   router.get(/^\/api\/config$/, () => handleConfigGet());
   router.put(/^\/api\/config$/, (req) => handleConfigSave(req));

@@ -715,21 +715,12 @@ function setupEventListeners() {
       btn.classList.add("active");
       const tab = btn.dataset.tab;
       const visualizePanel = document.getElementById("visualize-panel");
-      const playbooksPanel = document.getElementById("playbooks-panel");
       const settingsPanel = document.getElementById("settings-panel");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
-      if (playbooksPanel) playbooksPanel.classList.toggle("active", tab === "playbooks");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
       if (tab === "settings") loadSettings();
-      if (tab === "playbooks") loadPlaybooks();
     });
   });
-
-  // Playbook search input
-  const pbSearch = document.getElementById("playbook-search-input");
-  if (pbSearch) {
-    pbSearch.addEventListener("input", () => renderPlaybooks(playbookData));
-  }
 }
 
 // ==================== Data Loading ====================
@@ -1298,111 +1289,6 @@ async function performServerSearch(query) {
   }
 }
 
-// ==================== Playbooks ====================
-
-let playbookData = [];
-
-async function loadPlaybooks() {
-  const container = document.getElementById('playbook-list');
-  container.innerHTML = '<div style="color:#888;font-size:12px;text-align:center;padding:20px;">Loading playbooks...</div>';
-
-  try {
-    const res = await fetch(`/api/playbooks?scope=${currentScope}`);
-    if (!res.ok) {
-      container.innerHTML = '<div style="color:#f44;font-size:12px;text-align:center;padding:20px;">Failed to load playbooks</div>';
-      return;
-    }
-    playbookData = await res.json();
-    renderPlaybooks(playbookData);
-  } catch (e) {
-    container.innerHTML = `<div style="color:#f44;font-size:12px;text-align:center;padding:20px;">Error: ${e.message}</div>`;
-  }
-}
-
-function renderPlaybooks(playbooks) {
-  const container = document.getElementById('playbook-list');
-  const searchQ = (document.getElementById('playbook-search-input').value || '').toLowerCase();
-
-  const filtered = searchQ
-    ? playbooks.filter(p =>
-        p.name.toLowerCase().includes(searchQ) ||
-        p.description.toLowerCase().includes(searchQ) ||
-        (p.tags || []).some(t => t.toLowerCase().includes(searchQ))
-      )
-    : playbooks;
-
-  if (filtered.length === 0) {
-    container.innerHTML = '<div style="color:#888;font-size:12px;text-align:center;padding:20px;">No playbooks found.</div>';
-    return;
-  }
-
-  container.innerHTML = filtered.map(renderPlaybookCard).join('');
-
-  // Wire delete buttons after render
-  container.querySelectorAll('.pb-delete-btn').forEach(btn => {
-    btn.addEventListener('click', () => deletePlaybook(btn.dataset.pbId));
-  });
-}
-
-function renderPlaybookCard(pb) {
-  const tags = (pb.tags || []).map(t => `<span class="pb-tag">${t}</span>`).join('');
-  const steps = (pb.steps || []).map(s =>
-    `<div class="pb-step">
-      <span class="step-tool">${s.toolName}</span>
-      ${s.critical ? '<span class="step-critical">\u26a0</span>' : ''}
-      <span>${s.description}</span>
-    </div>`
-  ).join('');
-  const triggers = (pb.triggers || []).map(t => {
-    if (t.type === 'task_keyword') return `<div class="pb-trigger">\ud83d\udd11 ${(t.keywords || []).join(', ')}</div>`;
-    if (t.type === 'tool_sequence') return `<div class="pb-trigger">\ud83d\udd27 ${(t.pattern || []).join(' \u2192 ')}</div>`;
-    return `<div class="pb-trigger">\ud83d\udccb ${t.type}</div>`;
-  }).join('');
-
-  return `<div class="playbook-card">
-    <div class="pb-header">
-      <div>
-        <div class="pb-name">${pb.name}</div>
-        <div class="pb-desc">${pb.description}</div>
-      </div>
-      <button class="pb-delete-btn" data-pb-id="${pb.id}">Delete</button>
-    </div>
-    <div class="pb-meta">
-      <span>\u26a1 ${pb.executionCount || 0} runs</span>
-      ${pb.avgDurationMs ? `<span>\u23f1 ${(pb.avgDurationMs / 1000).toFixed(1)}s avg</span>` : ''}
-      ${pb.lastExecutedAt ? `<span>\ud83d\udd50 ${new Date(pb.lastExecutedAt).toLocaleDateString()}</span>` : ''}
-    </div>
-    ${triggers ? `<div class="pb-triggers">${triggers}</div>` : ''}
-    <div class="pb-steps">${steps}</div>
-    ${tags ? `<div class="pb-tags">${tags}</div>` : ''}
-  </div>`;
-}
-
-async function deletePlaybook(id) {
-  if (!confirm('Delete this playbook?')) return;
-  try {
-    const res = await fetch(`/api/playbooks/${id}?scope=${currentScope}`, { method: 'DELETE' });
-    if (res.ok) {
-      playbookData = playbookData.filter(p => p.id !== id);
-      renderPlaybooks(playbookData);
-    } else {
-      alert('Failed to delete playbook');
-    }
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
-}
-
-// Playbook search input
-document.addEventListener('DOMContentLoaded', () => {
-  const searchInput = document.getElementById('playbook-search-input');
-  if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      renderPlaybooks(playbookData);
-    });
-  }
-});
-
 // ==================== Animation Loop ====================
 
 function animate() {
@@ -1413,19 +1299,6 @@ function animate() {
 // ==================== Settings ====================
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const tab = btn.dataset.tab;
-      document.getElementById('visualize-panel').classList.toggle('active', tab === 'visualize');
-      document.getElementById('playbooks-panel').classList.toggle('active', tab === 'playbooks');
-      document.getElementById('settings-panel').classList.toggle('active', tab === 'settings');
-      if (tab === 'settings') loadSettings();
-      if (tab === 'playbooks') loadPlaybooks();
-    });
-  });
-
   document.getElementById('save-config').addEventListener('click', saveSettings);
 });
 

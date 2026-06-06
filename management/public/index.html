@@ -182,44 +182,6 @@
     .save-btn:hover { background: rgba(100, 150, 255, 0.5); }
     .save-message { font-size: 11px; color: #4f4; margin-top: 8px; text-align: center; }
 
-    /* Playbook styles */
-    .playbook-card {
-      background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px;
-      margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.08);
-      transition: border-color 0.2s;
-    }
-    .playbook-card:hover { border-color: rgba(100,150,255,0.3); }
-    .playbook-card .pb-header { display: flex; justify-content: space-between; align-items: flex-start; }
-    .playbook-card .pb-name { font-size: 14px; color: #fff; font-weight: 500; }
-    .playbook-card .pb-desc { font-size: 11px; color: #888; margin-top: 2px; }
-    .playbook-card .pb-meta { font-size: 10px; color: #666; margin-top: 6px; }
-    .playbook-card .pb-meta span { display: inline-block; margin-right: 12px; }
-    .playbook-card .pb-tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
-    .playbook-card .pb-tag {
-      padding: 2px 8px; border-radius: 10px; background: rgba(100,150,255,0.15);
-      color: rgba(100,150,255,0.8); font-size: 10px;
-    }
-    .playbook-card .pb-steps { margin-top: 8px; }
-    .playbook-card .pb-step {
-      padding: 4px 8px; margin: 2px 0; border-radius: 4px;
-      background: rgba(255,255,255,0.03); font-size: 11px; color: #aaa;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .playbook-card .pb-step .step-tool {
-      padding: 1px 6px; border-radius: 4px; background: rgba(100,150,255,0.2);
-      color: #4a9eff; font-size: 10px; font-weight: 500;
-    }
-    .playbook-card .pb-step .step-critical {
-      color: #f66; font-size: 10px; font-weight: 700;
-    }
-    .playbook-card .pb-delete-btn {
-      background: none; border: 1px solid rgba(255,60,60,0.3); color: #f66;
-      padding: 2px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
-    }
-    .playbook-card .pb-delete-btn:hover { background: rgba(255,60,60,0.2); }
-    .playbook-card .pb-triggers { margin-top: 6px; }
-    .playbook-card .pb-trigger { font-size: 10px; color: #888; font-style: italic; }
-
     #node-list {
       max-height: 40vh; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);
       border-radius: 6px;
@@ -245,7 +207,6 @@
 
     <div class="tab-buttons">
       <button class="tab-btn active" data-tab="visualize">Visualize</button>
-      <button class="tab-btn" data-tab="playbooks">Playbooks</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </div>
 
@@ -302,17 +263,6 @@
       <h3>Nodes <span class="node-list-count" id="node-list-count"></span></h3>
       <div id="node-list"></div>
     </div>
-    </div>
-
-    <!-- Playbooks Panel -->
-    <div id="playbooks-panel" class="settings-panel">
-      <div class="section">
-        <h3>Playbooks</h3>
-        <div style="margin-bottom: 10px;">
-          <input type="text" id="playbook-search-input" placeholder="Search playbooks..." style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;outline:none;">
-        </div>
-        <div id="playbook-list"></div>
-      </div>
     </div>
 
     <!-- Settings Panel -->
