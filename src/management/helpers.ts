@@ -7,11 +7,10 @@ import { memLog } from "../logging";
 
 export const DB_PATHS: Record<string, string> = {};
 
-export function initDbPaths(projectDir: string) {
-  const globalDbPath = path.join(os.homedir(), ".config", "opencode", "memory.db");
-  const projectDbPath = path.join(projectDir, ".opencode", "memory.db");
-  DB_PATHS.global = globalDbPath;
-  DB_PATHS.project = projectDbPath;
+export function initDbPaths(_projectDir: string) {
+  const unifiedDbPath = path.join(os.homedir(), ".config", "opencode", "memory.db");
+  DB_PATHS.global = unifiedDbPath;
+  DB_PATHS.project = unifiedDbPath;
 }
 
 export function openDb(scope: string): Database | null {
@@ -92,8 +91,9 @@ export function queryNodes(scope: string) {
            sticky, confidence, created_at, updated_at, parent_ids,
            LENGTH(content) as content_length, metadata
     FROM memory_nodes
+    WHERE scope = ?
     ORDER BY level, importance DESC
-  `).all();
+  `).all(scope);
   db.close();
   return rows.map((r: any) => rowToNode(r));
 }
