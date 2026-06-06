@@ -33,7 +33,7 @@ npm pack
 # Install into OpenCode
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.3.0.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.10.tgz
 ```
 
 Use `--ignore-scripts` to avoid Bun trust prompts. Models download on first plugin load instead.
@@ -51,7 +51,7 @@ npm pack
 # 2. Reinstall in OpenCode
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.3.0.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.10.tgz
 
 # 3. Restart OpenCode to load the updated plugin
 ```
@@ -61,7 +61,7 @@ npm install --ignore-scripts /path/to/opencode-fractal-memory-0.3.0.tgz
 Check that the plugin loaded:
 
 ```bash
-tail -f ~/.config/opencode/memory.log
+tail -f ~/.config/opencode/logs/memory-plugin.log
 ```
 
 Look for:
@@ -81,6 +81,7 @@ npm install --ignore-scripts opencode-fractal-memory
 ## Logs
 
 - Main log: `~/.local/share/opencode/log/`
-- Memory log: `~/.config/opencode/memory.log`
-- Database: `~/.config/opencode/memory.db`
+- Plugin log: `~/.config/opencode/logs/memory-plugin.log`
+- MCP server log: `~/.config/opencode/logs/mcp-server.log`
+- Database: `~/.config/opencode/memory.db` (unified — global + project nodes)
 - Models cache: `~/.config/opencode/models/Xenova/all-MiniLM-L6-v2/`

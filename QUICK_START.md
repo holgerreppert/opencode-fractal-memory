@@ -121,21 +121,22 @@ Opens at http://localhost:8787
 │  memory_drilldown → fractal retrieval               │
 └─────────────────────────────────────────────────────┘
                       ↓
-┌─────────────────────────────────────────────────────┐
-│              SQLite Database                        │
-│  ~/.config/opencode/memory.db (global)              │
-│  .opencode/memory.db (project)                      │
-├─────────────────────────────────────────────────────┤
-│  memory_nodes (labels, content, embeds, metadata)   │
-│    - type: "note" | "skill" | "playbook"           │
-│    - sticky: true (playbooks/skills never pruned)   │
-│    - metadata.steps (playbook steps)                │
-│  memory_links ([[wiki-link]] cross-references)      │
-│  bm25_index (full-text search)                      │
-│  injection_metrics / session_metrics                │
-│  Levels: L0 (raw) → L1 (summaries) → L2+           │
-│  Compression triggers at 70% context                │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              SQLite Database (unified)                   │
+│  ~/.config/opencode/memory.db                           │
+│  - scope: "global" | "project" (discriminated by        │
+│    project_name column for project-scope nodes)         │
+├──────────────────────────────────────────────────────────┤
+│  memory_nodes (labels, content, embeds, metadata)        │
+│    - type: "note" | "skill" | "playbook"               │
+│    - sticky: true (playbooks/skills never pruned)       │
+│    - metadata.steps (playbook steps)                    │
+│  memory_links ([[wiki-link]] cross-references)           │
+│  bm25_index (full-text search)                          │
+│  injection_metrics / session_metrics                    │
+│  Levels: L0 (raw) → L1 (summaries) → L2+               │
+│  Compression triggers at 70% context                    │
+└──────────────────────────────────────────────────────────┘
                       ↓
 ┌─────────────────────────────────────────────────────┐
 │  HNSW Vector Index (in-memory, 384-dim)             │

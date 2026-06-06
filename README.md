@@ -409,7 +409,7 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 
 When OpenCode loads the plugin, `initStorage()` runs automatically:
 
-1. **SQLite database** — created at `<project>/.opencode/memory.db` with all tables and indexes
+1. **SQLite database** — created at `~/.config/opencode/memory.db` with all tables and indexes. Project-scope nodes are stored alongside global nodes with a `project_name` discriminator column
 2. **Seed nodes** — rule nodes, built-in playbooks (6), and skills (9) inserted into `memory_nodes`
 3. **Model files** — `ensureModels()` checks `~/.config/opencode/models/` and downloads ONNX + tokenizer (~24 MB) if missing
 4. **Agent files** — `ensureAgentFiles()` copies `agent/` directory to `~/.config/opencode/agent/`
@@ -464,43 +464,44 @@ Use `--ignore-scripts` to avoid trust prompts. Models download automatically on 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│  Plugin Layer (plugin/index.ts)                   │
-│  ┌──────────┬──────────┬──────────┬───────────┐  │
-│  │ Memory    │ Skills   │ Journal  │ Auto-     │  │
-│  │ Store     │ (nodes)  │ Store    │ Retrieve  │  │
-│  └────┬─────┴────┬─────┴────┬─────┴─────┬─────┘  │
-│       │          │          │           │         │
-│  ┌────┴──────────┴──────────┴───────────┴─────┐  │
-│  │ SQLite (.opencode/memory.db)                │  │
-│  │  - memory_nodes (labels, content, embeds)   │  │
-│  │    - type: "note" / "skill" / "playbook"   │  │
-│  │    - sticky playbooks/skills never pruned   │  │
-│  │    - metadata.steps for playbook steps      │  │
-│  │  - memory_links (wiki-link crossrefs)       │  │
-│  │  - bm25_index (full-text search)            │  │
-│  │  - injection_metrics / session_metrics      │  │
-│  └─────────────────────────────────────────────┘  │
-│                                                   │
-│  ┌─────────────────────────────────────────────┐  │
-│  │ HNSW Vector Index (in-memory, 384-dim)      │  │
-│  └─────────────────────────────────────────────┘  │
-│                                                   │
-│  ┌─────────────────────────────────────────────┐  │
-│  │ ONNX Embedding Model (all-MiniLM-L6-v2)     │  │
-│  │ onnxruntime-web + @huggingface/tokenizers   │  │
-│  └─────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Plugin Layer (plugin/index.ts)                       │
+│  ┌──────────┬──────────┬──────────┬───────────────┐  │
+│  │ Memory    │ Skills   │ Journal  │ Auto-         │  │
+│  │ Store     │ (nodes)  │ Store    │ Retrieve      │  │
+│  └────┬─────┴────┬─────┴────┬─────┴───────┬───────┘  │
+│       │          │          │             │           │
+│  ┌────┴──────────┴──────────┴─────────────┴───────┐  │
+│  │ SQLite (~/.config/opencode/memory.db)           │  │
+│  │  - memory_nodes (labels, content, embeds)       │  │
+│  │    - scope: "global" | "project"                │  │
+│  │    - project_name (for project-scope nodes)     │  │
+│  │    - type: "note" / "skill" / "playbook"       │  │
+│  │    - sticky playbooks/skills never pruned       │  │
+│  │    - metadata.steps for playbook steps          │  │
+│  │  - memory_links (wiki-link crossrefs)           │  │
+│  │  - bm25_index (full-text search)               │  │
+│  │  - injection_metrics / session_metrics          │  │
+│  └─────────────────────────────────────────────────┘  │
+│                                                       │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ HNSW Vector Index (in-memory, 384-dim)          │  │
+│  └─────────────────────────────────────────────────┘  │
+│                                                       │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ ONNX Embedding Model (all-MiniLM-L6-v2)         │  │
+│  │ onnxruntime-web + @huggingface/tokenizers       │  │
+│  └─────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────┘
 ```
 
 ## Storage
 
-Two SQLite databases:
+Unified SQLite database with `project_name` discriminator:
 
-| Scope | Path | Purpose |
-|---|---|---|
-| Global | `~/.config/opencode/memory.db` | Rules, persona, preferences, shared across projects |
-| Project | `<project>/.opencode/memory.db` | Project-specific memory, nodes, playbooks, journal |
+| Path | Purpose |
+|---|---|
+| `~/.config/opencode/memory.db` | Global rules, persona, preferences (scope=global) + project-specific memory, nodes, playbooks (scope=project, discriminated by `project_name`) |
 
 ## License
 
