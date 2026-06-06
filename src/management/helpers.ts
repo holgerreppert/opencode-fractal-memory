@@ -98,6 +98,32 @@ export function queryNodes(scope: string) {
   return rows.map((r: any) => rowToNode(r));
 }
 
+export function queryPlaybooks(scope: string) {
+  const db = openDb(scope);
+  if (!db) return [];
+  const rows = db.query(`
+    SELECT id, label, content, metadata, times_used, usefulness_score
+    FROM memory_nodes
+    WHERE type = 'playbook' AND scope = ?
+    ORDER BY label
+  `).all(scope) as any[];
+  db.close();
+  return rows.map((r) => {
+    const meta = r.metadata ? JSON.parse(r.metadata) : {};
+    return {
+      id: r.id,
+      name: r.label || "",
+      description: r.content || "",
+      steps: meta.steps || [],
+      triggers: meta.triggers || [],
+      tags: meta.tags || [],
+      executionCount: meta.executionCount ?? r.times_used ?? 0,
+      avgDurationMs: meta.avgDurationMs ?? null,
+      lastExecutedAt: meta.lastExecutedAt ?? null,
+    };
+  });
+}
+
 export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length && i < b.length; i++) {
