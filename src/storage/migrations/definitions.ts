@@ -397,4 +397,22 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* column may already exist */ }
     },
   },
+  {
+    version: 21,
+    name: "add-project-name",
+    up: (db) => {
+      try {
+        db.run("ALTER TABLE memory_nodes ADD COLUMN project_name TEXT");
+      } catch { /* column may already exist */ }
+      try {
+        db.run("ALTER TABLE bm25_index ADD COLUMN project_name TEXT");
+      } catch { /* column may already exist */ }
+      try {
+        db.run("ALTER TABLE bm25_doc_stats ADD COLUMN project_name TEXT");
+      } catch { /* column may already exist */ }
+      try {
+        db.run("ALTER TABLE playbooks ADD COLUMN project_name TEXT");
+      } catch { /* column may already exist */ }
+    },
+  },
 ];

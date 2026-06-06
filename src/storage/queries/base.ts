@@ -25,6 +25,7 @@ export interface SqliteNode {
   usefulness_score: number;
   times_used: number;
   times_helpful: number;
+  project_name: string | null;
 }
 
 import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode } from "../../storage/types";
@@ -73,5 +74,6 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     usefulnessScore: row.usefulness_score ?? 0,
     timesUsed: row.times_used ?? 0,
     timesHelpful: row.times_helpful ?? 0,
+    projectName: row.project_name ?? null,
   };
 }

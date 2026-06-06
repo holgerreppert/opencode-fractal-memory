@@ -28,6 +28,7 @@ export type MemoryNode = {
   usefulnessScore: number;
   timesUsed: number;
   timesHelpful: number;
+  projectName: string | null;
 };
 
 export type CreateNodeInput = {
@@ -47,6 +48,7 @@ export type CreateNodeInput = {
   usefulnessScore?: number;
   timesUsed?: number;
   timesHelpful?: number;
+  projectName?: string | null;
 };
 
 export type FractalStats = {
@@ -169,6 +171,7 @@ export type MemoryStore = {
     memoryToolsUsed: string[];
     avgEffectiveness: number | null;
   } | null>;
+  migrateFromProjectDb(): Promise<number>;
   getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>>;
   markInjectionProcessed(id: number): Promise<void>;
   close(): Promise<void>;

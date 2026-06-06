@@ -117,7 +117,7 @@ export async function queryCreateNode(
   const timesHelpful = node.timesHelpful ?? 0;
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, ttl_days, expires_at, confidence, usefulness_score, times_used, times_helpful) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, ttl_days, expires_at, confidence, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
@@ -142,6 +142,7 @@ export async function queryCreateNode(
       usefulnessScore,
       timesUsed,
       timesHelpful,
+      node.projectName ?? null,
     ],
   );
 
@@ -182,6 +183,7 @@ export async function queryCreateNode(
     usefulnessScore: node.usefulnessScore ?? 0,
     timesUsed: node.timesUsed ?? 0,
     timesHelpful: node.timesHelpful ?? 0,
+    projectName: node.projectName ?? null,
   };
 }
 

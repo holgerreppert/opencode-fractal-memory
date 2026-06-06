@@ -16,6 +16,9 @@ import { setContextLimit, setHighContextThreshold, setCriticalContextThreshold, 
 export async function initStorage(directory: string): Promise<MemoryStore> {
   memLog("info", "init", "Creating memory store", { directory });
   const store = createMemoryStore(directory);
+  memLog("info", "init", "Migrating project DB to unified storage");
+  const migrated = await store.migrateFromProjectDb();
+  memLog("info", "init", "Project DB migration complete", { migrated });
   memLog("info", "init", "Ensuring seed nodes");
   await store.ensureSeed();
   memLog("info", "init", "Ensuring models");

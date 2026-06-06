@@ -8,19 +8,20 @@ import { withRetry } from "./utils";
 
 export async function ensureSeed(
   getDb: (scope: MemoryScope) => Promise<Database>,
-  seeds: Array<{ scope: MemoryScope; label: string }>
+  seeds: Array<{ scope: MemoryScope; label: string }>,
+  projectName?: string
 ): Promise<void> {
   for (const seed of seeds) {
     const db = await getDb(seed.scope);
-    const existing = db.query("SELECT id FROM memory_nodes WHERE label = ?").get(seed.label);
+    const existing = db.query("SELECT id FROM memory_nodes WHERE label = ? AND scope = ?").get(seed.label, seed.scope);
     if (existing) continue;
 
     const now = Date.now();
 
     await withRetry(() => {
       db.run(
-        "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [randomUUID(), seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", null],
+        "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [randomUUID(), seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", null, seed.scope === "project" ? projectName ?? null : null],
       );
     });
   }
