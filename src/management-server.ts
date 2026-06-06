@@ -59,3 +59,7 @@ export function stopManagementServer(): void {
     activeProcess = null;
   }
 }
+
+process.on("exit", stopManagementServer);
+process.on("SIGINT", stopManagementServer);
+process.on("SIGTERM", stopManagementServer);
