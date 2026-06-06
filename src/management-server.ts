@@ -28,7 +28,8 @@ export function startManagementServer(
         MGMT_PROJECT_DIR: directory,
       },
       stdio: ["ignore", "pipe", "pipe"],
-    });
+      deathSignal: "SIGKILL",
+    } as any);
 
     activeProcess = proc;
 
