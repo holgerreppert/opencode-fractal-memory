@@ -66,6 +66,28 @@ Add the plugin name to `~/.config/opencode/opencode.json`:
 
 OpenCode installs it automatically at startup from npm. Model files (~24 MB) download on first plugin load via `ensureModels()` — no manual steps needed.
 
+### Updating
+
+OpenCode caches plugins at `~/.cache/opencode/packages/`. When a new version is published to npm, the cache may stay pinned to the old version due to bun's dual caching (lockfile + global metadata cache):
+
+```bash
+# Clear bun's global metadata cache and force re-resolve
+rm -rf ~/.bun/install/cache/
+cd ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+bun add opencode-fractal-memory@latest
+```
+
+If that doesn't work, copy the published files manually:
+
+```bash
+cd <your-local-clone>
+npm run build
+cp -r dist management package.json LICENSE README.md commands agent \
+  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+```
+
+This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#10546](https://github.com/anomalyco/opencode/issues/10546), [#25293](https://github.com/anomalyco/opencode/issues/25293).
+
 ### For development / manual install
 
 ```bash
