@@ -74,6 +74,18 @@ memory_set {
 }
 ```
 
+### Creating Skills (explicit)
+Skills are auto-detectable instruction sets. Use `metadata` with triggers for keyword-based auto-loading:
+```
+memory_set {
+  label: "skill:my-skill",
+  content: "## Skill Instructions\n...",
+  type: "skill",
+  sticky: true,
+  metadata: '{"triggers":["keyword1","keyword2"]}'
+}
+```
+
 ## Memory Tools Reference
 
 | Tool | When to use |

@@ -75,11 +75,20 @@ export function MemorySet(store: MemoryStore) {
       no_embedding: tool.schema.boolean().optional(),
       sticky: tool.schema.boolean().optional(),
       usefulness_score: tool.schema.number().min(0).max(5).optional(),
+      metadata: tool.schema.string().optional(),
     },
     async execute(args) {
       const scope = (args.scope ?? "project") as MemoryScope;
       const sticky = args.sticky ?? false;
       const ttlDays = args.ttl_days ?? undefined;
+      let metadata: Record<string, unknown> | null = null;
+      if (args.metadata) {
+        try {
+          metadata = JSON.parse(args.metadata);
+        } catch {
+          throw new Error("metadata must be a valid JSON string");
+        }
+      }
       
       if (args.label) {
         try {
@@ -92,6 +101,7 @@ export function MemorySet(store: MemoryStore) {
             type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | undefined,
             sticky,
             embedding,
+            metadata: metadata ?? undefined,
           };
           
           if (args.usefulness_score !== undefined) {
@@ -102,7 +112,7 @@ export function MemorySet(store: MemoryStore) {
           }
           
           await store.updateNode(existing.id, updates);
-          return `Updated memory node ${existing.id.slice(0,8)} (${scope}:${args.label})${sticky ? " [sticky]" : ""}${args.usefulness_score !== undefined ? ` usefulness: ${args.usefulness_score}/5` : ""}${embedding ? " (embedding refreshed)" : ""}.`;
+          return `Updated memory node ${existing.id.slice(0,8)} (${scope}:${args.label})${sticky ? " [sticky]" : ""}${args.usefulness_score !== undefined ? ` usefulness: ${args.usefulness_score}/5` : ""}${embedding ? " (embedding refreshed)" : ""}${metadata ? " (metadata set)" : ""}.`;
         } catch {
           // Node doesn't exist, will create new
         }
@@ -121,7 +131,7 @@ export function MemorySet(store: MemoryStore) {
         embedding,
         importance: args.importance ?? 0.5,
         type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | null,
-        metadata: null,
+        metadata,
         sticky,
         ttlDays: ttlDays ?? null,
       });
@@ -185,13 +195,14 @@ export function MemoryGet(store: MemoryStore) {
     },
     async execute(args) {
       const node = await resolveNode(store, args);
+      const metaSection = node.metadata ? `\nMetadata:\n${JSON.stringify(node.metadata, null, 2)}` : "";
       const result = `Scope: ${node.scope}
 Level: ${node.level}
 Type: ${node.type ?? "none"}
 Importance: ${node.importance}
 Access count: ${node.accessCount}
 Created: ${node.createdAt.toISOString()}
-Updated: ${node.updatedAt.toISOString()}
+Updated: ${node.updatedAt.toISOString()}${metaSection}
 
 Content:
 ${node.content}${node.summary ? "\n\nSummary:\n" + node.summary : ""}`;

@@ -24,3 +24,4 @@ memory_get("ab3f2")  # shorthand
 - Use label for cleaner access, ID for exact matches
 - Prefix matching works (first 8 chars usually enough)
 - Check properties to understand node's importance/type
+- Metadata section shown when present (e.g., skill triggers)

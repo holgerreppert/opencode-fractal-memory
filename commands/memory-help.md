@@ -34,6 +34,8 @@ Show me all available memory commands:
 - `memory_cache_status` — show working memory cache usage
 - `memory_version` — show installed plugin version
 - `memory_auto_test` — test auto-retrieval pipeline
+- `memory_skill_load` — load a skill's instructions by name
+- `memory_playbook_execute` — execute a playbook workflow
 - `memory_detect_topics` — detect topic boundaries
 - `memory_generate_embeddings` — generate embeddings for nodes that lack them
 - `memory_help` — show this help

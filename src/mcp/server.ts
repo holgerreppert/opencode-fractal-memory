@@ -226,10 +226,22 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
         level: z.number().int().min(0).max(4).optional().default(0).describe("Compression level"),
         type: z.string().optional().describe("Node type (note, event, concept, summary, etc.)"),
         importance: z.number().min(0).max(1).optional().default(0.5).describe("Importance score"),
+        metadata: z.string().optional().describe("JSON string of metadata object (e.g. triggers for skills)"),
       },
     },
     withMcpLogging("memory_set", async (args) => {
       const scope = ensureScope(args.scope);
+      let metadata: Record<string, unknown> | null = null;
+      if (args.metadata) {
+        try {
+          metadata = JSON.parse(args.metadata as string);
+        } catch {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "metadata must be valid JSON" }) }],
+            isError: true,
+          };
+        }
+      }
 
       try {
         const existing = await store.getNodeByLabel(scope, args.label).catch(() => null);
@@ -240,6 +252,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
             level: args.level as 0 | 1 | 2 | 3 | 4 | 5,
             type: (args.type as any) ?? null,
             importance: args.importance,
+            metadata: metadata ?? undefined,
           });
           return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, id: existing.id, action: "updated" }) }] };
         }
@@ -251,6 +264,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
           level: args.level as 0 | 1 | 2 | 3 | 4 | 5,
           type: (args.type as any) ?? null,
           importance: args.importance,
+          metadata,
         });
         return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, id: node.id, action: "created" }) }] };
       } catch (e) {
