@@ -7,6 +7,7 @@ import {
   readProjectConfig, writeProjectConfig, rowToNode,
   withDb, jsonResponse, cosineSimilarity, getAvailableProjects,
 } from "./helpers";
+import { VERSION } from "../version";
 
 function handleScopes(): Response {
   return jsonResponse(getAvailableScopes());
@@ -183,8 +184,13 @@ function handleProjects(ctx: { scope: string }): Response {
   return jsonResponse(getAvailableProjects(ctx.scope));
 }
 
+function handleVersion(): Response {
+  return jsonResponse({ version: VERSION });
+}
+
 export function registerRoutes(router: Router): void {
   router.get(/^\/api\/scopes$/, () => handleScopes());
+  router.get(/^\/api\/version$/, () => handleVersion());
   router.get(/^\/api\/nodes$/, (_, ctx) => handleNodes(ctx));
   router.get(/^\/api\/links$/, (_, ctx) => handleLinks(ctx));
   router.get(/^\/api\/stats$/, (_, ctx) => handleStats(ctx));

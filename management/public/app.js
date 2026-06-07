@@ -770,11 +770,12 @@ function setupEventListeners() {
 
 async function loadData() {
   try {
-    const [scopesRes, nodesRes, linksRes, statsRes] = await Promise.all([
+    const [scopesRes, nodesRes, linksRes, statsRes, versionRes] = await Promise.all([
       fetch("/api/scopes"),
       fetch(`/api/nodes?scope=${currentScope}`),
       fetch(`/api/links?scope=${currentScope}`),
       fetch(`/api/stats?scope=${currentScope}`),
+      fetch("/api/version"),
     ]);
 
     if (!nodesRes.ok || !linksRes.ok || !statsRes.ok) {
@@ -785,6 +786,8 @@ async function loadData() {
     nodeData = await nodesRes.json();
     linkData = await linksRes.json();
     statsData = await statsRes.json();
+    const versionData = await versionRes.json();
+    document.getElementById("version").textContent = `v${versionData.version}`;
 
     document.getElementById("loading").style.display = "none";
 

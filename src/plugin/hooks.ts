@@ -86,8 +86,8 @@ export function createHookHandlers(
 
       try {
         const shortLabel = generateFileLabel(filePath);
-        const nodes = await store.listNodes("project");
-        const cached = nodes.find(n => n.label === shortLabel);
+        let cached = null;
+        try { cached = await store.getNodeByLabel("project", shortLabel); } catch { /* not found */ }
 
         if (cached) {
           (output as { output?: string }).output = cached.content;
@@ -142,13 +142,8 @@ export function createHookHandlers(
       try {
         const shortLabel = generateFileLabel(filePath);
 
-        const nodes = await store.listNodes("project");
-        const exists = nodes.some(n => n.label === shortLabel);
-
-        if (exists) {
-          memLog("debug", "file-summary", "File memory already exists, skipping", { shortLabel });
-          return;
-        }
+        let existingNode = null;
+        try { existingNode = await store.getNodeByLabel("project", shortLabel); } catch { /* not found */ }
 
         let fullContent = "";
         try {
@@ -159,17 +154,23 @@ export function createHookHandlers(
         }
 
         const content = generateFileSummary(fileName, filePath, fullContent, fileExt);
-        await store.createNode({
-          scope: "project",
-          label: shortLabel,
-          content,
-          type: "note",
-          level: 0,
-          parentIds: null,
-          embedding: null,
-          importance: 0.7,
-        });
-        memLog("info", "file-summary", "Stored file memory", { label: shortLabel, fileName });
+
+        if (existingNode) {
+          await store.updateNode(existingNode.id, { content });
+          memLog("debug", "file-summary", "Updated file memory", { label: shortLabel, fileName });
+        } else {
+          await store.createNode({
+            scope: "project",
+            label: shortLabel,
+            content,
+            type: "note",
+            level: 0,
+            parentIds: null,
+            embedding: null,
+            importance: 0.7,
+          });
+          memLog("info", "file-summary", "Stored file memory", { label: shortLabel, fileName });
+        }
       } catch (err) {
         memLog("warn", "file-summary", "Failed to store file memory", { error: String(err) });
       }
