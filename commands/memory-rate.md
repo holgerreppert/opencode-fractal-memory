@@ -1,48 +1,29 @@
-# memory_rate
-
+---
+description: Mark a memory node as helpful (or not) and optionally adjust its usefulness score
+---
 Mark a memory node as helpful (or not) and optionally adjust its usefulness score.
 
-## Usage
+**When to use:**
+- After a memory helped you complete a task
+- To improve search ranking for useful memories
+- To penalize irrelevant or incorrect memories
 
+**Arguments:**
+- `id` OR `label` (one required): Which node to rate
+- `scope` (optional): "global" or "project" (default: project)
+- `helpful` (optional): true to increment timesHelpful counter
+- `usefulness_score` (optional): 0-5, how helpful this memory was
+
+**Usage:**
 ```
-memory_rate { id?: string, label?: string, scope?: "global" | "project", helpful?: boolean, usefulness_score?: number }
-```
-
-## Arguments
-
-| Arg | Type | Required | Description |
-|-----|------|-----------|-------------|
-| `id` | string | No* | Memory node ID (mutually exclusive with label) |
-| `label` | string | No* | Memory node label (mutually exclusive with id) |
-| `scope` | "global" \| "project" | No | Scope of the node (default: "project") |
-| `helpful` | boolean | No | If true, increments timesHelpful counter |
-| `usefulness_score` | number (0-5) | No | Rate how helpful this memory was |
-
-*Must provide either `id` or `label`
-
-## Examples
-
-Rate a memory as helpful with score 4:
-```
-memory_rate { label: "rule:mandatory:memory", helpful: true, usefulness_score: 4 }
+memory_rate(label="rule:mandatory:memory", scope="global", helpful=true, usefulness_score=4)
+memory_rate(id="ab3f2", helpful=false)
+memory_rate(label="my-node", usefulness_score=5)
 ```
 
-Mark a node as not helpful:
-```
-memory_rate { id: "abc123", helpful: false }
-```
-
-Just update the usefulness score without incrementing counter:
-```
-memory_rate { label: "my-project-config", usefulness_score: 5 }
-```
-
-## How it works
-
-The usefulness tracking system measures how valuable each memory node is to the agent:
-
+**How it works:**
 - **usefulness_score**: Self-reported rating (0-5) of how useful the memory was
-- **timesHelpful**: Counter incremented each time the agent marks memory as helpful
+- **timesHelpful**: Counter incremented each time you mark memory as helpful
 - **timesUsed**: Automatically incremented each time memory is returned in search
 
-These scores influence future retrieval rankings - memories rated more useful will be returned higher in search results.
+Higher scores improve future search ranking.

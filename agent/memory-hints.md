@@ -37,53 +37,31 @@ Let me check what we know about deploying this plugin...
 ### After Reading Files
 When you read a file to understand its purpose:
 ```
-memory_set {
-  label: "file:src/components/Auth.tsx",
-  content: "## Auth Component\n- Handles login/logout\n- Uses JWT tokens\n- Calls /api/auth endpoint",
-  type: "knowledge"
-}
+memory_set(label="file:src/components/Auth.tsx", content="## Auth Component\n- Handles login/logout\n- Uses JWT tokens\n- Calls /api/auth endpoint", type="note")
 ```
 
 ### After Completing Tasks
 After finishing significant work:
 ```
-memory_set {
-  label: "task:implement-auth-2026-03-30",
-  content: "## Auth Implementation\n- Decided to use JWT (not sessions)\n- Files: src/auth.ts, src/middleware.ts\n- Key decisions: 24h expiry, refresh tokens",
-  type: "session"
-}
+memory_set(label="task:implement-auth-2026-03-30", content="## Auth Implementation\n- Decided to use JWT (not sessions)\n- Files: src/auth.ts, src/middleware.ts\n- Key decisions: 24h expiry, refresh tokens", type="event")
 ```
 
 ### After Finding Bugs/Workarounds
 When you discover something non-obvious:
 ```
-memory_set {
-  label: "bug:sqlite-locking",
-  content: "## SQLite Locking Issue\n- Problem: concurrent writes fail\n- Solution: retry with exponential backoff\n- Location: src/storage/sqlite.ts:19-49",
-  type: "lesson"
-}
+memory_set(label="bug:sqlite-locking", content="## SQLite Locking Issue\n- Problem: concurrent writes fail\n- Solution: retry with exponential backoff\n- Location: src/storage/sqlite.ts:19-49", type="note")
 ```
 
 ### User Preferences
 When you learn user preferences:
 ```
-memory_set {
-  label: "pref:code-style",
-  content: "## User Preferences\n- Prefers functional components\n- No emojis in code\n- Short variable names",
-  type: "preference"
-}
+memory_set(label="pref:code-style", content="## User Preferences\n- Prefers functional components\n- No emojis in code\n- Short variable names")
 ```
 
 ### Creating Skills (explicit)
 Skills are auto-detectable instruction sets. Use `metadata` with triggers for keyword-based auto-loading:
 ```
-memory_set {
-  label: "skill:my-skill",
-  content: "## Skill Instructions\n...",
-  type: "skill",
-  sticky: true,
-  metadata: '{"triggers":["keyword1","keyword2"]}'
-}
+memory_set(label="skill:my-skill", content="## Skill Instructions\n...", type="skill", sticky=true, metadata='{"triggers":["keyword1","keyword2"]}')
 ```
 
 ## Memory Tools Reference
