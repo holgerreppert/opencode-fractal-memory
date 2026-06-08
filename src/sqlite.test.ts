@@ -263,6 +263,23 @@ describe("sqlite store", () => {
     expect(all.length).toBeGreaterThanOrEqual(3);
   });
 
+  test("listNodes filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "Project A content", level: 0, parentIds: null, embedding: null, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Project B content", level: 0, parentIds: null, embedding: null, projectName: "project-b" });
+    await store.createNode({ scope: "project", content: "Another A", level: 0, parentIds: null, embedding: null, projectName: "project-a" });
+
+    const filtered = await store.listNodes("project", undefined, 50, 0, undefined, "project-a");
+    expect(filtered.every(n => n.projectName === "project-a")).toBe(true);
+    expect(filtered.length).toBe(2);
+
+    const all = await store.listNodes("project");
+    expect(all.length).toBeGreaterThanOrEqual(4);
+  });
+
   test("deleteNode removes a node", async () => {
     const { dir, globalDbPath } = await mkTmpDir();
     const store = createMemoryStore(dir, globalDbPath);
@@ -312,6 +329,21 @@ describe("sqlite store", () => {
     expect(stats.totalNodes).toBeGreaterThanOrEqual(4);
     expect(stats.nodesPerLevel[0]).toBeGreaterThanOrEqual(2);
     expect(stats.nodesPerLevel[1]).toBeGreaterThanOrEqual(1);
+  });
+
+  test("getFractalStats filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "A1", level: 0, parentIds: null, embedding: null, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "A2", level: 1, parentIds: null, embedding: null, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "B1", level: 0, parentIds: null, embedding: null, projectName: "project-b" });
+
+    const stats = await store.getFractalStats("project", "project-a");
+    expect(stats.totalNodes).toBe(2);
+    expect(stats.nodesPerLevel[0]).toBe(1);
+    expect(stats.nodesPerLevel[1]).toBe(1);
   });
 
   test("retrieveFractal returns node with path", async () => {
@@ -375,6 +407,20 @@ describe("sqlite store", () => {
     expect(Array.isArray(clusters)).toBe(true);
   });
 
+  test("detectTopicBoundaries filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    const emb = new Array(384).fill(0.05);
+    await store.createNode({ scope: "project", content: "X".repeat(100), level: 0, parentIds: null, embedding: emb, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Y".repeat(100), level: 0, parentIds: null, embedding: emb, projectName: "project-b" });
+
+    const clusters = await store.detectTopicBoundaries("project", 0.99, "project-a");
+    const allInCluster = clusters.flat();
+    expect(allInCluster.every(n => n.projectName === "project-a")).toBe(true);
+  });
+
   test("searchByEmbedding filters by level", async () => {
     const { dir, globalDbPath } = await mkTmpDir();
     const store = createMemoryStore(dir, globalDbPath);
@@ -391,6 +437,22 @@ describe("sqlite store", () => {
       expect(result.level).toBeGreaterThanOrEqual(1);
       expect(result.level).toBeLessThanOrEqual(1);
     }
+  });
+
+  test("searchByEmbedding filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    const embA = new Array(384).fill(0.1);
+    const embB = new Array(384).fill(0.5);
+
+    await store.createNode({ scope: "project", content: "Project A node", level: 0, parentIds: null, embedding: embA, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Project B node", level: 0, parentIds: null, embedding: embB, projectName: "project-b" });
+
+    const results = await store.searchByEmbedding(embA, 10, { projectName: "project-a" });
+    expect(results.length).toBe(1);
+    expect(results[0].projectName).toBe("project-a");
   });
 
   test("getCompressionCandidates with force=true bypasses age check", async () => {
@@ -411,6 +473,19 @@ describe("sqlite store", () => {
 
     expect(withoutForce.length).toBe(0);
     expect(withForce.some(n => n.id === node.id)).toBe(true);
+  });
+
+  test("getCompressionCandidates filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "X".repeat(150), level: 0, parentIds: null, embedding: null, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Y".repeat(150), level: 0, parentIds: null, embedding: null, projectName: "project-b" });
+
+    const filtered = await store.getCompressionCandidates("project", 0, undefined, true, "project-a");
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].projectName).toBe("project-a");
   });
 
   test("structured summary extracts decisions, files, and patterns", () => {
@@ -498,6 +573,19 @@ describe("sqlite store", () => {
     expect(results[0]).toHaveProperty("path");
     expect(results[0]).toHaveProperty("level");
     expect(["summary", "intermediate", "detail"]).toContain(results[0].level);
+  });
+
+  test("drilldownQuery filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "Auth module in project A", level: 0, parentIds: null, embedding: [0.1, 0.2, 0.3], projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Auth module in project B", level: 0, parentIds: null, embedding: [0.1, 0.2, 0.3], projectName: "project-b" });
+
+    const results = await store.drilldownQuery("auth module", 10, "project-a");
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results.every(r => r.node.projectName === "project-a")).toBe(true);
   });
 
   test("runPatternExtraction creates pattern summary", async () => {
@@ -1102,6 +1190,21 @@ describe("sqlite store", () => {
     // Node should still exist
     const retrieved = await store.getNode(node.id);
     expect(retrieved.id).toBe(node.id);
+  });
+
+  test("pruneNodes filters by projectName", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "Low in A", level: 0, parentIds: null, embedding: null, importance: 0.2, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Low in B", level: 0, parentIds: null, embedding: null, importance: 0.2, projectName: "project-b" });
+
+    const result = await store.pruneNodes("project", {
+      minAccessCount: 0, maxAgeDays: 1000, minImportance: 0.5, dryRun: true, projectName: "project-a",
+    });
+    expect(result.prunable.length).toBe(1);
+    expect(result.prunable[0].projectName).toBe("project-a");
   });
 
   test("createNode with special characters in content", async () => {

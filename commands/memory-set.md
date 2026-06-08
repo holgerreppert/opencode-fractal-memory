@@ -23,6 +23,7 @@ Create or update a memory node. Use to store important information that you want
 - `ttl_days` (optional): Auto-expire after N days
 - `no_embedding` (optional): true to skip embedding generation
 - `parent_ids` (optional): Link this node to a parent (for compression hierarchies)
+- `project_name` (optional): Assign to a specific project (defaults to current project)
 
 **Usage:**
 ```

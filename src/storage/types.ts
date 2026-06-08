@@ -77,22 +77,23 @@ export type DrilldownResult = {
 };
 
 export type MemoryStore = {
+  readonly projectName: string;
   ensureSeed(): Promise<void>;
-  listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean): Promise<MemoryNode[]>;
+  listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string): Promise<MemoryNode[]>;
   getNode(id: string): Promise<MemoryNode>;
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
   getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode>;
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
   updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void>;
   deleteNode(id: string): Promise<void>;
-  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number> }): Promise<MemoryNode[]>;
-  runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown): Promise<{ compressed: number; created: number }>;
-  runPatternExtraction(scope: MemoryScope | "all", minSourceCount?: number): Promise<{ created: number; sources: number }>;
-  getCompressionCandidates(scope: MemoryScope | "all", level: MemoryNodeLevel, maxAgeMs?: number, force?: boolean): Promise<MemoryNode[]>;
-  getFractalStats(scope: MemoryScope | "all"): Promise<FractalStats>;
+  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string }): Promise<MemoryNode[]>;
+  runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown, projectName?: string): Promise<{ compressed: number; created: number }>;
+  runPatternExtraction(scope: MemoryScope | "all", minSourceCount?: number, projectName?: string): Promise<{ created: number; sources: number }>;
+  getCompressionCandidates(scope: MemoryScope | "all", level: MemoryNodeLevel, maxAgeMs?: number, force?: boolean, projectName?: string): Promise<MemoryNode[]>;
+  getFractalStats(scope: MemoryScope | "all", projectName?: string): Promise<FractalStats>;
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;
-  detectTopicBoundaries(scope: MemoryScope | "all", minSimilarity?: number): Promise<MemoryNode[][]>;
-  drilldownQuery(query: string, maxResults?: number): Promise<DrilldownResult[]>;
+  detectTopicBoundaries(scope: MemoryScope | "all", minSimilarity?: number, projectName?: string): Promise<MemoryNode[][]>;
+  drilldownQuery(query: string, maxResults?: number, projectName?: string): Promise<DrilldownResult[]>;
   verifyNode(id: string): Promise<MemoryNode>;
   calculateNodeConfidence(node: MemoryNode): number;
   getConfig(scope: MemoryScope, key: string, defaultValue: string): Promise<string>;
@@ -102,8 +103,8 @@ export type MemoryStore = {
   getFrequentSequences(scope: MemoryScope | "all", minCount?: number): Promise<Array<{ prev: string; next: string; count: number }>>;
   pruneUsageLog(maxAgeMs?: number): Promise<number>;
   runScoreDecay(decayDays: number): Promise<number>;
-  getExpiredNodes(scope?: MemoryScope | "all"): Promise<MemoryNode[]>;
-  deleteExpiredNodes(scope?: MemoryScope | "all"): Promise<number>;
+  getExpiredNodes(scope?: MemoryScope | "all", projectName?: string): Promise<MemoryNode[]>;
+  deleteExpiredNodes(scope?: MemoryScope | "all", projectName?: string): Promise<number>;
   pruneNodes(scope: MemoryScope | "all", options?: {
     minAccessCount?: number;
     maxAgeDays?: number;
@@ -111,6 +112,7 @@ export type MemoryStore = {
     excludeSticky?: boolean;
     excludeCore?: boolean;
     dryRun?: boolean;
+    projectName?: string;
   }): Promise<{ prunable: MemoryNode[]; pruned: number }>;
   storeLinks(scope: MemoryScope, sourceId: string, content: string): Promise<void>;
   getLinkedNodes(scope: MemoryScope, sourceId: string): Promise<MemoryNode[]>;

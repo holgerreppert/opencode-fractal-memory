@@ -6,7 +6,8 @@ import { withRetry } from "./utils";
 
 export async function getExpiredNodes(
   getDb: (scope: MemoryScope) => Promise<Database>,
-  scope: MemoryScope | "all" = "all"
+  scope: MemoryScope | "all" = "all",
+  projectName?: string
 ): Promise<MemoryNode[]> {
   const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
   const expired: MemoryNode[] = [];
@@ -14,7 +15,11 @@ export async function getExpiredNodes(
 
   for (const s of scopes) {
     const db = await getDb(s);
-    const rows = db.query("SELECT * FROM memory_nodes WHERE expires_at IS NOT NULL AND expires_at <= ? AND (type IS NULL OR type != 'skill')").all(now) as SqliteNode[];
+    const projectFilter = projectName !== undefined && s === "project";
+    const sql = `SELECT * FROM memory_nodes WHERE expires_at IS NOT NULL AND expires_at <= ? AND (type IS NULL OR type != 'skill')${projectFilter ? " AND project_name = ?" : ""}`;
+    const params: (string | number)[] = [now];
+    if (projectFilter) params.push(projectName);
+    const rows = db.query(sql).all(...params) as SqliteNode[];
     expired.push(...rows.map(rowToNode));
   }
 
@@ -23,14 +28,19 @@ export async function getExpiredNodes(
 
 export async function deleteExpiredNodes(
   getDb: (scope: MemoryScope) => Promise<Database>,
-  scope: MemoryScope | "all" = "all"
+  scope: MemoryScope | "all" = "all",
+  projectName?: string
 ): Promise<number> {
   const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
   let deleted = 0;
 
   for (const s of scopes) {
     const db = await getDb(s);
-    const result = db.run("DELETE FROM memory_nodes WHERE expires_at IS NOT NULL AND expires_at <= ? AND (type IS NULL OR type != 'skill')", [Date.now()]);
+    const projectFilter = projectName !== undefined && s === "project";
+    const sql = `DELETE FROM memory_nodes WHERE expires_at IS NOT NULL AND expires_at <= ? AND (type IS NULL OR type != 'skill')${projectFilter ? " AND project_name = ?" : ""}`;
+    const params: (string | number)[] = [Date.now()];
+    if (projectFilter) params.push(projectName);
+    const result = db.run(sql, params);
     deleted += Number(result.changes);
   }
 
@@ -40,7 +50,7 @@ export async function deleteExpiredNodes(
 export async function pruneNodes(
   deps: {
     getDb: (scope: MemoryScope) => Promise<Database>;
-    listNodes: (scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean) => Promise<MemoryNode[]>;
+    listNodes: (scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string) => Promise<MemoryNode[]>;
   },
   scope: MemoryScope | "all",
   options: {
@@ -50,7 +60,8 @@ export async function pruneNodes(
     excludeSticky?: boolean;
     excludeCore?: boolean;
     dryRun?: boolean;
-  } = {}
+  } = {},
+  projectName?: string
 ): Promise<{ prunable: MemoryNode[]; pruned: number }> {
   const {
     minAccessCount = 0,
@@ -69,7 +80,7 @@ export async function pruneNodes(
   const coreLabels = new Set(["persona", "human", "current-state", "project"]);
 
   for (const s of scopes) {
-    const nodes = await deps.listNodes(s);
+    const nodes = await deps.listNodes(s, undefined, undefined, undefined, undefined, projectName);
 
     for (const node of nodes) {
       if (excludeSticky && node.sticky) continue;

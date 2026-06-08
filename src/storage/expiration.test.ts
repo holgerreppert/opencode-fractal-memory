@@ -29,6 +29,7 @@ function makeNode(overrides: Partial<MemoryNode> = {}): MemoryNode {
     usefulnessScore: overrides.usefulnessScore ?? 0,
     timesUsed: overrides.timesUsed ?? 0,
     timesHelpful: overrides.timesHelpful ?? 0,
+    projectName: overrides.projectName ?? undefined,
   };
 }
 
@@ -47,18 +48,19 @@ function setup() {
     accessCount?: number;
     updatedAt?: number;
     label?: string;
+    projectName?: string;
   } = {}) {
     const now = Date.now();
     const id = overrides.id ?? `n-${Math.random().toString(36).slice(2, 8)}`;
     db.run(
-      `INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, confidence, last_verified, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, confidence, last_verified, expires_at, project_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id, overrides.scope ?? "project", overrides.label ?? "test",
         "content", null, 0, null, null, now, overrides.updatedAt ?? now,
         overrides.importance ?? 0.5, overrides.accessCount ?? 0, null,
         overrides.type ?? null, null, overrides.sticky ?? 0, 0.5, null,
-        overrides.expiresAt ?? null,
+        overrides.expiresAt ?? null, overrides.projectName ?? null,
       ],
     );
     return id;
@@ -113,6 +115,17 @@ describe("getExpiredNodes", () => {
     expect(ids).toContain("global-expired");
     expect(ids).toContain("project-expired");
   });
+
+  test("getExpiredNodes filters by projectName", async () => {
+    const { getDb, insertNode } = setup();
+    insertNode({ id: "a-expired", expiresAt: Date.now() - 1000, projectName: "project-a" });
+    insertNode({ id: "b-expired", expiresAt: Date.now() - 1000, projectName: "project-b" });
+
+    const expired = await getExpiredNodes(getDb, "project", "project-a");
+    const ids = expired.map(n => n.id);
+    expect(ids).toContain("a-expired");
+    expect(ids).not.toContain("b-expired");
+  });
 });
 
 describe("deleteExpiredNodes", () => {
@@ -150,6 +163,20 @@ describe("deleteExpiredNodes", () => {
 
     const deleted = await deleteExpiredNodes(getDb, "all");
     expect(deleted).toBe(2);
+  });
+
+  test("deleteExpiredNodes filters by projectName", async () => {
+    const { getDb, db, insertNode } = setup();
+    insertNode({ id: "a-del", expiresAt: Date.now() - 1000, projectName: "project-a" });
+    insertNode({ id: "b-del", expiresAt: Date.now() - 1000, projectName: "project-b" });
+
+    const deleted = await deleteExpiredNodes(getDb, "project", "project-a");
+    expect(deleted).toBe(1);
+
+    const row = db.query("SELECT id FROM memory_nodes WHERE id = ?").get("a-del");
+    expect(row).toBeNull();
+    const kept = db.query("SELECT id FROM memory_nodes WHERE id = ?").get("b-del");
+    expect(kept).not.toBeNull();
   });
 });
 
@@ -191,5 +218,18 @@ describe("pruneNodes", () => {
 
     const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true, excludeSticky: false, minImportance: 0.5 });
     expect(result.prunable.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("pruneNodes filters by projectName", async () => {
+    const nodes = [
+      makeNode({ id: "a-low", projectName: "project-a", importance: 0.1, accessCount: 0, scope: "project", sticky: false }),
+      makeNode({ id: "b-low", projectName: "project-b", importance: 0.1, accessCount: 0, scope: "project", sticky: false }),
+    ];
+    const listNodes = async (_s: any, _l?: any, _lim?: any, _off?: any, _ie?: any, projectName?: string) =>
+      projectName ? nodes.filter(n => n.projectName === projectName) : nodes;
+
+    const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true, minImportance: 0.5 }, "project-a");
+    expect(result.prunable.length).toBe(1);
+    expect(result.prunable[0].projectName).toBe("project-a");
   });
 });

@@ -20,6 +20,7 @@ export async function searchByEmbedding(
     minUsefulness?: number;
     rerank?: boolean;
     bm25Scores?: Map<string, number>;
+    projectName?: string;
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
@@ -36,11 +37,16 @@ export async function searchByEmbedding(
     const candidateIds = new Set(hnswResults.map(r => r.id));
     const hnswScoreMap = new Map(hnswResults.map(r => [r.id, r.score]));
 
-    for (const scope of ["global", "project"] as MemoryScope[]) {
+    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    for (const scope of scopes) {
       const db = await getDb(scope);
+      const projectFilter = options?.projectName !== undefined && scope === "project";
 
       const placeholders = Array.from(candidateIds).map(() => "?").join(",");
-      const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?)`).all(...Array.from(candidateIds), Date.now()) as SqliteNode[];
+      const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?)${projectFilter ? " AND project_name = ?" : ""}`;
+      const params: (string | number)[] = [...Array.from(candidateIds), Date.now()];
+      if (projectFilter) params.push(options!.projectName!);
+      const rows = db.query(sql).all(...params) as SqliteNode[];
 
       for (const row of rows) {
         const level = row.level as MemoryNodeLevel;
@@ -69,16 +75,21 @@ export async function searchByEmbedding(
         });
       }
     }
-  } else {
+  }
+
+  if (scoredNodes.length === 0) {
     const minLevel = options?.minLevel ?? 0;
     const maxLevel = options?.maxLevel ?? 5;
     const minUsefulness = options?.minUsefulness ?? 0;
 
-    for (const scope of ["global", "project"] as MemoryScope[]) {
+    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    for (const scope of scopes) {
       const db = await getDb(scope);
-      const rows = db.query(
-        `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?)`
-      ).all(minLevel, maxLevel, minUsefulness, Date.now()) as SqliteNode[];
+      const projectFilter = options?.projectName !== undefined && scope === "project";
+      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?)${projectFilter ? " AND project_name = ?" : ""}`;
+      const params: (number | string)[] = [minLevel, maxLevel, minUsefulness, Date.now()];
+      if (projectFilter) params.push(options!.projectName!);
+      const rows = db.query(sql).all(...params) as SqliteNode[];
 
       for (const row of rows) {
         const level = row.level as MemoryNodeLevel;
@@ -173,14 +184,15 @@ export async function drilldownQuery(
     getDrilldownPath: (nodeId: string, maxDepth: number) => Promise<MemoryNode[]>;
   },
   query: string,
-  maxResults: number = 20
+  maxResults: number = 20,
+  projectName?: string
 ): Promise<Array<{ node: MemoryNode; relevance: number; path: MemoryNode[]; level: "summary" | "intermediate" | "detail" }>> {
   const queryEmbedding = await generateEmbedding(query);
 
   const results: Array<{ node: MemoryNode; relevance: number; path: MemoryNode[]; level: "summary" | "intermediate" | "detail" }> = [];
   const seenIds = new Set<string>();
 
-  const summaries = await deps.searchByEmbedding(queryEmbedding, 5, { minLevel: 2, maxLevel: 4 });
+  const summaries = await deps.searchByEmbedding(queryEmbedding, 5, { minLevel: 2, maxLevel: 4, projectName });
   for (const node of summaries) {
     if (seenIds.has(node.id)) continue;
     seenIds.add(node.id);
@@ -194,7 +206,7 @@ export async function drilldownQuery(
     });
   }
 
-  const intermediates = await deps.searchByEmbedding(queryEmbedding, 10, { minLevel: 1, maxLevel: 1 });
+  const intermediates = await deps.searchByEmbedding(queryEmbedding, 10, { minLevel: 1, maxLevel: 1, projectName });
   for (const node of intermediates) {
     if (seenIds.has(node.id)) continue;
     if (results.length >= maxResults) break;
@@ -209,7 +221,7 @@ export async function drilldownQuery(
     });
   }
 
-  const details = await deps.searchByEmbedding(queryEmbedding, maxResults, { minLevel: 0, maxLevel: 0 });
+  const details = await deps.searchByEmbedding(queryEmbedding, maxResults, { minLevel: 0, maxLevel: 0, projectName });
   for (const node of details) {
     if (seenIds.has(node.id)) continue;
     if (results.length >= maxResults) break;
@@ -224,11 +236,14 @@ export async function drilldownQuery(
   }
 
   if (results.length < maxResults) {
-    for (const scope of ["global", "project"] as MemoryScope[]) {
+    const textScopes: MemoryScope[] = projectName !== undefined ? ["project"] : ["global", "project"];
+    for (const scope of textScopes) {
       const db = await deps.getDb(scope);
-      const rows = db.query(
-        "SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL)"
-      ).all(`%${query}%`, `%${query}%`) as SqliteNode[];
+      const projectFilter = projectName !== undefined && scope === "project";
+      const sql = `SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL)${projectFilter ? " AND project_name = ?" : ""}`;
+      const params: (string | number)[] = [`%${query}%`, `%${query}%`];
+      if (projectFilter) params.push(projectName);
+      const rows = db.query(sql).all(...params) as SqliteNode[];
       for (const row of rows) {
         if (results.length >= maxResults) break;
         const node = rowToNode(row);
@@ -251,16 +266,20 @@ export async function drilldownQuery(
 export async function detectTopicBoundaries(
   getDb: (scope: MemoryScope) => Promise<Database>,
   scope: MemoryScope | "all",
-  minSimilarity: number = 0.7
+  minSimilarity: number = 0.7,
+  projectName?: string
 ): Promise<MemoryNode[][]> {
-  const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+  const scopes: MemoryScope[] = scope === "all"
+    ? (projectName !== undefined ? ["project"] : ["global", "project"])
+    : [scope];
   const nodesWithEmbeddings: MemoryNode[] = [];
 
   for (const s of scopes) {
     const db = await getDb(s);
-    const rows = db.query(
-      "SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND length(content) > 50 ORDER BY created_at DESC"
-    ).all() as SqliteNode[];
+    const projectFilter = projectName !== undefined && s === "project";
+    const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND length(content) > 50${projectFilter ? " AND project_name = ?" : ""} ORDER BY created_at DESC`;
+    const params: string[] = projectFilter ? [projectName] : [];
+    const rows = db.query(sql).all(...params) as SqliteNode[];
     for (const row of rows) {
       nodesWithEmbeddings.push(rowToNode(row));
     }

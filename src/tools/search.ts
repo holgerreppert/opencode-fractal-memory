@@ -62,11 +62,12 @@ export function MemorySearch(store: MemoryStore) {
       bm25_weight: tool.schema.number().min(0).max(1).optional(),
       rerank: tool.schema.boolean().optional(),
       expand_links: tool.schema.boolean().optional(),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
     },
     async execute(args) {
       const queryEmbedding = await generateEmbedding(args.query);
       
-      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean } = {
+      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string } = {
         bm25Weight: args.bm25_weight ?? 0.4,
         queryText: args.query,
         rerank: args.rerank ?? true,
@@ -74,6 +75,7 @@ export function MemorySearch(store: MemoryStore) {
       if (args.min_level !== undefined) options.minLevel = args.min_level as 0 | 1 | 2 | 3 | 4 | 5;
       if (args.max_level !== undefined) options.maxLevel = args.max_level as 0 | 1 | 2 | 3 | 4 | 5;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;
+      options.projectName = args.project_name ?? store.projectName;
       
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 
@@ -148,9 +150,10 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
     args: {
       query: tool.schema.string(),
       max_results: tool.schema.number().int().positive().optional(),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
     },
     async execute(args) {
-      const results = await store.drilldownQuery(args.query, args.max_results ?? 20);
+      const results = await store.drilldownQuery(args.query, args.max_results ?? 20, args.project_name ?? store.projectName);
 
       if (results.length === 0) {
         return `No memory found matching your query "${args.query}".

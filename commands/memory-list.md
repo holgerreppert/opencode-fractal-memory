@@ -13,3 +13,4 @@ memory_list(scope="project", level=0)
 **Arguments:**
 - `scope` (optional): "all", "global", or "project" (default: all)
 - `level` (optional): Only list nodes at this level
+- `project_name` (optional): Filter to a specific project (defaults to current project)

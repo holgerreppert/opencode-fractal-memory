@@ -9,3 +9,7 @@ Show me my memory stats including:
 - Storage info (binary embeddings vs JSON)
 
 Use memory_stats with scope="all".
+
+**Arguments:**
+- `scope` (optional): "all", "global", or "project" (default: all)
+- `project_name` (optional): Filter to a specific project (defaults to current project)

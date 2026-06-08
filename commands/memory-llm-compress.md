@@ -13,6 +13,7 @@ Automatically compress old memory nodes using LLM summarization. Uses your confi
 - `level` (optional): 0-3, which level to compress (default: 0)
 - `dry_run` (optional): true to preview without compressing
 - `force` (optional): true to bypass age check
+- `project_name` (optional): Filter to a specific project (defaults to current project)
 
 **Usage:**
 ```

@@ -37,11 +37,12 @@ export function MemoryList(store: MemoryStore) {
     args: {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
       level: tool.schema.number().int().nonnegative().optional(),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as MemoryScope | "all";
       const level = args.level as import("../memory").MemoryNodeLevel | undefined;
-      const nodes = await store.listNodes(scope, level);
+      const nodes = await store.listNodes(scope, level, undefined, undefined, undefined, args.project_name ?? store.projectName);
       if (nodes.length === 0) {
         return "No memory nodes found.";
       }

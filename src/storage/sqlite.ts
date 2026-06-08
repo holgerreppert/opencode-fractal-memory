@@ -58,12 +58,16 @@ class SqliteMemoryStore {
   private idScopeCache: Map<string, MemoryScope> = new Map();
   private projectDirectory: string;
   private globalDbPath?: string;
-  private projectName: string;
+  private _projectName: string;
+
+  get projectName(): string {
+    return this._projectName;
+  }
 
   constructor(projectDirectory: string, globalDbPath?: string) {
     this.projectDirectory = projectDirectory;
     this.globalDbPath = globalDbPath;
-    this.projectName = path.basename(projectDirectory);
+    this._projectName = path.basename(projectDirectory);
   }
 
   private async getDb(_scope?: MemoryScope): Promise<Database> {
@@ -198,13 +202,14 @@ class SqliteMemoryStore {
     return migrated;
   }
 
-  async listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit: number = 50, offset: number = 0, includeExpired?: boolean): Promise<MemoryNode[]> {
+  async listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit: number = 50, offset: number = 0, includeExpired?: boolean, projectName?: string): Promise<MemoryNode[]> {
     const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
     const nodes: MemoryNode[] = [];
 
     for (const s of scopes) {
       const db = await this.getDb(s);
-      const rows = await queryListNodes(db, s, level, limit, offset, includeExpired);
+      const projectFilter = projectName !== undefined && s === "project" ? projectName : undefined;
+      const rows = await queryListNodes(db, s, level, limit, offset, includeExpired, projectFilter);
       nodes.push(...rows);
     }
 
@@ -326,7 +331,7 @@ class SqliteMemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number> }
+    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
   }
@@ -335,18 +340,20 @@ class SqliteMemoryStore {
     scope: MemoryScope | "all",
     level: MemoryNodeLevel,
     maxAgeMs?: number,
-    force?: boolean
+    force?: boolean,
+    projectName?: string
   ): Promise<MemoryNode[]> {
-    return getCompressionCandidatesFn((s) => this.getDb(s), scope, level, maxAgeMs, force);
+    return getCompressionCandidatesFn((s) => this.getDb(s), scope, level, maxAgeMs, force, projectName);
   }
 
   async runCompression(
     scope: MemoryScope | "all",
     force?: boolean,
-    client?: unknown
+    client?: unknown,
+    projectName?: string
   ): Promise<{ compressed: number; created: number }> {
     return runCompressionFn({
-      getCompressionCandidates: (s, l, maxAge, f) => this.getCompressionCandidates(s, l, maxAge, f),
+      getCompressionCandidates: (s, l, maxAge, f) => this.getCompressionCandidates(s, l, maxAge, f, projectName),
       createNode: (node) => this.createNode(node),
       updateNode: (id, updates) => this.updateNode(id, updates),
     }, scope, force, client);
@@ -354,18 +361,19 @@ class SqliteMemoryStore {
 
   async runPatternExtraction(
     scope: MemoryScope | "all",
-    minSourceCount: number = 2
+    minSourceCount: number = 2,
+    projectName?: string
   ): Promise<{ created: number; sources: number }> {
     return runPatternExtractionFn({
-      listNodes: (s, level, limit, offset, includeExpired) => this.listNodes(s, level, limit, offset, includeExpired),
+      listNodes: (s, level, limit, offset, includeExpired) => this.listNodes(s, level, limit, offset, includeExpired, projectName),
       createNode: (node) => this.createNode(node),
       updateNode: (id, updates) => this.updateNode(id, updates),
     }, scope, minSourceCount);
   }
 
-  async getFractalStats(scope: MemoryScope | "all"): Promise<FractalStats> {
+  async getFractalStats(scope: MemoryScope | "all", projectName?: string): Promise<FractalStats> {
     return getFractalStatsFn(
-      (s) => this.listNodes(s),
+      (s) => this.listNodes(s, undefined, undefined, undefined, undefined, projectName),
       (id) => this.getNode(id),
       scope
     );
@@ -377,9 +385,10 @@ class SqliteMemoryStore {
 
   async detectTopicBoundaries(
     scope: MemoryScope | "all",
-    minSimilarity: number = 0.7
+    minSimilarity: number = 0.7,
+    projectName?: string
   ): Promise<MemoryNode[][]> {
-    return detectTopicBoundariesFn((s) => this.getDb(s), scope, minSimilarity);
+    return detectTopicBoundariesFn((s) => this.getDb(s), scope, minSimilarity, projectName);
   }
 
   async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {
@@ -496,13 +505,14 @@ class SqliteMemoryStore {
 
   async drilldownQuery(
     query: string,
-    maxResults: number = 20
+    maxResults: number = 20,
+    projectName?: string
   ): Promise<Array<{ node: MemoryNode; relevance: number; path: MemoryNode[]; level: "summary" | "intermediate" | "detail" }>> {
     return drilldownQueryFn({
       getDb: (s) => this.getDb(s),
-      searchByEmbedding: (q, limit, opts) => this.searchByEmbedding(q, limit, opts),
+      searchByEmbedding: (q, limit, opts) => this.searchByEmbedding(q, limit, { ...opts, projectName }),
       getDrilldownPath: (nodeId, maxDepth) => getDrilldownPathFn((id) => this.getNode(id), nodeId, maxDepth),
-    }, query, maxResults);
+    }, query, maxResults, projectName);
   }
 
   async pruneNodes(
@@ -514,20 +524,22 @@ class SqliteMemoryStore {
       excludeSticky?: boolean;
       excludeCore?: boolean;
       dryRun?: boolean;
+      projectName?: string;
     } = {}
   ): Promise<{ prunable: MemoryNode[]; pruned: number }> {
+    const { projectName, ...rest } = options;
     return pruneNodesFn({
       getDb: (s) => this.getDb(s),
-      listNodes: (s, level, limit, offset, includeExpired) => this.listNodes(s, level, limit, offset, includeExpired),
-    }, scope, options);
+      listNodes: (s, level, limit, offset, includeExpired) => this.listNodes(s, level, limit, offset, includeExpired, projectName),
+    }, scope, rest, projectName);
   }
 
-  async getExpiredNodes(scope: MemoryScope | "all" = "all"): Promise<MemoryNode[]> {
-    return getExpiredNodesFn((s) => this.getDb(s), scope);
+  async getExpiredNodes(scope: MemoryScope | "all" = "all", projectName?: string): Promise<MemoryNode[]> {
+    return getExpiredNodesFn((s) => this.getDb(s), scope, projectName);
   }
 
-  async deleteExpiredNodes(scope: MemoryScope | "all" = "all"): Promise<number> {
-    return deleteExpiredNodesFn((s) => this.getDb(s), scope);
+  async deleteExpiredNodes(scope: MemoryScope | "all" = "all", projectName?: string): Promise<number> {
+    return deleteExpiredNodesFn((s) => this.getDb(s), scope, projectName);
   }
 
   async logInjectionMetrics(

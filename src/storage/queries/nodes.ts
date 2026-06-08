@@ -21,7 +21,8 @@ export async function queryListNodes(
   level?: MemoryNodeLevel,
   limit = 50,
   offset = 0,
-  includeExpired = false
+  includeExpired = false,
+  projectName?: string
 ): Promise<MemoryNode[]> {
   let query = "SELECT * FROM memory_nodes";
   const params: (string | number)[] = [];
@@ -33,6 +34,11 @@ export async function queryListNodes(
   if (level !== undefined) {
     conditions.push("level = ?");
     params.push(level);
+  }
+
+  if (projectName !== undefined) {
+    conditions.push("project_name = ?");
+    params.push(projectName);
   }
 
   if (!includeExpired) {

@@ -9,10 +9,11 @@ export function MemoryStats(store: MemoryStore) {
     description: "Get fractal memory statistics: nodes per level, compression ratios, fractal dimension, tree structure.",
     args: {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as "all" | "global" | "project";
-      const stats = await store.getFractalStats(scope);
+      const stats = await store.getFractalStats(scope, args.project_name ?? store.projectName);
 
       const lines: string[] = [
         "## Fractal Memory Statistics",
@@ -167,10 +168,12 @@ export function MemoryCheckContext(store: MemoryStore) {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
       threshold: tool.schema.number().min(0).max(1).optional(),
       node_ids: tool.schema.array(tool.schema.string()).optional(),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
     },
     async execute(args) {
       const scope = args.scope ?? "all";
       const threshold = args.threshold ?? WARN_THRESHOLD;
+      const effectiveProjectName = args.project_name ?? store.projectName;
       
       let nodes: import("../memory").MemoryNode[] = [];
       
@@ -187,7 +190,7 @@ export function MemoryCheckContext(store: MemoryStore) {
           }
         }
       } else {
-        nodes = await store.listNodes(scope as "all" | "global" | "project");
+        nodes = await store.listNodes(scope as "all" | "global" | "project", undefined, undefined, undefined, undefined, effectiveProjectName);
       }
       
       const totalTokens = nodes.reduce((sum, n) => sum + estimateTokens(n.content), 0);

@@ -27,6 +27,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
         scope: z.enum(["global", "project"]).optional().default("project").describe("Memory scope"),
         mode: z.enum(["text", "embedding", "bm25"]).optional().default("text").describe("Search mode"),
         limit: z.number().int().positive().optional().default(50).describe("Max results"),
+        project_name: z.string().optional().describe("Filter to a specific project (defaults to current project)"),
       },
     },
     withMcpLogging("memory_search", async (args) => {
@@ -35,10 +36,11 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
 
       const scope = args.scope;
       const limit = args.limit;
+      const effectiveProjectName = args.project_name ?? store.projectName;
 
       try {
         if (args.mode === "text") {
-          const nodes = await store.listNodes(scope);
+          const nodes = await store.listNodes(scope, undefined, undefined, undefined, undefined, effectiveProjectName);
           const lower = q.toLowerCase();
           const results = nodes
             .filter(n => (n.label?.toLowerCase().includes(lower)) || n.content.toLowerCase().includes(lower))
@@ -51,12 +53,12 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
         if (args.mode === "embedding") {
           const { generateEmbedding } = await import("../embeddings");
           const queryEmbedding = await generateEmbedding(q);
-          const nodes = await store.searchByEmbedding(queryEmbedding, limit, { queryText: q });
+          const nodes = await store.searchByEmbedding(queryEmbedding, limit, { queryText: q, projectName: effectiveProjectName });
           return { content: [{ type: "text" as const, text: JSON.stringify(nodes.map(n => nodeToPlain(n)), null, 2) }] };
         }
 
         if (args.mode === "bm25") {
-          const nodes = await store.listNodes(scope);
+          const nodes = await store.listNodes(scope, undefined, undefined, undefined, undefined, effectiveProjectName);
           const terms = q.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(t => t.length >= 2);
           if (terms.length === 0) return { content: [{ type: "text" as const, text: "[]" }] };
 
@@ -140,11 +142,13 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
         type: z.string().optional().describe("Filter by node type (note, event, concept, summary, etc.)"),
         limit: z.number().int().positive().optional().default(100).describe("Max results"),
         offset: z.number().int().nonnegative().optional().default(0).describe("Pagination offset"),
+        project_name: z.string().optional().describe("Filter to a specific project (defaults to current project)"),
       },
     },
     withMcpLogging("memory_list", async (args) => {
       try {
-        let nodes = await store.listNodes(args.scope, args.level as 0 | 1 | 2 | 3 | 4 | undefined);
+        const effectiveProjectName = args.project_name ?? store.projectName;
+        let nodes = await store.listNodes(args.scope, args.level as 0 | 1 | 2 | 3 | 4 | undefined, undefined, undefined, undefined, effectiveProjectName);
 
         if (args.type) {
           nodes = nodes.filter(n => n.type === args.type);
@@ -172,13 +176,15 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
       description: "Get memory statistics for a scope",
       inputSchema: {
         scope: z.enum(["global", "project"]).optional().default("project").describe("Memory scope"),
+        project_name: z.string().optional().describe("Filter to a specific project (defaults to current project)"),
       },
     },
     withMcpLogging("memory_stats", async (args) => {
       try {
+        const effectiveProjectName = args.project_name ?? store.projectName;
         const [stats, nodes] = await Promise.all([
-          store.getFractalStats(args.scope),
-          store.listNodes(args.scope),
+          store.getFractalStats(args.scope, effectiveProjectName),
+          store.listNodes(args.scope, undefined, undefined, undefined, undefined, effectiveProjectName),
         ]);
 
         const total = stats.totalNodes;
@@ -227,6 +233,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
         type: z.string().optional().describe("Node type (note, event, concept, summary, etc.)"),
         importance: z.number().min(0).max(1).optional().default(0.5).describe("Importance score"),
         metadata: z.string().optional().describe("JSON string of metadata object (e.g. triggers for skills)"),
+        project_name: z.string().optional().describe("Filter to a specific project (defaults to current project)"),
       },
     },
     withMcpLogging("memory_set", async (args) => {
@@ -265,6 +272,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
           type: (args.type as any) ?? null,
           importance: args.importance,
           metadata,
+          projectName: args.project_name ?? store.projectName,
         });
         return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, id: node.id, action: "created" }) }] };
       } catch (e) {

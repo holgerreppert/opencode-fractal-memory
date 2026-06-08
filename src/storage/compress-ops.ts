@@ -10,7 +10,8 @@ export async function getCompressionCandidates(
   scope: MemoryScope | "all",
   level: MemoryNodeLevel,
   maxAgeMs?: number,
-  force?: boolean
+  force?: boolean,
+  projectName?: string
 ): Promise<MemoryNode[]> {
   const config = COMPRESSION_LEVELS[level];
   if (!config) return [];
@@ -20,18 +21,22 @@ export async function getCompressionCandidates(
 
   for (const s of scopes) {
     const db = await getDb(s);
+    const projectFilter = projectName !== undefined && s === "project";
+    const projectClause = projectFilter ? " AND project_name = ?" : "";
 
     if (force) {
-      const rows = db.query(
-        "SELECT * FROM memory_nodes WHERE scope = ? AND level = ? AND length(content) > 100 AND (sticky IS NULL OR sticky = 0) ORDER BY importance DESC"
-      ).all(s, level) as SqliteNode[];
+      const sql = `SELECT * FROM memory_nodes WHERE scope = ? AND level = ? AND length(content) > 100 AND (sticky IS NULL OR sticky = 0)${projectClause} ORDER BY importance DESC`;
+      const params: (string | number)[] = [s, level];
+      if (projectFilter) params.push(projectName!);
+      const rows = db.query(sql).all(...params) as SqliteNode[];
       candidates.push(...rows.map(rowToNode));
     } else {
       const threshold = maxAgeMs ?? config.maxAgeMs;
       const cutoffTime = Date.now() - threshold;
-      const rows = db.query(
-        "SELECT * FROM memory_nodes WHERE scope = ? AND level = ? AND updated_at < ? AND length(content) > 100 AND (sticky IS NULL OR sticky = 0) ORDER BY importance DESC"
-      ).all(s, level, cutoffTime) as SqliteNode[];
+      const sql = `SELECT * FROM memory_nodes WHERE scope = ? AND level = ? AND updated_at < ? AND length(content) > 100 AND (sticky IS NULL OR sticky = 0)${projectClause} ORDER BY importance DESC`;
+      const params: (string | number)[] = [s, level, cutoffTime];
+      if (projectFilter) params.push(projectName!);
+      const rows = db.query(sql).all(...params) as SqliteNode[];
       candidates.push(...rows.map(rowToNode));
     }
   }
@@ -106,12 +111,13 @@ export async function runCompression(
 
 export async function runPatternExtraction(
   deps: {
-    listNodes: (scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean) => Promise<MemoryNode[]>;
+    listNodes: (scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string) => Promise<MemoryNode[]>;
     createNode: (node: CreateNodeInput) => Promise<MemoryNode>;
     updateNode: (id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "confidence" | "usefulnessScore" | "timesHelpful">>) => Promise<void>;
   },
   scope: MemoryScope | "all",
-  minSourceCount: number = 2
+  minSourceCount: number = 2,
+  projectName?: string
 ): Promise<{ created: number; sources: number }> {
   let created = 0;
   let sources = 0;
