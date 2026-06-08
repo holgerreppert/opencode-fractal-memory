@@ -29,10 +29,35 @@ Build from source or install a `.tgz`:
 ```bash
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.2.0.tgz
+npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.6.22.tgz
 ```
 
 Use `--ignore-scripts` to avoid Bun trust prompts. Models download on first plugin load instead.
+
+### Quick iteration (cp method)
+
+After rebuilding, copy directly to the cached plugin directory:
+
+```bash
+cd /path/to/opencode-fractal-memory
+npm run build
+cp -r dist management package.json LICENSE README.md commands agent \
+  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+```
+
+This also updates the command files. Restart OpenCode to load the changes.
+
+### If the cache stays stale
+
+OpenCode's bun-managed cache can pin an old version. To force a refresh:
+
+```bash
+rm -rf ~/.bun/install/cache/
+cd ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+bun add opencode-fractal-memory@latest
+```
+
+This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#25293](https://github.com/anomalyco/opencode/issues/25293).
 
 ## How model download works
 
@@ -46,6 +71,14 @@ OpenCode uses `bun install` at startup, which **skips lifecycle scripts** (`post
 
 The `postinstall` script in `package.json` is a fallback for manual `npm install` (where lifecycle scripts do run) and for environments like CI.
 
+## Command files
+
+The plugin ships markdown command files (e.g., `/memory-set`, `/memory-get`) from `commands/`. They are copied to `~/.config/opencode/commands/` on plugin init by `ensureCommandFiles()`. After updating command files, either restart OpenCode or copy them manually:
+
+```bash
+cp commands/*.md ~/.config/opencode/commands/
+```
+
 ## MCP server setup
 
 For IDE integration via the Model Context Protocol:
@@ -55,14 +88,30 @@ For IDE integration via the Model Context Protocol:
   "mcp": {
     "fractal-memory": {
       "type": "local",
-      "command": ["bun", "run", "<path-to-plugin>/dist/mcp-server.js"],
+      "command": ["bun", "run", "<cache-path>/dist/mcp-server.js"],
       "enabled": true
     }
   }
 }
 ```
 
-Replace `<path-to-plugin>` with the actual install path (e.g., `~/.config/opencode/node_modules/opencode-fractal-memory`).
+Replace `<cache-path>` with the actual install path (e.g., `~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory`).
+
+## Transfer sessions between machines
+
+Export a session to a local JSON file (no server involved):
+
+```bash
+opencode export <sessionID> --sanitize
+```
+
+Import on another machine:
+
+```bash
+opencode import session.json
+```
+
+List available sessions with `opencode session list`.
 
 ## Verify Installation
 
@@ -100,17 +149,23 @@ Type `/memory-` in OpenCode to see available commands:
 - `/memory-drilldown` - Fractal retrieval
 - And more...
 
+### Creating Custom Skills
+Skills are memory nodes with `type="skill"` and `metadata.triggers`. They auto-load when trigger keywords appear:
+
+```
+memory_set(content="## Skill content...", label="skill:my-skill", type="skill", metadata='{"triggers":["keyword1","keyword2"]}', sticky=true)
+```
+
 ## Troubleshooting
 
 ### Plugin Not Loading
 1. Check OpenCode config has correct JSON syntax
 2. Verify bun is installed: `bun --version`
-  3. Check logs: `tail ~/.config/opencode/logs/memory-plugin.log`
+3. Check logs: `tail ~/.config/opencode/logs/memory-plugin.log`
 
 ### Model Download Fails
 The plugin uses HuggingFace CDN. If downloads fail:
 ```bash
-# Run manually to see errors
 bun run ~/.config/opencode/node_modules/opencode-fractal-memory/scripts/download-models.ts
 ```
 
