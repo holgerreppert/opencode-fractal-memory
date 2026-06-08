@@ -344,6 +344,7 @@ Skills are specialized instruction sets stored as memory nodes. When a task matc
 | `context-engineering` | context, prompt, system message |
 | `git-workflow-and-versioning` | git, commit, branch, version, publish |
 | `incremental-implementation` | step by step, increment, gradual |
+| `opencode-plugin-installation` | installation, update, upgrade, cache, stale, version, publish |
 
 ### Loading a skill
 
@@ -536,6 +537,34 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
+
+### v0.6.21 (2026-06-07)
+- **Command file audit** — consistent `name=value` named arg format across all command files
+- `memory-rate.md` — added frontmatter so it registers as a valid command
+- `memory-set.md` — replaced fictional Supabase example with generic JWT example
+- `memory-list.md`, `memory-compress.md`, `memory-prune.md` — added proper Usage/Arguments sections
+- `agent/memory-hints.md` — all examples converted to named arg syntax, types fixed
+
+### v0.6.20 (2026-06-07)
+- README update — cache staleness workaround, plugin version endpoint docs
+
+### v0.6.19 (2026-06-07)
+- **Metadata support** — `memory_set` and MCP `memory_set` now accept `metadata` JSON string arg
+- `MemoryGet` now displays metadata section when present
+- `skill:opencode-plugin-installation` created with auto-detection triggers
+- Docs: `memory-set.md`, `memory-get.md`, `memory-help.md`, `agent/memory-hints.md` updated
+
+### v0.6.18 (2026-06-07)
+- README cache staleness workaround added
+
+### v0.6.17 (2026-06-07)
+- **Duplicate file node fix** — replaced `listNodes("project")` with `getNodeByLabel()` in hooks.ts
+- File nodes now update on re-read instead of being skipped
+- DB cleanup: removed 552 duplicate file nodes (reduced 1375→825 nodes)
+
+### v0.6.16 (2026-06-07)
+- Plugin version displayed in management app sidebar
+- `GET /api/version` endpoint added
 
 ### v0.6.15 (2026-06-06)
 - **Project switcher** — filter memory nodes by project name in management UI
