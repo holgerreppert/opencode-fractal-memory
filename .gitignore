@@ -8,3 +8,4 @@ memory.db
 .env
 .DS_Store
 session-*.md
+ocam.ses
