@@ -12,7 +12,7 @@ memory_compress(scope="project")
 **Arguments:**
 - `scope` (optional): "all", "global", or "project" (default: all)
 - `force` (optional): true to bypass age check
-- `project_name` (optional): Filter to a specific project (defaults to current project)
+- `project_name` (optional): Filter to a specific project (if omitted, searches both global and project scopes)
 
 **Compressed summaries have structured format:**
 - **Decisions**: "decided", "chose", "will use"

@@ -12,4 +12,4 @@ Use memory_stats with scope="all".
 
 **Arguments:**
 - `scope` (optional): "all", "global", or "project" (default: all)
-- `project_name` (optional): Filter to a specific project (defaults to current project)
+- `project_name` (optional): Filter to a specific project (if omitted, searches both global and project scopes)

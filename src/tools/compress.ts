@@ -14,7 +14,7 @@ export function MemoryPrune(store: MemoryStore) {
       excludeSticky: tool.schema.boolean().optional(),
       excludeCore: tool.schema.boolean().optional(),
       dryRun: tool.schema.boolean().optional(),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as "all" | "global" | "project";
@@ -27,7 +27,7 @@ export function MemoryPrune(store: MemoryStore) {
         excludeSticky: args.excludeSticky ?? true,
         excludeCore: args.excludeCore ?? true,
         dryRun,
-        projectName: args.project_name ?? store.projectName,
+        projectName: args.project_name,
       });
       
       if (result.prunable.length === 0) {
@@ -72,15 +72,13 @@ export function MemoryCompress(store: MemoryStore) {
       level: tool.schema.number().int().nonnegative().optional(),
       dry_run: tool.schema.boolean().optional(),
       force: tool.schema.boolean().optional(),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as "all" | "global" | "project";
       const level = (args.level ?? 0) as 0 | 1 | 2 | 3 | 4 | 5;
-      const effectiveProjectName = args.project_name ?? store.projectName;
-      
       if (args.dry_run) {
-        const candidates = await store.getCompressionCandidates(scope, level, undefined, args.force, effectiveProjectName);
+        const candidates = await store.getCompressionCandidates(scope, level, undefined, args.force, args.project_name);
         if (candidates.length === 0) {
           return `No nodes need compression at level ${level}${args.force ? " (force)" : ""}.`;
         }
@@ -88,12 +86,12 @@ export function MemoryCompress(store: MemoryStore) {
           candidates.map(c => `- ${c.id.slice(0,8)}: ${c.content.slice(0, 50)}...`).join("\n");
       }
       
-      const candidates = await store.getCompressionCandidates(scope, level, undefined, args.force, effectiveProjectName);
+      const candidates = await store.getCompressionCandidates(scope, level, undefined, args.force, args.project_name);
       if (candidates.length === 0) {
         return `No nodes to compress at level ${level}${args.force ? " (force)" : ""}.`;
       }
-      
-      const result = await store.runCompression(scope, args.force, undefined, effectiveProjectName);
+
+      const result = await store.runCompression(scope, args.force, undefined, args.project_name);
       return `Compression complete: ${result.compressed} nodes compressed, ${result.created} summary nodes created.`;
     },
   });
@@ -106,14 +104,12 @@ export function MemoryExtractPatterns(store: MemoryStore) {
     args: {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
       dry_run: tool.schema.boolean().optional(),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as "all" | "global" | "project";
-      const effectiveProjectName = args.project_name ?? store.projectName;
-      
       if (args.dry_run) {
-        const nodes = await store.listNodes(scope as "all" | "global" | "project", 0, undefined, undefined, undefined, effectiveProjectName);
+        const nodes = await store.listNodes(scope as "all" | "global" | "project", 0, undefined, undefined, undefined, args.project_name);
         const eligible = nodes.filter(n => n.content.length > 50 && !n.sticky && n.type !== "summary");
         if (eligible.length < 2) {
           return `Not enough eligible nodes for pattern extraction (need at least 2, found ${eligible.length}).`;
@@ -121,7 +117,7 @@ export function MemoryExtractPatterns(store: MemoryStore) {
         return `Found ${eligible.length} eligible nodes. Pattern extraction would create 1 summary node referencing all sources.`;
       }
       
-      const result = await store.runPatternExtraction(scope, 2, effectiveProjectName);
+      const result = await store.runPatternExtraction(scope, 2, args.project_name);
       if (result.created === 0) {
         return `No pattern extraction performed. Need at least 2 eligible nodes with patterns to extract.`;
       }

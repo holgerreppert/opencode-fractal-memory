@@ -9,11 +9,11 @@ export function MemoryStats(store: MemoryStore) {
     description: "Get fractal memory statistics: nodes per level, compression ratios, fractal dimension, tree structure.",
     args: {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as "all" | "global" | "project";
-      const stats = await store.getFractalStats(scope, args.project_name ?? store.projectName);
+      const stats = await store.getFractalStats(scope, args.project_name);
 
       const lines: string[] = [
         "## Fractal Memory Statistics",
@@ -168,15 +168,13 @@ export function MemoryCheckContext(store: MemoryStore) {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
       threshold: tool.schema.number().min(0).max(1).optional(),
       node_ids: tool.schema.array(tool.schema.string()).optional(),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const scope = args.scope ?? "all";
       const threshold = args.threshold ?? WARN_THRESHOLD;
-      const effectiveProjectName = args.project_name ?? store.projectName;
-      
       let nodes: import("../memory").MemoryNode[] = [];
-      
+
       if (args.node_ids && args.node_ids.length > 0) {
         for (const id of args.node_ids) {
           try {
@@ -190,7 +188,7 @@ export function MemoryCheckContext(store: MemoryStore) {
           }
         }
       } else {
-        nodes = await store.listNodes(scope as "all" | "global" | "project", undefined, undefined, undefined, undefined, effectiveProjectName);
+        nodes = await store.listNodes(scope as "all" | "global" | "project", undefined, undefined, undefined, undefined, args.project_name);
       }
       
       const totalTokens = nodes.reduce((sum, n) => sum + estimateTokens(n.content), 0);

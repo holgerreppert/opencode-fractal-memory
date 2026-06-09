@@ -32,11 +32,11 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   memLog("info", "init", "Background embeddings scheduled", { durationMs: perfNow() - t });
 
   t = perfNow();
-  const journalTools = await setupJournal(directory);
+  const journalTools = await setupJournal(directory, memConfig);
   memLog("info", "init", "Journal setup completed", { durationMs: perfNow() - t });
 
   t = perfNow();
-  startManagementIfEnabled(store, directory);
+  startManagementIfEnabled(store, directory, memConfig);
   memLog("info", "init", "Management server check completed", { durationMs: perfNow() - t });
 
   const ruleCache: Map<string, { content: string; type: string }> = new Map();

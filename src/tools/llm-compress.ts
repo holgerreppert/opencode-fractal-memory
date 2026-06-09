@@ -10,17 +10,16 @@ export function MemoryLlmCompress(store: MemoryStore, client?: unknown) {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
       level: tool.schema.number().int().nonnegative().optional(),
       dry_run: tool.schema.boolean().optional().default(false),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const { scope, level, dry_run, project_name } = args;
-      const effectiveProjectName = project_name ?? store.projectName;
       if (!client) {
         return "Error: No LLM client available. LLM compression requires an active session.";
       }
 
       if (dry_run) {
-        const candidates = await store.getCompressionCandidates(scope ?? "all", (level ?? 0) as MemoryNodeLevel, undefined, undefined, effectiveProjectName);
+        const candidates = await store.getCompressionCandidates(scope ?? "all", (level ?? 0) as MemoryNodeLevel, undefined, undefined, project_name);
         if (candidates.length === 0) {
           return `Dry run: no nodes to compress at level ${level ?? 0}.`;
         }
@@ -28,7 +27,7 @@ export function MemoryLlmCompress(store: MemoryStore, client?: unknown) {
           candidates.map(c => `- ${c.id.slice(0, 8)}: ${c.content.slice(0, 50)}...`).join("\n");
       }
 
-      const result = await store.runCompression(scope ?? "all", false, client, effectiveProjectName);
+      const result = await store.runCompression(scope ?? "all", false, client, project_name);
       return `LLM compression completed: ${result.compressed} nodes compressed, ${result.created} summary nodes created.`;
     },
   });

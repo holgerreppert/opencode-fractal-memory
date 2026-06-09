@@ -114,7 +114,7 @@ Enables memory tools in IDEs that support the Model Context Protocol (Cursor, Wi
 
 ## Configuration
 
-Create `~/.config/opencode/opencode-mem.json` to customize (optional — all defaults work out of the box):
+Create `~/.config/opencode/opencode-mem.json` to customize (optional — all defaults work out of the box). This is the **single** config file — all settings including journal and management live here:
 
 ```json
 {
@@ -145,6 +145,13 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "confidenceThreshold": 0.3,
     "positiveBoost": 0.1,
     "negativePenalty": 0.05
+  },
+  "management": {
+    "enabled": true,
+    "port": 8787
+  },
+  "journal": {
+    "enabled": false
   },
   "maxInjectionTokens": 8000,
   "coreInjectionTokens": 2000,
@@ -192,6 +199,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `enableMiddleTermCapture` | bool | `true` | Save middle-term snapshots before compression |
 | `management.enabled` | bool | `false` | Auto-start the management web UI on plugin init |
 | `management.port` | int | `8787` | Port for the management server |
+| `journal.enabled` | bool | `false` | Enable append-only searchable journal entries |
 | `autoFileSummarization.enabled` | bool | `false` | Auto-summarize files on read |
 
 ## Advanced Features
@@ -385,7 +393,7 @@ A local web UI for browsing, searching, and editing memory — available when th
 
 ### Starting
 
-The server starts automatically when `management.enabled: true` is set in your config (see [Configuration](#configuration)), or manually:
+The server starts automatically when `management.enabled: true` is set in `~/.config/opencode/opencode-mem.json` (see [Configuration](#configuration)), or manually:
 
 ```bash
 bun run view
@@ -537,6 +545,12 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
+
+### v0.6.23 (2026-06-08)
+- **`projectName` cross-project filtering** — Added `project_name` arg to all CLI tools, MCP tools, and storage layer
+- **Bug fix: global scope always skipped** — Removed `?? store.projectName` default that caused `projectName` to always be set, preventing global memory from being searched. Now `project_name` is only passed when explicitly provided; when omitted, searches both global and project scopes
+- **Config unification** — `management.enabled/port` and `journal.*` moved from separate `agent-memory.json` into the main `opencode-mem.json` config file. Single config source of truth
+- **Arg description updates** — All tool arg descriptions and command files updated to reflect the new behavior
 
 ### v0.6.21 (2026-06-07)
 - **Command file audit** — consistent `name=value` named arg format across all command files

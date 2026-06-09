@@ -6,4 +6,4 @@ Extract cross-layer patterns from memory nodes using memory_extract_patterns. Th
 **Arguments:**
 - `scope` (optional): "all", "global", or "project" (default: all)
 - `min_source_count` (optional): Minimum sources for a pattern (default: 2)
-- `project_name` (optional): Filter to a specific project (defaults to current project)
+- `project_name` (optional): Filter to a specific project (if omitted, searches both global and project scopes)

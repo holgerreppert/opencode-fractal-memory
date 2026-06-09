@@ -18,12 +18,16 @@ export async function ensureSeed(
 
     const now = Date.now();
 
-    await withRetry(() => {
-      db.run(
-        "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [randomUUID(), seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", null, seed.scope === "project" ? projectName ?? null : null],
-      );
-    });
+    try {
+      await withRetry(() => {
+        db.run(
+          "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [randomUUID(), seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", null, seed.scope === "project" ? projectName ?? null : null],
+        );
+      });
+    } catch {
+      // race condition: another process inserted this seed before us
+    }
   }
 }
 

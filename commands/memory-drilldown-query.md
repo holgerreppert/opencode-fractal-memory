@@ -11,7 +11,7 @@ Top-down drilldown from high-level summaries to specific details.
 **Arguments:**
 - `query` (required): Your question or intent
 - `max_results` (optional): Max results (default: 20)
-- `project_name` (optional): Filter to a specific project (defaults to current project)
+- `project_name` (optional): Filter to a specific project (if omitted, searches both global and project scopes)
 
 **Usage:**
 ```

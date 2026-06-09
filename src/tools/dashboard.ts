@@ -11,7 +11,7 @@ export function MemoryDashboard(store: MemoryStore) {
       limit: tool.schema.number().min(1).max(100).optional(),
       show_tree_depth: tool.schema.boolean().optional(),
       show_embedding_coverage: tool.schema.boolean().optional(),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const scope = (args.scope ?? "all") as "all" | "global" | "project";
@@ -19,10 +19,9 @@ export function MemoryDashboard(store: MemoryStore) {
       const showTreeDepth = args.show_tree_depth ?? true;
       const showEmbeddingCoverage = args.show_embedding_coverage ?? true;
 
-      const effectiveProjectName = args.project_name ?? store.projectName;
       const [allNodes, stats] = await Promise.all([
-        store.listNodes(scope, undefined, undefined, undefined, undefined, effectiveProjectName),
-        store.getFractalStats(scope, effectiveProjectName),
+        store.listNodes(scope, undefined, undefined, undefined, undefined, args.project_name),
+        store.getFractalStats(scope, args.project_name),
       ]);
 
       if (allNodes.length === 0) {

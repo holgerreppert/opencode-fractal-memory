@@ -21,4 +21,4 @@ memory_dashboard { scope: "project", limit: 20 }
 - `limit`: Number of top nodes to show (default: 10)
 - `show_tree_depth`: boolean – include the tree‑depth line in the Compression Health section (default: true)
 - `show_embedding_coverage`: boolean – include the “Nodes with embeddings” line (default: true)
-- `project_name`: Filter to a specific project (defaults to current project)
+- `project_name` (optional): Filter to a specific project (if omitted, searches both global and project scopes)

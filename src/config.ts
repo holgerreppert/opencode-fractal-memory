@@ -52,6 +52,14 @@ export interface MemConfig {
     minRepeatCount: number;
     maxInjectPlaybooks: number;
   };
+  journal?: {
+    enabled: boolean;
+    tags?: Array<{ name: string; description: string }>;
+  };
+  management?: {
+    enabled: boolean;
+    port?: number;
+  };
 }
 
 const AutoRetrieveSchema = z.object({
@@ -93,6 +101,21 @@ const PredictiveRatingSchema = z.object({
   confidenceThreshold: z.number().min(0).max(1).default(0.3),
   positiveBoost: z.number().min(0).max(1).default(0.1),
   negativePenalty: z.number().min(0).max(1).default(0.05),
+});
+
+const JournalTagSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+});
+
+const JournalSchema = z.object({
+  enabled: z.boolean().default(false),
+  tags: z.array(JournalTagSchema).optional(),
+});
+
+const ManagementSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number().positive().int().optional(),
 });
 
 const DEFAULT_CONFIG: MemConfig = {
@@ -142,6 +165,12 @@ const DEFAULT_CONFIG: MemConfig = {
     minRepeatCount: 2,
     maxInjectPlaybooks: 3,
   },
+  journal: {
+    enabled: false,
+  },
+  management: {
+    enabled: false,
+  },
 };
 
 const MemConfigSchema = z.object({
@@ -163,6 +192,8 @@ const MemConfigSchema = z.object({
   autoDistill: AutoDistillSchema.optional(),
   predictiveRating: PredictiveRatingSchema.optional(),
   autoDiscover: AutoDiscoverSchema.optional(),
+  journal: JournalSchema.optional(),
+  management: ManagementSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

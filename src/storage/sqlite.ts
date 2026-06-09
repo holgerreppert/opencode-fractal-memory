@@ -151,7 +151,7 @@ class SqliteMemoryStore {
         if (existing) continue;
 
         unifiedDb.run(
-          `INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, ttl_days, expires_at, confidence, last_verified, usefulness_score, times_used, times_helpful, project_name)
+          `INSERT OR IGNORE INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, ttl_days, expires_at, confidence, last_verified, usefulness_score, times_used, times_helpful, project_name)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             oldRow.id, oldRow.scope, oldRow.label, oldRow.content,

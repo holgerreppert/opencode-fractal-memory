@@ -101,7 +101,7 @@ Playbooks are reusable workflows stored as sticky memory nodes (type: `"playbook
 
 ## Management Viewer
 
-Auto-starts when `management.enabled: true` is set in your config. To launch manually:
+Auto-starts when `management.enabled: true` is set in `~/.config/opencode/opencode-mem.json`. To launch manually:
 
 ```bash
 bun run view

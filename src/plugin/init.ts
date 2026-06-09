@@ -3,7 +3,6 @@ import { loadMemConfig, type MemConfig } from "../config";
 import { generateEmbedding } from "../embeddings";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
 import { createAutoRetrieveHook } from "../hooks";
-import { loadConfig } from "../journal";
 import { createJournalStore, type JournalContext } from "../journal";
 import { startManagementServer } from "../management-server";
 import { SEED_NODES } from "../seed-nodes";
@@ -44,26 +43,32 @@ export async function loadPluginConfig(directory: string): Promise<MemConfig> {
 
 export async function seedRuleNodes(store: MemoryStore): Promise<void> {
   let created = 0;
+  let errors = 0;
   for (const seed of SEED_NODES) {
     try {
       await store.getNodeByLabel("global", seed.label);
     } catch {
-      await store.createNode({
-        scope: "global",
-        label: seed.label,
-        content: seed.content,
-        summary: seed.summary ?? null,
-        type: (seed.type ?? "note") as any,
-        level: 0,
-        parentIds: null,
-        embedding: null,
-        importance: 1,
-        metadata: seed.metadata ?? null,
-      });
-      created++;
+      try {
+        await store.createNode({
+          scope: "global",
+          label: seed.label,
+          content: seed.content,
+          summary: seed.summary ?? null,
+          type: (seed.type ?? "note") as any,
+          level: 0,
+          parentIds: null,
+          embedding: null,
+          importance: 1,
+          metadata: seed.metadata ?? null,
+        });
+        created++;
+      } catch (err) {
+        errors++;
+        memLog("warn", "init", "Failed to create seed node", { label: seed.label, error: err instanceof Error ? err.message : err });
+      }
     }
   }
-  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created });
+  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created, errors });
 }
 
 export async function backfillData(store: MemoryStore): Promise<void> {
@@ -96,9 +101,8 @@ export function scheduleBackgroundEmbeddings(store: MemoryStore): void {
   }, 1000);
 }
 
-export async function setupJournal(directory: string): Promise<Record<string, ToolDefinition>> {
-  const config = await loadConfig();
-  if (!config.journal?.enabled) return {};
+export async function setupJournal(directory: string, memConfig: MemConfig): Promise<Record<string, ToolDefinition>> {
+  if (!memConfig.journal?.enabled) return {};
 
   const journalStore = createJournalStore();
   return {
@@ -108,17 +112,14 @@ export async function setupJournal(directory: string): Promise<Record<string, To
   };
 }
 
-export function startManagementIfEnabled(store: MemoryStore, directory: string): void {
-  const config = { enabled: true, port: 8787 };
-  loadConfig().then(c => {
-    const mgmtConfig = c.management;
-    if (mgmtConfig?.enabled === true) {
-      memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787 });
-      startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
-    } else {
-      memLog("info", "init", "Management server disabled");
-    }
-  }).catch(() => { memLog("info", "init", "Management server config not available"); });
+export function startManagementIfEnabled(store: MemoryStore, directory: string, memConfig: MemConfig): void {
+  const mgmtConfig = memConfig.management;
+  if (mgmtConfig?.enabled === true) {
+    memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787 });
+    startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
+  } else {
+    memLog("info", "init", "Management server disabled");
+  }
 }
 
 export function createAutoRetrieveIfEnabled(

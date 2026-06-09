@@ -17,7 +17,7 @@ export function MemoryInject(store: MemoryStore) {
       maxLevel: tool.schema.number().int().optional(),
       minConfidence: tool.schema.number().min(0).max(1).optional(),
       budgetMode: tool.schema.enum(["dynamic", "strict"]).optional(),
-      projectName: tool.schema.string().optional().describe("Filter to a specific project (defaults to current project)"),
+      projectName: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const { query, maxTokens, includeConfidential, costWeight, debug, fallbackMessage, maxNodes, maxLevel, minConfidence, budgetMode, projectName } = args as {
@@ -39,7 +39,7 @@ export function MemoryInject(store: MemoryStore) {
       const candidates: MemoryNode[] = await store.searchByEmbedding(embedding, 100, {
         minLevel: 0,
         maxLevel: 4,
-        projectName: projectName ?? store.projectName,
+        projectName,
       });
 
       const filtered = candidates.filter((n) => {

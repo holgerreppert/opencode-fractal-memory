@@ -26,4 +26,4 @@ memory_search("user prefers", bm25_weight=0.6)  # More keyword-focused
 - Memory nodes have levels: L0=raw, L1=summaries - use min_level to filter
 - **After using memory**: The system auto-rates useful memories after successful edits
 - **Filter by usefulness**: Use `min_usefulness` to only show high-rated memories (0-5)
-- **Filter by project**: Use `project_name` to scope search to a specific project (defaults to current project)
+- **Filter by project**: Use `project_name` to scope search to a specific project (if omitted, searches both global and project scopes)
