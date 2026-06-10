@@ -36,4 +36,5 @@ Bun.serve({
   },
 });
 
-memLog("info", "management", `Memory viewer running at http://localhost:${port}`);
+console.log(`Management UI running at http://localhost:${port}`);
+memLog("info", "management", `Management UI started on http://localhost:${port}`);

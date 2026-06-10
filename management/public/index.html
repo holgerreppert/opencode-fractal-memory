@@ -182,6 +182,82 @@
     .save-btn:hover { background: rgba(100, 150, 255, 0.5); }
     .save-message { font-size: 11px; color: #4f4; margin-top: 8px; text-align: center; }
 
+    /* Backup / Restore styles */
+    .backup-source-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .backup-source-item input[type="checkbox"] { width: auto; margin: 0; }
+    .backup-source-item label { font-size: 13px; color: #ccc; cursor: pointer; flex: 1; }
+    .backup-source-item .source-status {
+      font-size: 11px; padding: 2px 8px; border-radius: 8px;
+    }
+    .source-status.available { color: #4f4; background: rgba(68,255,68,0.1); }
+    .source-status.unavailable { color: #f44; background: rgba(255,68,68,0.1); }
+
+    .backup-list-item {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 10px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px;
+    }
+    .backup-list-item .backup-header {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .backup-list-item .backup-name { font-size: 13px; color: #fff; font-weight: 500; }
+    .backup-list-item .backup-meta { font-size: 11px; color: #888; }
+    .backup-list-item .backup-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .backup-list-item .backup-sources { font-size: 11px; color: #666; }
+
+    .backup-btn {
+      width: 100%; padding: 8px; border-radius: 6px; border: none;
+      font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .backup-btn.create { background: rgba(68, 255, 68, 0.2); color: #4f4; }
+    .backup-btn.create:hover { background: rgba(68, 255, 68, 0.35); }
+    .backup-btn.restore { background: rgba(100, 150, 255, 0.2); color: #6af; padding: 6px 12px; width: auto; }
+    .backup-btn.restore:hover { background: rgba(100, 150, 255, 0.35); }
+    .backup-btn.delete { background: rgba(255, 68, 68, 0.15); color: #f66; padding: 6px 12px; width: auto; }
+    .backup-btn.delete:hover { background: rgba(255, 68, 68, 0.3); }
+
+    .backup-status { font-size: 11px; color: #888; margin-top: 6px; text-align: center; min-height: 16px; }
+    .backup-status.success { color: #4f4; }
+    .backup-status.error { color: #f44; }
+    .backup-status.loading::before {
+      content: ''; display: inline-block; width: 12px; height: 12px;
+      border: 2px solid rgba(100,150,255,0.3); border-top-color: #4a9eff;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+      margin-right: 6px; vertical-align: middle;
+    }
+
+    .backup-restore-section { margin-top: 20px; }
+    .backup-restore-section .section-divider {
+      border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0;
+    }
+
+    /* Confirmation modal */
+    #confirm-modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 500; align-items: center; justify-content: center;
+    }
+    #confirm-modal.open { display: flex; }
+    .confirm-content {
+      background: rgba(20,20,35,0.98); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px; padding: 24px; max-width: 380px; width: 90%;
+    }
+    .confirm-content h3 { font-size: 15px; color: #fff; margin-bottom: 8px; }
+    .confirm-content p { font-size: 13px; color: #aaa; margin-bottom: 16px; line-height: 1.4; }
+    .confirm-actions { display: flex; gap: 8px; }
+    .confirm-actions button {
+      flex: 1; padding: 8px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer;
+    }
+    .confirm-yes { background: rgba(100, 150, 255, 0.3); color: #fff; }
+    .confirm-yes:hover { background: rgba(100, 150, 255, 0.5); }
+    .confirm-no { background: rgba(255,255,255,0.1); color: #ccc; }
+    .confirm-no:hover { background: rgba(255,255,255,0.2); }
+    .restore-sources { margin: 8px 0 12px; }
+    .restore-source { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ccc; padding: 4px 0; cursor: pointer; }
+    .restore-source input[type="checkbox"] { accent-color: #6699ff; }
+
     #node-list {
       max-height: 40vh; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);
       border-radius: 6px;
@@ -208,6 +284,7 @@
     <div class="tab-buttons">
       <button class="tab-btn active" data-tab="visualize">Visualize</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn" data-tab="backup">Backup</button>
     </div>
 
     <!-- Visualize Panel -->
@@ -285,6 +362,30 @@
       </div>
 
       <div class="section">
+        <h3>Injection</h3>
+        <div class="config-field">
+          <label>Max Injection Tokens</label>
+          <input type="number" id="maxInjectionTokens" min="500" max="32000">
+        </div>
+        <div class="config-field">
+          <label>Core Injection Tokens</label>
+          <input type="number" id="coreInjectionTokens" min="100" max="8000">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Cache</h3>
+        <div class="config-field">
+          <label>Cache Size (max nodes)</label>
+          <input type="number" id="cacheSize" min="1" max="64">
+        </div>
+        <div class="config-field">
+          <label>Cache TTL (hours)</label>
+          <input type="number" id="cacheTTLHours" min="1" max="72">
+        </div>
+      </div>
+
+      <div class="section">
         <h3>Auto-Retrieve</h3>
         <div class="config-field">
           <label>Enabled</label>
@@ -300,6 +401,33 @@
         <div class="config-field">
           <label>Max Inject Nodes</label>
           <input type="number" id="autoRetrieve-maxInjectNodes" min="1" max="20">
+        </div>
+        <div class="config-field">
+          <label>Max Inject Playbooks</label>
+          <input type="number" id="autoRetrieve-maxInjectPlaybooks" min="0" max="10">
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Thresholds</h3>
+        <div class="config-field">
+          <label>Auto-Compress Threshold</label>
+          <input type="number" id="autoCompressThreshold" min="0" max="1" step="0.05">
+        </div>
+        <div class="config-field">
+          <label>High Context Threshold</label>
+          <input type="number" id="highContextThreshold" min="0" max="1" step="0.05">
+        </div>
+        <div class="config-field">
+          <label>Critical Context Threshold</label>
+          <input type="number" id="criticalContextThreshold" min="0" max="1" step="0.05">
+        </div>
+        <div class="config-field">
+          <label>Enable Middle-Term Capture</label>
+          <select id="enableMiddleTermCapture">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
         </div>
       </div>
 
@@ -330,6 +458,13 @@
         <div class="config-field">
           <label>Base URL</label>
           <input type="text" id="ollama-baseUrl" placeholder="http://localhost:11434">
+        </div>
+        <div class="config-field">
+          <label>Mode</label>
+          <select id="ollama-mode">
+            <option value="binary">Binary (relevant/not)</option>
+            <option value="score">Score (0-1 rating)</option>
+          </select>
         </div>
       </div>
 
@@ -388,6 +523,10 @@
           <input type="number" id="predictiveRating-decayDays" min="1" max="90">
         </div>
         <div class="config-field">
+          <label>Confidence Threshold</label>
+          <input type="number" id="predictiveRating-confidenceThreshold" min="0" max="1" step="0.05">
+        </div>
+        <div class="config-field">
           <label>Positive Boost</label>
           <input type="number" id="predictiveRating-positiveBoost" min="0" max="1" step="0.05">
         </div>
@@ -420,8 +559,64 @@
         </div>
       </div>
 
+      <div class="section">
+        <h3>Journal</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="journal-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Management Server</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="management-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Port</label>
+          <input type="number" id="management-port" min="1024" max="65535">
+        </div>
+      </div>
+
       <button class="save-btn" id="save-config">Save Settings</button>
       <div class="save-message" id="save-message"></div>
+    </div>
+
+    <!-- Backup Panel -->
+    <div id="backup-panel" class="settings-panel">
+      <div class="section">
+        <h3>Create Backup</h3>
+        <div id="backup-sources"></div>
+        <button class="backup-btn create" id="create-backup">Create Backup</button>
+        <div class="backup-status" id="backup-status"></div>
+      </div>
+
+      <div class="backup-restore-section">
+        <hr class="section-divider">
+        <h3>Restore</h3>
+        <div id="backup-list">
+          <div class="stat-row"><span class="stat-label">No backups yet</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal">
+    <div class="confirm-content">
+      <h3 id="confirm-title">Confirm</h3>
+      <div id="confirm-body"></div>
+      <div class="confirm-actions">
+        <button class="confirm-yes" id="confirm-yes">Yes</button>
+        <button class="confirm-no" id="confirm-no">Cancel</button>
+      </div>
     </div>
   </div>
 

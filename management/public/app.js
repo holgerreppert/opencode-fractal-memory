@@ -759,9 +759,12 @@ function setupEventListeners() {
       const tab = btn.dataset.tab;
       const visualizePanel = document.getElementById("visualize-panel");
       const settingsPanel = document.getElementById("settings-panel");
+      const backupPanel = document.getElementById("backup-panel");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
+      if (backupPanel) backupPanel.classList.toggle("active", tab === "backup");
       if (tab === "settings") loadSettings();
+      if (tab === "backup") { loadBackupSources(); loadBackupList(); }
     });
   });
 }
@@ -1383,20 +1386,241 @@ function animate() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-config').addEventListener('click', saveSettings);
+
+  // Backup / Restore event listeners
+  document.getElementById("create-backup").addEventListener("click", handleCreateBackup);
+  document.getElementById("confirm-yes").addEventListener("click", handleConfirmYes);
+  document.getElementById("confirm-no").addEventListener("click", closeConfirmModal);
 });
+
+// ==================== Backup / Restore ====================
+
+let confirmCallback = null;
+
+function closeConfirmModal() {
+  document.getElementById("confirm-modal").classList.remove("open");
+  confirmCallback = null;
+}
+
+function showConfirm(title, bodyHtml, callback) {
+  document.getElementById("confirm-title").textContent = title;
+  document.getElementById("confirm-body").innerHTML = bodyHtml;
+  document.getElementById("confirm-modal").classList.add("open");
+  confirmCallback = callback;
+}
+
+function handleConfirmYes() {
+  if (confirmCallback) confirmCallback();
+  closeConfirmModal();
+}
+
+async function loadBackupSources() {
+  const container = document.getElementById("backup-sources");
+  const statusEl = document.getElementById("backup-status");
+  try {
+    const res = await fetch("/api/backup-sources");
+    const sources = await res.json();
+    container.innerHTML = sources.map(s => `
+      <div class="backup-source-item">
+        <input type="checkbox" id="src-${s.key}" ${s.exists ? 'checked' : 'disabled'}>
+        <label for="src-${s.key}">${s.label}</label>
+        <span class="source-status ${s.exists ? 'available' : 'unavailable'}">${s.exists ? 'Available' : 'Unavailable'}</span>
+      </div>
+    `).join("");
+  } catch (e) {
+    container.innerHTML = `<div class="stat-row"><span class="stat-label">Error loading sources</span></div>`;
+    statusEl.textContent = "Error: " + e.message;
+    statusEl.className = "backup-status error";
+  }
+}
+
+async function handleCreateBackup() {
+  const statusEl = document.getElementById("backup-status");
+  const checked = document.querySelectorAll("#backup-sources input[type='checkbox']:checked");
+  const sources = Array.from(checked).map(cb => cb.id.replace("src-", ""));
+
+  if (sources.length === 0) {
+    statusEl.textContent = "Select at least one source";
+    statusEl.className = "backup-status error";
+    return;
+  }
+
+  statusEl.className = "backup-status loading";
+  statusEl.textContent = "Creating backup...";
+
+  try {
+    const res = await fetch("/api/backup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sources }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      statusEl.textContent = `Backup created: ${data.backup.name}`;
+      statusEl.className = "backup-status success";
+      loadBackupList();
+    } else {
+      statusEl.textContent = "Error: " + (data.error || "Unknown");
+      statusEl.className = "backup-status error";
+    }
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+    statusEl.className = "backup-status error";
+  }
+}
+
+async function loadBackupList() {
+  const container = document.getElementById("backup-list");
+  try {
+    const res = await fetch("/api/backups");
+    const data = await res.json();
+    const backups = data.backups || [];
+
+    if (backups.length === 0) {
+      container.innerHTML = `<div class="stat-row"><span class="stat-label">No backups yet</span></div>`;
+      return;
+    }
+
+    container.innerHTML = backups.map(b => {
+      const date = new Date(b.date).toLocaleString();
+      const size = formatFileSize(b.totalSize);
+      const sources = Object.entries(b.sources).map(([key, s]) =>
+        `${s.label} (${formatFileSize(s.totalSize)})`
+      ).join(", ");
+      return `
+        <div class="backup-list-item">
+          <div class="backup-header">
+            <span class="backup-name">${b.name}</span>
+            <span class="backup-meta">${size}</span>
+          </div>
+          <div class="backup-meta">${date}</div>
+          <div class="backup-sources">${sources}</div>
+          <div class="backup-actions">
+            <button class="backup-btn restore" data-name="${b.name}">Restore</button>
+            <button class="backup-btn delete" data-name="${b.name}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // Wire restore/delete buttons
+    container.querySelectorAll(".backup-btn.restore").forEach(btn => {
+      btn.addEventListener("click", () => handleRestore(btn.dataset.name));
+    });
+    container.querySelectorAll(".backup-btn.delete").forEach(btn => {
+      btn.addEventListener("click", () => handleDelete(btn.dataset.name));
+    });
+  } catch (e) {
+    container.innerHTML = `<div class="stat-row"><span class="stat-label">Error loading backups</span></div>`;
+  }
+}
+
+async function handleRestore(name) {
+  // Fetch backup details to get available sources
+  const res = await fetch("/api/backups");
+  const data = await res.json();
+  const backup = (data.backups || []).find(b => b.name === name);
+  if (!backup) return;
+
+  const sources = Object.entries(backup.sources);
+  const checkboxes = sources.map(([key, s]) => {
+    const checked = sources.length <= 1 ? "checked" : "";
+    return `
+      <label class="restore-source">
+        <input type="checkbox" class="restore-src-cb" value="${key}" ${checked}>
+        ${s.label} (${formatFileSize(s.totalSize)})
+      </label>
+    `;
+  }).join("");
+
+  const bodyHtml = `
+    <p>Restore backup "${name}"? A pre-restore snapshot will be created first.</p>
+    <div class="restore-sources">Select sources to restore:${checkboxes}</div>
+  `;
+
+  showConfirm("Restore Backup", bodyHtml, async () => {
+    const statusEl = document.getElementById("backup-status");
+    const checked = document.querySelectorAll(".restore-src-cb:checked");
+    const selected = Array.from(checked).map(cb => cb.value);
+
+    if (selected.length === 0) {
+      statusEl.textContent = "Select at least one source to restore";
+      statusEl.className = "backup-status error";
+      return;
+    }
+
+    statusEl.className = "backup-status loading";
+    statusEl.textContent = "Restoring...";
+    try {
+      const res = await fetch("/api/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup: name, sources: selected }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        statusEl.textContent = `Restored. Pre-restore backup: ${result.preRestoreBackup || "N/A"}`;
+        statusEl.className = "backup-status success";
+        loadBackupList();
+      } else {
+        statusEl.textContent = "Error: " + (result.error || "Unknown");
+        statusEl.className = "backup-status error";
+      }
+    } catch (e) {
+      statusEl.textContent = "Error: " + e.message;
+      statusEl.className = "backup-status error";
+    }
+  });
+}
+
+async function handleDelete(name) {
+  showConfirm(
+    "Delete Backup",
+    `<p>Delete backup "${name}"? This cannot be undone.</p>`,
+    async () => {
+      try {
+        const res = await fetch(`/api/backups/${encodeURIComponent(name)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.success) {
+          loadBackupList();
+        }
+      } catch (e) {
+        console.error("Failed to delete backup:", e);
+      }
+    }
+  );
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const val = bytes / Math.pow(1024, i);
+  return val.toFixed(i === 0 ? 0 : 1) + " " + units[i];
+}
 
 async function loadSettings() {
   try {
     const res = await fetch('/api/config');
     const config = await res.json();
     document.getElementById('defaultTtlDays').value = config.defaultTtlDays ?? 0;
+    document.getElementById('maxInjectionTokens').value = config.maxInjectionTokens ?? 8000;
+    document.getElementById('coreInjectionTokens').value = config.coreInjectionTokens ?? 2000;
+    document.getElementById('cacheSize').value = config.cacheSize ?? 8;
+    document.getElementById('cacheTTLHours').value = config.cacheTTLHours ?? 2;
+    document.getElementById('autoCompressThreshold').value = config.autoCompressThreshold ?? 0.7;
+    document.getElementById('highContextThreshold').value = config.highContextThreshold ?? 0.6;
+    document.getElementById('criticalContextThreshold').value = config.criticalContextThreshold ?? 0.8;
+    document.getElementById('enableMiddleTermCapture').value = String(config.enableMiddleTermCapture ?? true);
     document.getElementById('autoRetrieve-enabled').value = String(config.autoRetrieve?.enabled ?? false);
     document.getElementById('autoRetrieve-candidateCount').value = config.autoRetrieve?.candidateCount ?? 30;
     document.getElementById('autoRetrieve-maxInjectNodes').value = config.autoRetrieve?.maxInjectNodes ?? 5;
+    document.getElementById('autoRetrieve-maxInjectPlaybooks').value = config.autoRetrieve?.maxInjectPlaybooks ?? 3;
     document.getElementById('autoFileSummarization-enabled').value = String(config.autoFileSummarization?.enabled ?? false);
     document.getElementById('ollama-enabled').value = String(config.ollama?.enabled ?? false);
     document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
     document.getElementById('ollama-baseUrl').value = config.ollama?.baseUrl ?? 'http://localhost:11434';
+    document.getElementById('ollama-mode').value = config.ollama?.mode ?? 'binary';
     document.getElementById('llmCompression-enabled').value = String(config.llmCompression?.enabled ?? false);
     document.getElementById('llmCompression-maxSummaryTokens').value = config.llmCompression?.maxSummaryTokens ?? 500;
     document.getElementById('llmCompression-model').value = config.llmCompression?.model ?? '';
@@ -1405,12 +1629,16 @@ async function loadSettings() {
     document.getElementById('autoDistill-useLlm').value = String(config.autoDistill?.useLlm ?? false);
     document.getElementById('predictiveRating-enabled').value = String(config.predictiveRating?.enabled ?? false);
     document.getElementById('predictiveRating-decayDays').value = config.predictiveRating?.decayDays ?? 7;
+    document.getElementById('predictiveRating-confidenceThreshold').value = config.predictiveRating?.confidenceThreshold ?? 0.3;
     document.getElementById('predictiveRating-positiveBoost').value = config.predictiveRating?.positiveBoost ?? 0.1;
     document.getElementById('predictiveRating-negativePenalty').value = config.predictiveRating?.negativePenalty ?? 0.05;
     document.getElementById('autoDiscover-enabled').value = String(config.autoDiscover?.enabled ?? false);
     document.getElementById('autoDiscover-minSequenceLength').value = config.autoDiscover?.minSequenceLength ?? 3;
     document.getElementById('autoDiscover-minRepeatCount').value = config.autoDiscover?.minRepeatCount ?? 2;
     document.getElementById('autoDiscover-maxInjectPlaybooks').value = config.autoDiscover?.maxInjectPlaybooks ?? 3;
+    document.getElementById('journal-enabled').value = String(config.journal?.enabled ?? false);
+    document.getElementById('management-enabled').value = String(config.management?.enabled ?? false);
+    document.getElementById('management-port').value = config.management?.port ?? 8787;
   } catch (e) {
     console.error('Failed to load config:', e);
   }
@@ -1419,10 +1647,19 @@ async function loadSettings() {
 async function saveSettings() {
   const config = {
     defaultTtlDays: parseInt(document.getElementById('defaultTtlDays').value) || 0,
+    maxInjectionTokens: parseInt(document.getElementById('maxInjectionTokens').value) || 8000,
+    coreInjectionTokens: parseInt(document.getElementById('coreInjectionTokens').value) || 2000,
+    cacheSize: parseInt(document.getElementById('cacheSize').value) || 8,
+    cacheTTLHours: parseInt(document.getElementById('cacheTTLHours').value) || 2,
+    autoCompressThreshold: parseFloat(document.getElementById('autoCompressThreshold').value) || 0.7,
+    highContextThreshold: parseFloat(document.getElementById('highContextThreshold').value) || 0.6,
+    criticalContextThreshold: parseFloat(document.getElementById('criticalContextThreshold').value) || 0.8,
+    enableMiddleTermCapture: document.getElementById('enableMiddleTermCapture').value === 'true',
     autoRetrieve: {
       enabled: document.getElementById('autoRetrieve-enabled').value === 'true',
       candidateCount: parseInt(document.getElementById('autoRetrieve-candidateCount').value) || 30,
       maxInjectNodes: parseInt(document.getElementById('autoRetrieve-maxInjectNodes').value) || 5,
+      maxInjectPlaybooks: parseInt(document.getElementById('autoRetrieve-maxInjectPlaybooks').value) || 3,
     },
     autoFileSummarization: {
       enabled: document.getElementById('autoFileSummarization-enabled').value === 'true',
@@ -1431,6 +1668,7 @@ async function saveSettings() {
       enabled: document.getElementById('ollama-enabled').value === 'true',
       model: document.getElementById('ollama-model').value || 'qwen2.5-coder:1.5b',
       baseUrl: document.getElementById('ollama-baseUrl').value || 'http://localhost:11434',
+      mode: document.getElementById('ollama-mode').value || 'binary',
     },
     llmCompression: {
       enabled: document.getElementById('llmCompression-enabled').value === 'true',
@@ -1445,6 +1683,7 @@ async function saveSettings() {
     predictiveRating: {
       enabled: document.getElementById('predictiveRating-enabled').value === 'true',
       decayDays: parseFloat(document.getElementById('predictiveRating-decayDays').value) || 7,
+      confidenceThreshold: parseFloat(document.getElementById('predictiveRating-confidenceThreshold').value) || 0.3,
       positiveBoost: parseFloat(document.getElementById('predictiveRating-positiveBoost').value) || 0.1,
       negativePenalty: parseFloat(document.getElementById('predictiveRating-negativePenalty').value) || 0.05,
     },
@@ -1453,6 +1692,13 @@ async function saveSettings() {
       minSequenceLength: parseInt(document.getElementById('autoDiscover-minSequenceLength').value) || 3,
       minRepeatCount: parseInt(document.getElementById('autoDiscover-minRepeatCount').value) || 2,
       maxInjectPlaybooks: parseInt(document.getElementById('autoDiscover-maxInjectPlaybooks').value) || 3,
+    },
+    journal: {
+      enabled: document.getElementById('journal-enabled').value === 'true',
+    },
+    management: {
+      enabled: document.getElementById('management-enabled').value === 'true',
+      port: parseInt(document.getElementById('management-port').value) || 8787,
     },
   };
   try {

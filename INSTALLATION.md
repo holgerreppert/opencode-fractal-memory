@@ -32,7 +32,7 @@ rm -rf node_modules/opencode-fractal-memory package-lock.json
 npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.6.22.tgz
 ```
 
-Use `--ignore-scripts` to avoid Bun trust prompts. Models download on first plugin load instead.
+Use `--ignore-scripts` to avoid Bun trust prompts (npm v12 defaults to this behavior). Models download on first plugin load instead.
 
 ### Quick iteration (cp method)
 

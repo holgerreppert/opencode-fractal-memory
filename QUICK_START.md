@@ -108,6 +108,11 @@ bun run view
 ```
 Opens at http://localhost:8787
 
+**Tabs:**
+- **3D Graph** — visualizes memory nodes as spheres with wiki-link connections
+- **Settings** — configure plugin options from the UI
+- **Backup** — create/restore snapshots of config and databases with per-source selection
+
 ## Memory System Architecture
 
 ```

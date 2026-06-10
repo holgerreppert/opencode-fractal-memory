@@ -344,6 +344,8 @@ Skills are specialized instruction sets stored as memory nodes. When a task matc
 | `write-tests` | tests, coverage, test suites |
 | `refactor-component` | refactor, restructure, clean up |
 | `refactoring-expert` | SOLID, code smell, technical debt |
+| `code-reviewer` | review, PR, pull request, code quality, audit |
+| `ai-code-pitfalls` | AI generated, hallucinated, copilot, cursor, LLM output |
 | `security-review` | security, audit, vulnerability, deploy |
 | `threejs-skills` | 3D, WebGL, visualization |
 | `svelte-core-bestpractices` | svelte, component, runes |
@@ -442,12 +444,19 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 - Last accessed and last verified timestamps
 - Actions: edit, delete, verify, inject
 
+**Backup** — the Backup tab lets you create and restore snapshots of your memory data:
+- Select sources to back up (config, global DB, project DB) via checkboxes
+- Backups stored at `~/.config/opencode/backups/` as flat directories with a `manifest.json`
+- DB snapshots use `sqlite3_serialize()` for consistent WAL-safe copies
+- Restore with per-source selection — a pre-restore safety backup is auto-created
+- Manual retention: list, inspect, and delete backups from the UI
+
 ## How Plugin Initialization Works
 
 When OpenCode loads the plugin, `initStorage()` runs automatically:
 
 1. **SQLite database** — created at `~/.config/opencode/memory.db` with all tables and indexes. Project-scope nodes are stored alongside global nodes with a `project_name` discriminator column
-2. **Seed nodes** — rule nodes, built-in playbooks (6), and skills (9) inserted into `memory_nodes`
+2. **Seed nodes** — rule nodes, built-in playbooks (6), and skills (15) inserted into `memory_nodes`
 3. **Model files** — `ensureModels()` checks `~/.config/opencode/models/` and downloads ONNX + tokenizer (~24 MB) if missing
 4. **Agent files** — `ensureAgentFiles()` copies `agent/` directory to `~/.config/opencode/agent/`
 5. **Command files** — `ensureCommandFiles()` copies `commands/` directory to `~/.config/opencode/commands/`
@@ -547,6 +556,7 @@ MIT
 ## Changelog
 
 ### v0.6.23 (2026-06-08)
+- **Backup/Restore** — new Backup tab in the management UI. Create timestamped snapshots of config, global DB, and project DB. Restore with per-source selection; pre-restore safety backup auto-created. Backups stored as flat directories at `~/.config/opencode/backups/` — zero external deps.
 - **`projectName` cross-project filtering** — Added `project_name` arg to all CLI tools, MCP tools, and storage layer
 - **Bug fix: global scope always skipped** — Removed `?? store.projectName` default that caused `projectName` to always be set, preventing global memory from being searched. Now `project_name` is only passed when explicitly provided; when omitted, searches both global and project scopes
 - **Config unification** — `management.enabled/port` and `journal.*` moved from separate `agent-memory.json` into the main `opencode-mem.json` config file. Single config source of truth
