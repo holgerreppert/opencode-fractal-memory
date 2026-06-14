@@ -212,7 +212,11 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         }
 
         const [candidates] = await Promise.all([
-          store.searchByEmbedding(queryEmbedding, autoConfig.candidateCount ?? 30, { bm25Weight: 0.4 }),
+          store.searchByEmbedding(queryEmbedding, autoConfig.candidateCount ?? 30, {
+            bm25Weight: 0.4,
+            maxLevel: 0,
+            categoryFilter: "semantic",
+          }),
         ]);
 
         if (candidates.length === 0 && relevantSkills.length === 0 && relevantPlaybooks.length === 0) {
@@ -221,7 +225,11 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         }
 
         const filtered = candidates.filter(c =>
-          !c.label?.startsWith("rule:") && c.type !== "skill"
+          !c.label?.startsWith("rule:") &&
+          c.type !== "skill" &&
+          (c.level ?? 0) === 0 &&
+          c.category === "semantic" &&
+          (c.scope === "global" || c.projectName === deps.store.projectName)
         );
 
         // Deduplicate against already-injected nodes in this session

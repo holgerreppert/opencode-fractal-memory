@@ -48,6 +48,12 @@ export interface MemConfig {
     positiveBoost: number;
     negativePenalty: number;
   };
+  autoConsolidate?: {
+    enabled: boolean;
+    similarityThreshold: number;
+    maxFactsPerCluster: number;
+    minClusterSize: number;
+  };
   autoDiscover?: {
     enabled: boolean;
     minSequenceLength: number;
@@ -97,6 +103,13 @@ const AutoDiscoverSchema = z.object({
   minSequenceLength: z.number().positive().int().default(3),
   minRepeatCount: z.number().positive().int().default(2),
   maxInjectPlaybooks: z.number().positive().int().default(3),
+});
+
+const AutoConsolidateSchema = z.object({
+  enabled: z.boolean().default(false),
+  similarityThreshold: z.number().min(0).max(1).default(0.3),
+  maxFactsPerCluster: z.number().positive().int().default(5),
+  minClusterSize: z.number().positive().int().default(2),
 });
 
 const PredictiveRatingSchema = z.object({
@@ -171,6 +184,12 @@ const DEFAULT_CONFIG: MemConfig = {
     minRepeatCount: 2,
     maxInjectPlaybooks: 3,
   },
+  autoConsolidate: {
+    enabled: false,
+    similarityThreshold: 0.3,
+    maxFactsPerCluster: 5,
+    minClusterSize: 2,
+  },
   journal: {
     enabled: false,
   },
@@ -198,6 +217,7 @@ const MemConfigSchema = z.object({
   autoDistill: AutoDistillSchema.optional(),
   predictiveRating: PredictiveRatingSchema.optional(),
   autoDiscover: AutoDiscoverSchema.optional(),
+  autoConsolidate: AutoConsolidateSchema.optional(),
   journal: JournalSchema.optional(),
   management: ManagementSchema.optional(),
 }).default(DEFAULT_CONFIG);

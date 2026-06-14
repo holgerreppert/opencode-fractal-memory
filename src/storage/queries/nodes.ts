@@ -69,7 +69,7 @@ function autoGenerateMetadata(type: string | null | undefined): Record<string, u
 
 function validateLabel(label: string): string {
   const trimmed = label.trim();
-  if (!/^[a-z0-9][a-z0-9-_:]{1,60}$/i.test(trimmed)) {
+  if (!/^[a-z0-9][a-z0-9-_:.]{1,60}$/i.test(trimmed)) {
     throw new Error(
       `Invalid label "${label}". Use letters/numbers/dash/underscore/colon (2-61 chars).`,
     );

@@ -122,7 +122,9 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "enabled": true,
     "candidateCount": 30,
     "maxInjectNodes": 5,
-    "maxInjectPlaybooks": 3
+    "maxInjectPlaybooks": 3,
+    "minQueryLength": 10,
+    "injectionCooldownMs": 30000
   },
   "ollama": {
     "enabled": false,
@@ -138,6 +140,12 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "enabled": false,
     "minLessons": 3,
     "useLlm": false
+  },
+  "autoConsolidate": {
+    "enabled": false,
+    "similarityThreshold": 0.3,
+    "maxFactsPerCluster": 5,
+    "minClusterSize": 2
   },
   "predictiveRating": {
     "enabled": false,
@@ -173,6 +181,8 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `autoRetrieve.candidateCount` | int | `30` | Number of candidates to fetch for injection |
 | `autoRetrieve.maxInjectNodes` | int | `5` | Max memory nodes to inject per turn |
 | `autoRetrieve.maxInjectPlaybooks` | int | `3` | Max matching playbooks to list |
+| `autoRetrieve.minQueryLength` | int | `10` | Min user message length to trigger injection |
+| `autoRetrieve.injectionCooldownMs` | int | `30000` | Min ms between injections (rate limit) |
 | `ollama.enabled` | bool | `false` | Use local LLM for reranking search results |
 | `ollama.baseUrl` | string | `http://localhost:11434` | Ollama server URL |
 | `ollama.model` | string | `qwen2.5-coder:1.5b` | Model for reranking |
@@ -183,6 +193,14 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `autoDistill.enabled` | bool | `false` | Auto-extract rules from lesson nodes |
 | `autoDistill.minLessons` | int | `3` | Min lessons before extraction |
 | `autoDistill.useLlm` | bool | `false` | Use LLM for more specific rules |
+| `autoDiscover.enabled` | bool | `false` | Auto-detect playbook patterns from tool call sequences |
+| `autoDiscover.minSequenceLength` | int | `3` | Min steps for a detected pattern |
+| `autoDiscover.minRepeatCount` | int | `2` | Min repeats to qualify as a pattern |
+| `autoDiscover.maxInjectPlaybooks` | int | `3` | Max proposed playbooks per detection |
+| `autoConsolidate.enabled` | bool | `false` | Extract semantic facts from episodic session clusters on idle |
+| `autoConsolidate.similarityThreshold` | float | `0.3` | Cosine similarity threshold for clustering episodic nodes |
+| `autoConsolidate.maxFactsPerCluster` | int | `5` | Max facts to extract per cluster |
+| `autoConsolidate.minClusterSize` | int | `2` | Min episodic nodes needed to form a cluster |
 | `predictiveRating.enabled` | bool | `false` | Auto-decay and boost node usefulness |
 | `predictiveRating.decayDays` | int | `30` | Days until usefulness decay (exponential half-life) |
 | `predictiveRating.confidenceThreshold` | float | `0.3` | Min confidence to count as relevant |
@@ -253,6 +271,42 @@ Periodically extracts actionable rules from `lesson`-type nodes created by `memo
 
 Set `useLlm: true` for LLM-generated rules instead of keyword extraction.
 
+### Episodic / Semantic Memory Categories
+
+Every memory node is auto-categorized on creation based on its type. This affects retrieval, decay, and consolidation:
+
+| Category | Types | Half-life | Search weight |
+|---|---|---|---|
+| **Episodic** | event, note, session, task, plan, exploration, debug-investigation, improvement, review | 7 days | 0.5× importance |
+| **Semantic** | concept, fact, lesson, rule:*, decision, architecture, howto, preference, convention, skill, playbook, knowledge, research, core, summary, bug, fix, etc. | 365 days | 1.0× importance |
+
+- **Episodic** nodes decay fast and are weighted lower in search — they represent session-level traces.
+- **Semantic** nodes persist long-term and are boosted in search — they represent learned knowledge.
+- Use `category_filter` on `memory_search` to scope searches (e.g. `memory_search(category_filter="semantic")`).
+- Dashboard shows the category distribution.
+
+### Consolidation
+
+When a session goes idle, `autoConsolidate` extracts semantic facts from episodic clusters and promotes them to `type: "fact"` nodes. This creates a bridge from ephemeral session traces to long-term knowledge:
+
+```json
+{
+  "autoConsolidate": {
+    "enabled": true,
+    "similarityThreshold": 0.3,
+    "maxFactsPerCluster": 5,
+    "minClusterSize": 2
+  }
+}
+```
+
+How it works:
+1. Collects all episodic nodes created during the session
+2. Clusters them by cosine similarity of their embeddings
+3. Extracts declarative statements (uses "is"/"has"/"uses"/"defines" patterns)
+4. Creates new `type: "fact"` semantic nodes with `parentIds` pointing back to source episodic nodes
+5. Facts persist with full semantic weight and long decay half-life (365 days)
+
 ### Predictive Rating
 
 Automatically adjusts node usefulness scores over time. Frequently accessed nodes get boosted; nodes that haven't been touched in `decayDays` get gradually decayed:
@@ -278,12 +332,13 @@ Automatically adjusts node usefulness scores over time. Frequently accessed node
 | `memory_set` | Create or update a memory node |
 | `memory_get` | Get a single node by ID or label |
 | `memory_fetch` | Fetch a node by exact label |
-| `memory_search` | Search nodes by text, embedding, or BM25 |
+| `memory_search` | Search nodes by text, embedding, or BM25 — supports `category_filter`, `expand_links`, `expand_temporal` |
 | `memory_delete` | Delete a node by ID or label |
 | `memory_list` | List nodes with optional scope/level filters |
 | `memory_replace` | Replace content in a memory node |
 | `memory_rate` | Rate a node's usefulness (helps ranking) |
 | `memory_prune` | Find and remove stale/unused nodes |
+| `memory_temporal_edges` | Inspect temporal edges between nodes (conversation flow) |
 | `memory_inject` | Inject relevant memories into the prompt with token budgeting |
 | `memory_injection_debug` | Show what was injected in the last session |
 | `memory_injection_feedback` | Rate injected memory usefulness |
@@ -554,6 +609,21 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
+
+### v0.6.24 (2026-06-14)
+- **Episodic / Semantic memory categories** — all nodes auto-categorized on creation. Episodic types (event, session, task, etc.) decay with 7-day half-life and 0.5× search weight. Semantic types (concept, fact, lesson, rule, etc.) decay with 365-day half-life and 1.0× search weight. Dashboard shows category distribution; search/drilldown show `[episodic]`/`[semantic]` tags; `category_filter` arg on `memory_search`.
+- **Consolidation bridge** — `autoConsolidate` extracts semantic facts from episodic clusters on `session.idle` and stores them as persistent `type: "fact"` nodes with `parentIds` back to source nodes. New `"fact"` node type added.
+- **Auto-retrieve relevance filters** — `maxLevel: 0` blocks L1+ compression summaries from injection; `categoryFilter: "semantic"` blocks episodic session traces. Config gains `minQueryLength` and `injectionCooldownMs`.
+- **Auto-retrieve dedup + rate limit** — session-level injection cache (prevents re-injecting same node IDs), query similarity skip (cosine > 0.95 skips re-injection), 30s cooldown, short message bypass (`minQueryLength=10`), skills cache with 5-minute TTL.
+- **Migration v23** — adds `category` column to `memory_nodes` with index.
+- **Bug fix: file summary UNIQUE constraint race** — concurrent file reads of the same path can collide on `(scope, label)` UNIQUE constraint. Now catches the error and falls back to `updateNode`.
+- **`memory_temporal_edges` tool** — inspect temporal edges (conversation flow) between nodes.
+- **`category_filter` arg** added to `memory_search` and `category_filter` option to `memory_drilldown`.
+- **Cross-project auto-retrieve pollution fix** — added `(scope === "global" || projectName === currentProject)` post-search filter in auto-retrieve hook. Prevents nodes from other projects being injected into the current session.
+- **`memory_list scope=project` auto-scopes to current project** — `memory_list scope=project` now defaults `project_name` to the current project, avoiding confusing cross-project node listings. To see all projects, pass `project_name=""` explicitly.
+- **Management UI project dropdown** — replaced button-based project filter with a `<select>` dropdown for cleaner project selection.
+- **Management API `?project_name=` support** — `/api/nodes`, `/api/links`, `/api/stats` accept optional `project_name` query param for server-side filtering.
+- **Fix: `validateLabel` rejects periods in file labels** — `validateLabel()` regex now allows `.` characters, fixing file summary UNIQUE constraint recovery for files with extensions (e.g. `file:sqlite.ts:5zc`).
 
 ### v0.6.23 (2026-06-08)
 - **Backup/Restore** — new Backup tab in the management UI. Create timestamped snapshots of config, global DB, and project DB. Restore with per-source selection; pre-restore safety backup auto-created. Backups stored as flat directories at `~/.config/opencode/backups/` — zero external deps.

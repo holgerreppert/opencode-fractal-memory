@@ -2,7 +2,7 @@ export type MemoryScope = "global" | "project";
 
 export type MemoryNodeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook";
+export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact";
 
 export type MemoryCategory = "episodic" | "semantic";
 

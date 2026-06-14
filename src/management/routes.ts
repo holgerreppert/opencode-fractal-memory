@@ -16,17 +16,20 @@ function handleScopes(): Response {
   return jsonResponse(getAvailableScopes());
 }
 
-function handleNodes(ctx: { scope: string }): Response {
-  return jsonResponse(queryNodes(ctx.scope));
+function handleNodes(ctx: { scope: string; url: URL }): Response {
+  const projectName = ctx.url.searchParams.get("project_name") || undefined;
+  return jsonResponse(queryNodes(ctx.scope, projectName));
 }
 
-function handleLinks(ctx: { scope: string }): Response {
-  const nodes = queryNodes(ctx.scope);
+function handleLinks(ctx: { scope: string; url: URL }): Response {
+  const projectName = ctx.url.searchParams.get("project_name") || undefined;
+  const nodes = queryNodes(ctx.scope, projectName);
   return jsonResponse(extractLinks(nodes));
 }
 
-function handleStats(ctx: { scope: string }): Response {
-  const nodes = queryNodes(ctx.scope);
+function handleStats(ctx: { scope: string; url: URL }): Response {
+  const projectName = ctx.url.searchParams.get("project_name") || undefined;
+  const nodes = queryNodes(ctx.scope, projectName);
   return jsonResponse(computeStats(nodes));
 }
 

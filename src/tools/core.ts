@@ -42,7 +42,8 @@ export function MemoryList(store: MemoryStore) {
     async execute(args) {
       const scope = (args.scope ?? "all") as MemoryScope | "all";
       const level = args.level as import("../memory").MemoryNodeLevel | undefined;
-      const nodes = await store.listNodes(scope, level, undefined, undefined, undefined, args.project_name);
+      const projectName = args.project_name ?? (scope === "project" ? store.projectName : undefined);
+      const nodes = await store.listNodes(scope, level, undefined, undefined, undefined, projectName);
       if (nodes.length === 0) {
         return "No memory nodes found.";
       }

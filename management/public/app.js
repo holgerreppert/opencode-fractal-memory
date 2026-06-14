@@ -18,12 +18,43 @@ const TYPE_SHAPES = {
   howto: "sphere",
   skill: "icosahedron",
   playbook: "torus",
+  fact: "octahedron",
+  lesson: "dodecahedron",
+  rule: "icosahedron",
+  decision: "dodecahedron",
+  architecture: "box",
+  preference: "sphere",
+  convention: "box",
+  knowledge: "octahedron",
+  research: "octahedron",
+  bug: "box",
+  fix: "box",
+  plan: "torus",
+  task: "sphere",
+  exploration: "box",
+  "debug-investigation": "box",
+  review: "sphere",
+  session: "sphere",
+  playbook_version: "torus",
   unknown: "sphere",
 };
 
 const TYPE_COLORS = {
   skill: 0xfbbf24,
   playbook: 0xff8c00,
+  fact: 0x34d399,
+  lesson: 0xa78bfa,
+  rule: 0xf472b6,
+  decision: 0xfb923c,
+  architecture: 0x4a9eff,
+  concept: 0x34d399,
+  core: 0xfbbf24,
+  knowledge: 0x34d399,
+  research: 0x34d399,
+  howto: 0x4a9eff,
+  summary: 0xfb923c,
+  bug: 0xff6b6b,
+  fix: 0x34d399,
 };
 
 const CUSTOM_TYPE_COLORS = {
@@ -60,7 +91,7 @@ class NodeFilterEngine {
     Object.keys(stats.nodesPerType || {}).sort().forEach(t => this.types.add(t));
     Object.keys(stats.nodesPerCustomType || {}).sort().forEach(ct => this.customTypes.add(ct));
     Object.keys(stats.nodesPerShape || {}).sort().forEach(s => this.shapes.add(s));
-    Object.keys(stats.nodesPerProject || {}).sort().forEach(p => this.projects.add(p));
+    // projects are managed by dropdown, not auto-populated
   }
 
   toggleLevel(v) { this._toggle(this.levels, v); this.changed(); }
@@ -603,6 +634,7 @@ let linkData = [];
 let statsData = null;
 let editingNode = null;
 let currentScope = "project";
+let currentProject = "";
 let availableScopes = [];
 
 // ==================== Init ====================
@@ -673,8 +705,25 @@ function setupEventListeners() {
 
   // Consolidated filter button handler
   document.getElementById("sidebar").addEventListener("click", (e) => {
-    const btn = e.target.closest(".filter-btn");
+      const btn = e.target.closest(".filter-btn");
     if (!btn) return;
+
+    if (btn.dataset.selectAll !== undefined) {
+      const category = btn.dataset.selectAll;
+      const container = btn.parentElement;
+      container.querySelectorAll(".filter-btn:not(.select-all-btn)").forEach(b => {
+        const val = b.dataset.level || b.dataset.type || b.dataset.customType || b.dataset.shape || b.dataset.project;
+        if (!val) return;
+        if (category === "level") filterEngine.levels.add(parseInt(val));
+        else if (category === "type") filterEngine.types.add(val);
+        else if (category === "customType") filterEngine.customTypes.add(val);
+        else if (category === "shape") filterEngine.shapes.add(val);
+        else if (category === "project") filterEngine.projects.add(val);
+        b.classList.add("active");
+      });
+      sceneCtrl.updateVisibility(filterEngine);
+      return;
+    }
 
     if (btn.dataset.scope !== undefined) {
       const scope = btn.dataset.scope;
@@ -712,7 +761,17 @@ function setupEventListeners() {
     filterEngine.setServerSearchIds(null);
     document.getElementById("search-input").value = "";
     document.getElementById("search-info").textContent = "";
+    currentProject = "";
+    document.getElementById("project-dropdown").value = "";
     buildFilters();
+    sceneCtrl.updateVisibility(filterEngine);
+  });
+
+  // Project dropdown
+  document.getElementById("project-dropdown").addEventListener("change", (e) => {
+    currentProject = e.target.value;
+    filterEngine.projects.clear();
+    if (currentProject) filterEngine.projects.add(currentProject);
     sceneCtrl.updateVisibility(filterEngine);
   });
 
@@ -937,24 +996,27 @@ function buildFilters() {
   // Level filters
   const levels = Object.keys(statsData.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
   const levelContainer = document.getElementById("level-filters");
-  levelContainer.innerHTML = levels.map(l =>
-    `<button class="filter-btn active" data-level="${l}">L${l} (${statsData.nodesPerLevel[l]})</button>`
-  ).join("");
+  levelContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="level">All</button>` +
+    levels.map(l =>
+      `<button class="filter-btn active" data-level="${l}">L${l} (${statsData.nodesPerLevel[l]})</button>`
+    ).join("");
 
   // Type filters
   const types = Object.keys(statsData.nodesPerType || {}).sort();
   const typeContainer = document.getElementById("type-filters");
-  typeContainer.innerHTML = types.map(t =>
-    `<button class="filter-btn active" data-type="${t}">${t} (${statsData.nodesPerType[t]})</button>`
-  ).join("");
+  typeContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="type">All</button>` +
+    types.map(t =>
+      `<button class="filter-btn active" data-type="${t}">${t} (${statsData.nodesPerType[t]})</button>`
+    ).join("");
 
   // Custom type filters
   const customTypes = Object.keys(statsData.nodesPerCustomType || {}).sort();
   const customTypeContainer = document.getElementById("custom-type-filters");
   if (customTypeContainer) {
-    customTypeContainer.innerHTML = customTypes.map(ct =>
-      `<button class="filter-btn active" data-custom-type="${ct}">${ct} (${statsData.nodesPerCustomType[ct]})</button>`
-    ).join("");
+    customTypeContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="customType">All</button>` +
+      customTypes.map(ct =>
+        `<button class="filter-btn active" data-custom-type="${ct}">${ct} (${statsData.nodesPerCustomType[ct]})</button>`
+      ).join("");
   }
 
   // Shape filters
@@ -965,19 +1027,23 @@ function buildFilters() {
       sphere: "Sphere", box: "Box", octahedron: "Octahedron",
       dodecahedron: "Dodecahedron", icosahedron: "Icosahedron", torus: "Torus",
     };
-    shapeContainer.innerHTML = shapes.map(s =>
-      `<button class="filter-btn active" data-shape="${s}">${shapeLabels[s] || s} (${statsData.nodesPerShape[s]})</button>`
-    ).join("");
+    shapeContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="shape">All</button>` +
+      shapes.map(s =>
+        `<button class="filter-btn active" data-shape="${s}">${shapeLabels[s] || s} (${statsData.nodesPerShape[s]})</button>`
+      ).join("");
   }
 
-  // Project filters
+  // Project dropdown
   const projects = Object.keys(statsData.nodesPerProject || {}).sort();
-  const projectContainer = document.getElementById("project-filters");
-  if (projectContainer && projects.length > 1) {
-    projectContainer.closest(".section").style.display = "block";
-    projectContainer.innerHTML = projects.map(p =>
-      `<button class="filter-btn active" data-project="${p}">${p} (${statsData.nodesPerProject[p]})</button>`
-    ).join("");
+  const dropdown = document.getElementById("project-dropdown");
+  const projectSection = dropdown && dropdown.closest(".section");
+  if (projects.length > 1 && projectSection) {
+    projectSection.style.display = "block";
+    dropdown.innerHTML = `<option value="">All Projects</option>` +
+      projects.map(p =>
+        `<option value="${p}">${p} (${statsData.nodesPerProject[p]})</option>`
+      ).join("");
+    dropdown.value = currentProject || "";
   }
 }
 
@@ -991,13 +1057,14 @@ function buildLegend() {
       html += `<div class="legend-item"><div class="legend-dot" style="background: ${hex}"></div><span class="legend-label">Level ${level}</span></div>`;
     }
   }
-  html += `<div style="margin-top: 10px;">`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 50%;"></div><span class="legend-label">Sphere = Note</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Event/Episode</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Diamond = Concept/Summary</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Pentagon = Skill</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus = Playbook</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus = Middle-Term</span></div>`;
+  html += `<div style="margin-top: 10px; font-weight: bold; color: #aaa;">Shapes by type:</div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 50%;"></div><span class="legend-label">Sphere = Note / Task / Session / Preference</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Event / Episode / Architecture / Convention / Bug / Fix</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #34d399; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Octahedron = Fact / Concept / Knowledge / Research</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #a78bfa; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);"></div><span class="legend-label">Dodecahedron = Lesson / Decision</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #f472b6; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Icosahedron = Skill / Rule</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus (orange) = Playbook</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus (red) = Middle-Term</span></div>`;
   html += `</div>`;
   legend.innerHTML = html;
 }
@@ -1616,6 +1683,8 @@ async function loadSettings() {
     document.getElementById('autoRetrieve-candidateCount').value = config.autoRetrieve?.candidateCount ?? 30;
     document.getElementById('autoRetrieve-maxInjectNodes').value = config.autoRetrieve?.maxInjectNodes ?? 5;
     document.getElementById('autoRetrieve-maxInjectPlaybooks').value = config.autoRetrieve?.maxInjectPlaybooks ?? 3;
+    document.getElementById('autoRetrieve-minQueryLength').value = config.autoRetrieve?.minQueryLength ?? 10;
+    document.getElementById('autoRetrieve-injectionCooldownMs').value = config.autoRetrieve?.injectionCooldownMs ?? 30000;
     document.getElementById('autoFileSummarization-enabled').value = String(config.autoFileSummarization?.enabled ?? false);
     document.getElementById('ollama-enabled').value = String(config.ollama?.enabled ?? false);
     document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
@@ -1636,6 +1705,10 @@ async function loadSettings() {
     document.getElementById('autoDiscover-minSequenceLength').value = config.autoDiscover?.minSequenceLength ?? 3;
     document.getElementById('autoDiscover-minRepeatCount').value = config.autoDiscover?.minRepeatCount ?? 2;
     document.getElementById('autoDiscover-maxInjectPlaybooks').value = config.autoDiscover?.maxInjectPlaybooks ?? 3;
+    document.getElementById('autoConsolidate-enabled').value = String(config.autoConsolidate?.enabled ?? false);
+    document.getElementById('autoConsolidate-similarityThreshold').value = config.autoConsolidate?.similarityThreshold ?? 0.3;
+    document.getElementById('autoConsolidate-maxFactsPerCluster').value = config.autoConsolidate?.maxFactsPerCluster ?? 5;
+    document.getElementById('autoConsolidate-minClusterSize').value = config.autoConsolidate?.minClusterSize ?? 2;
     document.getElementById('journal-enabled').value = String(config.journal?.enabled ?? false);
     document.getElementById('management-enabled').value = String(config.management?.enabled ?? false);
     document.getElementById('management-port').value = config.management?.port ?? 8787;
@@ -1660,6 +1733,8 @@ async function saveSettings() {
       candidateCount: parseInt(document.getElementById('autoRetrieve-candidateCount').value) || 30,
       maxInjectNodes: parseInt(document.getElementById('autoRetrieve-maxInjectNodes').value) || 5,
       maxInjectPlaybooks: parseInt(document.getElementById('autoRetrieve-maxInjectPlaybooks').value) || 3,
+      minQueryLength: parseInt(document.getElementById('autoRetrieve-minQueryLength').value) || 10,
+      injectionCooldownMs: parseInt(document.getElementById('autoRetrieve-injectionCooldownMs').value) || 30000,
     },
     autoFileSummarization: {
       enabled: document.getElementById('autoFileSummarization-enabled').value === 'true',
@@ -1692,6 +1767,12 @@ async function saveSettings() {
       minSequenceLength: parseInt(document.getElementById('autoDiscover-minSequenceLength').value) || 3,
       minRepeatCount: parseInt(document.getElementById('autoDiscover-minRepeatCount').value) || 2,
       maxInjectPlaybooks: parseInt(document.getElementById('autoDiscover-maxInjectPlaybooks').value) || 3,
+    },
+    autoConsolidate: {
+      enabled: document.getElementById('autoConsolidate-enabled').value === 'true',
+      similarityThreshold: parseFloat(document.getElementById('autoConsolidate-similarityThreshold').value) || 0.3,
+      maxFactsPerCluster: parseInt(document.getElementById('autoConsolidate-maxFactsPerCluster').value) || 5,
+      minClusterSize: parseInt(document.getElementById('autoConsolidate-minClusterSize').value) || 2,
     },
     journal: {
       enabled: document.getElementById('journal-enabled').value === 'true',

@@ -2,7 +2,7 @@ import type { MemoryStore, MemoryScope } from "../storage/sqlite";
 import type { MemConfig } from "../config";
 import { memLog, memLogSimple, setSessionId } from "../logging";
 import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "../file-summary";
-import { distillRules, predictiveRateToolCall, applyScoreDecay } from "../hooks";
+import { distillRules, runConsolidation, predictiveRateToolCall, applyScoreDecay } from "../hooks";
 import * as fs from "node:fs";
 import type { CachedMemoryNode } from "../cache";
 
@@ -159,18 +159,33 @@ export function createHookHandlers(
           await store.updateNode(existingNode.id, { content });
           memLog("debug", "file-summary", "Updated file memory", { label: shortLabel, fileName });
         } else {
-          await store.createNode({
-            scope: "project",
-            label: shortLabel,
-            content,
-            type: "note",
-            level: 0,
-            parentIds: null,
-            embedding: null,
-            importance: 0.7,
-            usefulnessScore: 0.3,
-          });
-          memLog("info", "file-summary", "Stored file memory", { label: shortLabel, fileName });
+          try {
+            await store.createNode({
+              scope: "project",
+              label: shortLabel,
+              content,
+              type: "note",
+              level: 0,
+              parentIds: null,
+              embedding: null,
+              importance: 0.7,
+              usefulnessScore: 0.3,
+            });
+            memLog("info", "file-summary", "Stored file memory", { label: shortLabel, fileName });
+          } catch (createErr) {
+            const errMsg = String(createErr);
+            if (errMsg.includes("UNIQUE constraint")) {
+              try {
+                const fallback = await store.getNodeByLabel("project", shortLabel);
+                await store.updateNode(fallback.id, { content });
+                memLog("debug", "file-summary", "Recovered from race: updated file memory", { label: shortLabel, fileName });
+              } catch {
+                memLog("warn", "file-summary", "Failed to recover from UNIQUE constraint", { label: shortLabel, error: errMsg });
+              }
+            } else {
+              throw createErr;
+            }
+          }
         }
       } catch (err) {
         memLog("warn", "file-summary", "Failed to store file memory", { error: String(err) });
@@ -194,6 +209,14 @@ export function createHookHandlers(
             memLog("info", "auto-distill", msg)
           ).catch(err =>
             memLog("error", "auto-distill", "Failed", { error: String(err) })
+          );
+        }
+
+        if (memConfig?.autoConsolidate?.enabled) {
+          runConsolidation(store, memConfig.autoConsolidate, sessionId).then(msg =>
+            memLog("info", "consolidation", msg)
+          ).catch(err =>
+            memLog("error", "consolidation", "Failed", { error: String(err) })
           );
         }
 

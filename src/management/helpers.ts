@@ -86,18 +86,24 @@ export function rowToNode(r: any) {
   };
 }
 
-export function queryNodes(scope: string) {
+export function queryNodes(scope: string, projectName?: string) {
   const db = openDb(scope);
   if (!db) return [];
-  const rows = db.query(`
+  let sql = `
     SELECT id, label, content, summary, level, type, importance,
            usefulness_score, times_used, times_helpful, access_count,
            sticky, confidence, created_at, updated_at, parent_ids,
            LENGTH(content) as content_length, metadata, project_name
     FROM memory_nodes
     WHERE scope = ?
-    ORDER BY level, importance DESC
-  `).all(scope);
+  `;
+  const params: (string | number)[] = [scope];
+  if (projectName) {
+    sql += ` AND project_name = ?`;
+    params.push(projectName);
+  }
+  sql += ` ORDER BY level, importance DESC`;
+  const rows = db.query(sql).all(...params);
   db.close();
   return rows.map((r: any) => rowToNode(r));
 }
