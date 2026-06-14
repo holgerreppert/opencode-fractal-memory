@@ -183,14 +183,14 @@ export async function queryCreateNode(
   const now = Date.now();
   const id = randomUUID();
   const sticky = node.type === "skill" ? 1 : (node.sticky ? 1 : 0);
-  const ttlDays = node.ttlDays ?? null;
+  const resolvedCategory = node.category !== undefined ? node.category : resolveNodeCategory(node.type ?? null);
+  const ttlDays = node.ttlDays ?? (resolvedCategory === "episodic" ? 30 : null);
   const expiresAt = ttlDays ? now + ttlDays * 86400000 : null;
   const confidence = node.confidence ?? 0.5;
   const usefulnessScore = node.usefulnessScore ?? 0;
   const timesUsed = node.timesUsed ?? 0;
   const timesHelpful = node.timesHelpful ?? 0;
   const resolvedMetadata = node.metadata ?? autoGenerateMetadata(node.type ?? null);
-  const resolvedCategory = node.category !== undefined ? node.category : resolveNodeCategory(node.type ?? null);
 
   db.run(
     "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, category, metadata, sticky, ttl_days, expires_at, confidence, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

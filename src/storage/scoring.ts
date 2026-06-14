@@ -3,12 +3,16 @@ import type { MemoryScope, MemoryNode } from "./types";
 import { withRetry } from "./utils";
 import { memLog } from "../logging";
 
+const EPISODIC_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
+const SEMANTIC_HALF_LIFE_MS = 365 * 24 * 60 * 60 * 1000;
+
 export async function runScoreDecay(
   getDb: (scope: MemoryScope) => Promise<Database>,
   decayDays: number
 ): Promise<number> {
   const now = Date.now();
-  const cutoffMs = now - decayDays * 24 * 60 * 60 * 1000;
+  const defaultHalfLifeMs = decayDays * 24 * 60 * 60 * 1000;
+  const cutoffMs = now - defaultHalfLifeMs;
   let total = 0;
 
   for (const scope of ["global", "project"] as MemoryScope[]) {
@@ -16,17 +20,17 @@ export async function runScoreDecay(
     const result = await withRetry(() => {
       return db.run(
         `UPDATE memory_nodes SET
-           usefulness_score = MAX(0.1, usefulness_score * POW(0.5, (? - COALESCE(last_accessed, updated_at)) / (? * 86400000.0))),
+           usefulness_score = MAX(0.1, usefulness_score * POW(0.5, (? - COALESCE(last_accessed, updated_at)) / (CASE category WHEN 'episodic' THEN ? WHEN 'semantic' THEN ? ELSE ? END))),
            updated_at = ?
          WHERE COALESCE(last_accessed, updated_at) < ? AND usefulness_score > 0.1 AND (type IS NULL OR type NOT IN ('skill', 'lesson', 'rule', 'playbook'))`,
-        [now, decayDays, now, cutoffMs]
+        [now, EPISODIC_HALF_LIFE_MS, SEMANTIC_HALF_LIFE_MS, defaultHalfLifeMs, now, cutoffMs]
       );
     });
     total += Number(result.changes ?? 0);
   }
 
   if (total > 0) {
-    memLog("info", "score-decay", `Decayed ${total} nodes via exponential half-life (${decayDays}d)`);
+    memLog("info", "score-decay", `Decayed ${total} nodes: episodic(7d) semantic(365d) default(${decayDays}d)`);
   }
   return total;
 }
