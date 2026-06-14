@@ -141,7 +141,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
   },
   "predictiveRating": {
     "enabled": false,
-    "decayDays": 7,
+    "decayDays": 30,
     "confidenceThreshold": 0.3,
     "positiveBoost": 0.1,
     "negativePenalty": 0.05
@@ -184,7 +184,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `autoDistill.minLessons` | int | `3` | Min lessons before extraction |
 | `autoDistill.useLlm` | bool | `false` | Use LLM for more specific rules |
 | `predictiveRating.enabled` | bool | `false` | Auto-decay and boost node usefulness |
-| `predictiveRating.decayDays` | int | `7` | Days until usefulness decay |
+| `predictiveRating.decayDays` | int | `30` | Days until usefulness decay (exponential half-life) |
 | `predictiveRating.confidenceThreshold` | float | `0.3` | Min confidence to count as relevant |
 | `predictiveRating.positiveBoost` | float | `0.1` | Usefulness boost on positive rate |
 | `predictiveRating.negativePenalty` | float | `0.05` | Usefulness penalty on negative rate |
@@ -261,7 +261,7 @@ Automatically adjusts node usefulness scores over time. Frequently accessed node
 {
   "predictiveRating": {
     "enabled": true,
-    "decayDays": 7,
+    "decayDays": 30,
     "confidenceThreshold": 0.3,
     "positiveBoost": 0.1,
     "negativePenalty": 0.05

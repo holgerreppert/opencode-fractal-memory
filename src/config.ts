@@ -97,7 +97,7 @@ const AutoDiscoverSchema = z.object({
 
 const PredictiveRatingSchema = z.object({
   enabled: z.boolean().default(false),
-  decayDays: z.number().positive().default(7),
+  decayDays: z.number().positive().default(30),
   confidenceThreshold: z.number().min(0).max(1).default(0.3),
   positiveBoost: z.number().min(0).max(1).default(0.1),
   negativePenalty: z.number().min(0).max(1).default(0.05),
@@ -154,7 +154,7 @@ const DEFAULT_CONFIG: MemConfig = {
   },
   predictiveRating: {
     enabled: false,
-    decayDays: 7,
+    decayDays: 30,
     confidenceThreshold: 0.3,
     positiveBoost: 0.1,
     negativePenalty: 0.05,

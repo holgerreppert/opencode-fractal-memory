@@ -168,6 +168,7 @@ export function createHookHandlers(
             parentIds: null,
             embedding: null,
             importance: 0.7,
+            usefulnessScore: 0.3,
           });
           memLog("info", "file-summary", "Stored file memory", { label: shortLabel, fileName });
         }

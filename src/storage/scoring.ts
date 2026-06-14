@@ -9,7 +9,6 @@ export async function runScoreDecay(
 ): Promise<number> {
   const now = Date.now();
   const cutoffMs = now - decayDays * 24 * 60 * 60 * 1000;
-  const msPerDay = 24 * 60 * 60 * 1000;
   let total = 0;
 
   for (const scope of ["global", "project"] as MemoryScope[]) {
@@ -17,17 +16,17 @@ export async function runScoreDecay(
     const result = await withRetry(() => {
       return db.run(
         `UPDATE memory_nodes SET
-           usefulness_score = MAX(0, usefulness_score - MIN(1.0, (? - COALESCE(last_accessed, updated_at)) / ?) * 0.5),
+           usefulness_score = MAX(0.1, usefulness_score * POW(0.5, (? - COALESCE(last_accessed, updated_at)) / (? * 86400000.0))),
            updated_at = ?
-         WHERE COALESCE(last_accessed, updated_at) < ? AND usefulness_score > 0 AND (type IS NULL OR type != 'skill')`,
-        [now, decayDays * msPerDay, now, cutoffMs]
+         WHERE COALESCE(last_accessed, updated_at) < ? AND usefulness_score > 0.1 AND (type IS NULL OR type NOT IN ('skill', 'lesson', 'rule', 'playbook'))`,
+        [now, decayDays, now, cutoffMs]
       );
     });
     total += Number(result.changes ?? 0);
   }
 
   if (total > 0) {
-    memLog("info", "score-decay", `Decayed ${total} nodes via SQL`);
+    memLog("info", "score-decay", `Decayed ${total} nodes via exponential half-life (${decayDays}d)`);
   }
   return total;
 }

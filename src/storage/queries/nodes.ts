@@ -5,6 +5,51 @@ import { blobToEmbedding, embeddingToBlob, rowToNode } from "./base";
 import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, CreateNodeInput } from "../types";
 import { getHNSWIndex } from "../../hnsw-index";
 
+const TYPE_METADATA: Record<string, Record<string, unknown>> = {
+  note:                { tags: ["auto-generated"], customType: "note" },
+  summary:             { tags: ["compressed"] },
+  lesson:              { tags: ["lesson-auto"] },
+  plan:                { tags: ["auto-generated"], customType: "plan" },
+  playbook:            { tags: ["playbook"] },
+  event:               { tags: ["event"] },
+  task:                { tags: ["task"] },
+  research:            { tags: ["research"] },
+  project:             { tags: ["project"] },
+  implementation:      { tags: ["implementation"] },
+  bug:                 { tags: ["bug"] },
+  pref:                { tags: ["preference"] },
+  howto:               { tags: ["howto"] },
+  core:                { tags: ["core", "compressed"] },
+  technical:           { tags: ["technical"] },
+  session:             { tags: ["session"] },
+  legal:               { tags: ["legal"] },
+  knowledge:           { tags: ["knowledge"] },
+  improvement:         { tags: ["improvement"] },
+  decision:            { tags: ["decision"] },
+  "best-practices":    { tags: ["best-practices"] },
+  audit:               { tags: ["audit"] },
+  architecture:        { tags: ["architecture"] },
+  analysis:            { tags: ["analysis"] },
+  "rule:mandatory":    { tags: ["rule", "mandatory"] },
+  review:              { tags: ["review"] },
+  "project-history":   { tags: ["project-history"] },
+  preference:          { tags: ["preference"] },
+  idea:                { tags: ["idea"] },
+  fix:                 { tags: ["fix"] },
+  fact:                { tags: ["fact"] },
+  exploration:         { tags: ["exploration"] },
+  "debug-investigation": { tags: ["debug"] },
+  convention:          { tags: ["convention"] },
+  config:              { tags: ["config"] },
+  concept:             { tags: ["concept"] },
+  skill:               { tags: ["skill"] },
+};
+
+function autoGenerateMetadata(type: string | null | undefined): Record<string, unknown> | null {
+  if (!type) return { tags: ["untyped"] };
+  return TYPE_METADATA[type] ?? { tags: [type] };
+}
+
 function validateLabel(label: string): string {
   const trimmed = label.trim();
   if (!/^[a-z0-9][a-z0-9-_:]{1,60}$/i.test(trimmed)) {
@@ -121,6 +166,7 @@ export async function queryCreateNode(
   const usefulnessScore = node.usefulnessScore ?? 0;
   const timesUsed = node.timesUsed ?? 0;
   const timesHelpful = node.timesHelpful ?? 0;
+  const resolvedMetadata = node.metadata ?? autoGenerateMetadata(node.type ?? null);
 
   db.run(
     "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, ttl_days, expires_at, confidence, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -140,7 +186,7 @@ export async function queryCreateNode(
       0,
       null,
       node.type ?? null,
-      node.metadata ? JSON.stringify(node.metadata) : null,
+      resolvedMetadata ? JSON.stringify(resolvedMetadata) : null,
       sticky,
       ttlDays,
       expiresAt,

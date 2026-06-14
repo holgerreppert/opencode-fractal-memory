@@ -10,7 +10,7 @@ import * as tools from "../tools";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { memLog } from "../logging";
 import { setCacheConfig } from "../cache";
-import { setContextLimit, setHighContextThreshold, setCriticalContextThreshold, setMaxInjectionTokens, setCoreInjectionTokens, setAutoCompressThreshold } from "./state";
+import { setContextLimit, setHighContextThreshold, setCriticalContextThreshold, setMaxInjectionTokens, setCoreInjectionTokens, setAutoCompressThreshold, cleanupMiddleTermCaptures } from "./state";
 
 export async function initStorage(directory: string): Promise<MemoryStore> {
   memLog("info", "init", "Creating memory store", { directory });
@@ -26,6 +26,8 @@ export async function initStorage(directory: string): Promise<MemoryStore> {
   await ensureAgentFiles().catch(() => {});
   memLog("info", "init", "Ensuring command files");
   await ensureCommandFiles().catch(() => {});
+  memLog("info", "init", "Cleaning up old middle-term captures");
+  await cleanupMiddleTermCaptures(store).catch(() => {});
   return store;
 }
 

@@ -1628,7 +1628,7 @@ async function loadSettings() {
     document.getElementById('autoDistill-minLessons').value = config.autoDistill?.minLessons ?? 3;
     document.getElementById('autoDistill-useLlm').value = String(config.autoDistill?.useLlm ?? false);
     document.getElementById('predictiveRating-enabled').value = String(config.predictiveRating?.enabled ?? false);
-    document.getElementById('predictiveRating-decayDays').value = config.predictiveRating?.decayDays ?? 7;
+    document.getElementById('predictiveRating-decayDays').value = config.predictiveRating?.decayDays ?? 30;
     document.getElementById('predictiveRating-confidenceThreshold').value = config.predictiveRating?.confidenceThreshold ?? 0.3;
     document.getElementById('predictiveRating-positiveBoost').value = config.predictiveRating?.positiveBoost ?? 0.1;
     document.getElementById('predictiveRating-negativePenalty').value = config.predictiveRating?.negativePenalty ?? 0.05;
@@ -1682,7 +1682,7 @@ async function saveSettings() {
     },
     predictiveRating: {
       enabled: document.getElementById('predictiveRating-enabled').value === 'true',
-      decayDays: parseFloat(document.getElementById('predictiveRating-decayDays').value) || 7,
+      decayDays: parseFloat(document.getElementById('predictiveRating-decayDays').value) || 30,
       confidenceThreshold: parseFloat(document.getElementById('predictiveRating-confidenceThreshold').value) || 0.3,
       positiveBoost: parseFloat(document.getElementById('predictiveRating-positiveBoost').value) || 0.1,
       negativePenalty: parseFloat(document.getElementById('predictiveRating-negativePenalty').value) || 0.05,
