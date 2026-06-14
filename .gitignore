@@ -5,6 +5,7 @@ models/
 memory.db
 *.tgz
 *.log
+*.bak
 .env
 .DS_Store
 session-*.md

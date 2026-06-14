@@ -2,8 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { MemoryNode, MemoryNodeLevel } from "../types";
 import { tokenize } from "../utils";
 import { estimateTokens } from "../../embeddings";
-
-const CHUNK_SIZE_TOKENS = 500;
+import { cosineSimilarity } from "../../math";const CHUNK_SIZE_TOKENS = 500;
 const OVERLAP_TOKENS = 50;
 
 export interface Chunk {
@@ -12,24 +11,6 @@ export interface Chunk {
   content: string;
   startToken: number;
   endToken: number;
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (!a || !b || a.length !== b.length) return 0;
-  
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  
-  for (let i = 0; i < a.length; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dotProduct += ai * bi;
-    normA += ai * ai;
-    normB += bi * bi;
-  }
-  
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 export function updateBM25Index(db: Database, nodeId: string, content: string, label: string | undefined, scope: string): void {
@@ -235,24 +216,57 @@ export function computeBM25ScoresSQL(
   const scores = new Map<string, number>();
   if (queryTerms.length === 0 || nodeIds.length === 0) return scores;
 
-  const totalDocs = (db.query("SELECT COUNT(*) as count FROM bm25_doc_stats WHERE scope = ?").get(scope) as { count: number } | undefined)?.count ?? 0;
+  // Batch 1: scope-level stats (single query instead of two)
+  const stats = db.query("SELECT COUNT(*) as count, AVG(token_count) as avg FROM bm25_doc_stats WHERE scope = ?").get(scope) as { count: number; avg: number } | undefined;
+  const totalDocs = stats?.count ?? 0;
+  const avgdl = stats?.avg ?? 0;
   if (totalDocs === 0) return scores;
 
-  const avgdl = (db.query("SELECT AVG(token_count) as avg FROM bm25_doc_stats WHERE scope = ?").get(scope) as { avg: number } | undefined)?.avg ?? 0;
+  // Batch 2: document frequency per term (moved outside node loop — same for all nodes)
+  const dfMap = new Map<string, number>();
+  for (const term of queryTerms) {
+    const df = (db.query("SELECT COUNT(DISTINCT node_id) as df FROM bm25_index WHERE term = ? AND scope = ?").get(term, scope) as { df: number } | undefined)?.df ?? 0;
+    if (df > 0) dfMap.set(term, df);
+  }
 
+  // Batch 3: all doc lengths in one query
+  const docLengthMap = new Map<string, number>();
+  const docLengthRows = db.query("SELECT node_id, token_count FROM bm25_doc_stats WHERE node_id IN (" + nodeIds.map(() => "?").join(",") + ")").all(...nodeIds) as { node_id: string; token_count: number }[];
+  for (const row of docLengthRows) {
+    docLengthMap.set(row.node_id, row.token_count);
+  }
+
+  // Batch 4: all frequencies in one query
+  const freqMap = new Map<string, number>();
+  const freqParams: string[] = [];
+  const freqConditions: string[] = [];
+  for (const nodeId of nodeIds) {
+    for (const term of queryTerms) {
+      freqConditions.push("(term = ? AND node_id = ?)");
+      freqParams.push(term, nodeId);
+    }
+  }
+  if (freqConditions.length > 0) {
+    const freqRows = db.query("SELECT term, node_id, frequency FROM bm25_index WHERE " + freqConditions.join(" OR ")).all(...freqParams) as { term: string; node_id: string; frequency: number }[];
+    for (const row of freqRows) {
+      freqMap.set(`${row.term}:${row.node_id}`, row.frequency);
+    }
+  }
+
+  // Compute scores from batch data (no more DB queries in loops)
   for (const nodeId of nodeIds) {
     let nodeScore = 0;
+    const docLength = docLengthMap.get(nodeId) ?? avgdl;
+
     for (const term of queryTerms) {
-      const tfRow = db.query("SELECT frequency FROM bm25_index WHERE term = ? AND node_id = ?").get(term, nodeId) as { frequency: number } | null;
-      if (!tfRow) continue;
+      const df = dfMap.get(term);
+      if (!df) continue;
 
-      const df = (db.query("SELECT COUNT(DISTINCT node_id) as df FROM bm25_index WHERE term = ? AND scope = ?").get(term, scope) as { df: number } | undefined)?.df ?? 0;
-      if (df === 0) continue;
-
-      const docLength = (db.query("SELECT token_count FROM bm25_doc_stats WHERE node_id = ?").get(nodeId) as { token_count: number } | undefined)?.token_count ?? avgdl;
+      const tf = freqMap.get(`${term}:${nodeId}`);
+      if (tf === undefined) continue;
 
       nodeScore += computeBM25TermScore({
-        termFrequency: tfRow.frequency,
+        termFrequency: tf,
         documentFrequency: df,
         documentLength: docLength,
         averageDocumentLength: avgdl,

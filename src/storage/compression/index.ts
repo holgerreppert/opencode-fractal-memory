@@ -1,5 +1,5 @@
 import type { MemoryNode, MemoryNodeLevel } from "../types";
-import { cosineSimilarity } from "../queries/search-helpers";
+import { cosineSimilarity } from "../../math";
 import {
   generateSummary,
   generateStructuredSummary,

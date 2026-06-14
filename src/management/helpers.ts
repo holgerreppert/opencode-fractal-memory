@@ -5,6 +5,8 @@ import { Database } from "bun:sqlite";
 import { generateEmbedding } from "../embeddings";
 import { memLog } from "../logging";
 
+const ALLOWED_SCOPES = new Set(["global", "project"]);
+
 export const DB_PATHS: Record<string, string> = {};
 
 export function initDbPaths(_projectDir: string) {
@@ -14,6 +16,7 @@ export function initDbPaths(_projectDir: string) {
 }
 
 export function openDb(scope: string): Database | null {
+  if (!ALLOWED_SCOPES.has(scope)) return null;
   const dbPath = DB_PATHS[scope] || scope;
   if (!Bun.file(dbPath).exists()) return null;
   const db = Database.open(dbPath);
@@ -97,18 +100,6 @@ export function queryNodes(scope: string) {
   `).all(scope);
   db.close();
   return rows.map((r: any) => rowToNode(r));
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length && i < b.length; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dot += ai * bi;
-    normA += ai * ai;
-    normB += bi * bi;
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
 export function extractLinks(nodes: any[]) {

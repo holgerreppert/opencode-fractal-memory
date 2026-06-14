@@ -2,11 +2,13 @@ import { Database } from "bun:sqlite";
 import { memLog } from "../logging";
 import { generateEmbedding } from "../embeddings";
 import { Router } from "./router";
+import { cosineSimilarity } from "../math";
 import {
   queryNodes, getAvailableScopes, extractLinks, computeStats,
   readProjectConfig, writeProjectConfig, rowToNode,
-  withDb, jsonResponse, cosineSimilarity, getAvailableProjects,
+  withDb, jsonResponse, getAvailableProjects,
   getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup, formatSize,
+  initDbPaths, getConfigDir, getBackupDir,
 } from "./helpers";
 import { VERSION } from "../version";
 

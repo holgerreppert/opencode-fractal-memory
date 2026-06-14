@@ -4,7 +4,8 @@ import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../hnsw-index";
 import { generateEmbedding } from "../embeddings";
-import { cosineSimilarity, computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
+import { cosineSimilarity } from "../math";
+import { computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding, withRetry } from "./utils";
 
 export async function searchByEmbedding(
@@ -86,9 +87,10 @@ export async function searchByEmbedding(
     for (const scope of scopes) {
       const db = await getDb(scope);
       const projectFilter = options?.projectName !== undefined && scope === "project";
-      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?)${projectFilter ? " AND project_name = ?" : ""}`;
+      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?)${projectFilter ? " AND project_name = ?" : ""} LIMIT ?`;
       const params: (number | string)[] = [minLevel, maxLevel, minUsefulness, Date.now()];
       if (projectFilter) params.push(options!.projectName!);
+      params.push(limit * 5);
       const rows = db.query(sql).all(...params) as SqliteNode[];
 
       for (const row of rows) {

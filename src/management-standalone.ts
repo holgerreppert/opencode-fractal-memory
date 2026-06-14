@@ -16,6 +16,7 @@ registerRoutes(router);
 
 Bun.serve({
   port,
+  hostname: "127.0.0.1",
   async fetch(req) {
     const result = await router.handle(req);
     if (result) return result;

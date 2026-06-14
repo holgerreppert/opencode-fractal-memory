@@ -68,8 +68,8 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           }
 
           if (pendingNodes.length > 0) {
-            const MAX_TOKENS_PER_NODE = 300;
-            const pendingJson = pendingNodes.map(n => formatNodeForInjection(n, MAX_TOKENS_PER_NODE));
+            const PENDING_INJECTION_TOKENS = 300;
+            const pendingJson = pendingNodes.map(n => formatNodeForInjection(n, PENDING_INJECTION_TOKENS));
             const pendingBlock = `\n\n### Injected Memory:\nThe following node was selected for injection from the management app.\n\n${JSON.stringify(pendingJson, null, 2)}---`;
 
             const lastUserIndex = findLastUserMessage(output.messages);
@@ -170,9 +170,9 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         const maxMemoryNodes = Math.max(0, maxNodes - relevantSkills.length - relevantPlaybooks.length);
         scored = scored.slice(0, maxMemoryNodes);
 
-        const MAX_TOKENS_PER_NODE = 150;
+        const AUTO_RETRIEVE_TOKENS = 150;
 
-        const memoriesJson = scored.map(n => formatNodeForInjection(n, MAX_TOKENS_PER_NODE));
+        const memoriesJson = scored.map(n => formatNodeForInjection(n, AUTO_RETRIEVE_TOKENS));
 
         let fullBlock = "";
 
