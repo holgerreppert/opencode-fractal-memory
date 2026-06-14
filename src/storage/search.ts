@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType } from "./types";
+import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory } from "./types";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../hnsw-index";
@@ -23,6 +23,7 @@ export async function searchByEmbedding(
     bm25Scores?: Map<string, number>;
     projectName?: string;
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number };
+    categoryFilter?: MemoryCategory;
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
@@ -59,6 +60,7 @@ export async function searchByEmbedding(
         if (options?.minLevel !== undefined && level < options.minLevel) continue;
         if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
         if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
+        if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
 
         let embedding = node.embedding;
         if (row.embedding_blob) {
@@ -70,10 +72,11 @@ export async function searchByEmbedding(
         const levelWeight = weights[level] ?? 1;
         const confidence = node.confidence ?? 0.5;
         const confidenceWeight = 0.5 + 0.5 * confidence;
+        const categoryWeight = node.category === "episodic" ? 0.5 : 1.0;
 
         scoredNodes.push({
           ...node,
-          importance: hnswScore * levelWeight * confidenceWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          importance: hnswScore * levelWeight * confidenceWeight * categoryWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
         });
       }
     }
@@ -105,14 +108,17 @@ export async function searchByEmbedding(
           embedding = blobToEmbedding(row.embedding_blob);
         }
 
+        if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
+
         const semanticScore = cosineSimilarity(query, embedding);
         const levelWeight = weights[level] ?? 1;
         const confidence = node.confidence ?? 0.5;
         const confidenceWeight = 0.5 + 0.5 * confidence;
+        const categoryWeight = node.category === "episodic" ? 0.5 : 1.0;
 
         scoredNodes.push({
           ...node,
-          importance: semanticScore * levelWeight * confidenceWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          importance: semanticScore * levelWeight * confidenceWeight * categoryWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
         });
       }
     }
