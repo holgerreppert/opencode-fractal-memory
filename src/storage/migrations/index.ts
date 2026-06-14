@@ -4,7 +4,7 @@ import { MIGRATIONS } from "./definitions";
 export { MIGRATIONS } from "./definitions";
 export type { Migration } from "./definitions";
 
-export const CURRENT_VERSION = 21;
+export const CURRENT_VERSION = 22;
 
 export function getCurrentVersion(db: Database): number {
   const row = db.query("PRAGMA user_version").get() as { user_version: number } | null;

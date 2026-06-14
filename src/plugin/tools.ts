@@ -47,6 +47,7 @@ export function createToolMap(
     memory_playbook_execute: MemoryPlaybookExecute(store),
     memory_skill_load: tools.MemorySkillLoad(store),
     skill: tools.MemorySkillLoad(store),
+    memory_temporal_edges: tools.MemoryTemporalEdges(store),
     ...journalTools,
   };
 }
