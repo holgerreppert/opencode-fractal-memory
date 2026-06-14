@@ -22,6 +22,7 @@ export async function searchByEmbedding(
     rerank?: boolean;
     bm25Scores?: Map<string, number>;
     projectName?: string;
+    temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number };
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
@@ -133,6 +134,45 @@ export async function searchByEmbedding(
   }
 
   const finalNodes = computeFinalScores(scoredNodes, options);
+
+  // Temporal boost: if temporalBoost is specified, boost nodes temporally connected to the given node IDs
+  if (options?.temporalBoost && finalNodes.length > 0) {
+    const boost = options.temporalBoost;
+    const factor = boost.boostFactor ?? 1.3;
+    const boostIds = new Set(boost.nodeIds);
+    const edgeTypeFilter = boost.edgeType;
+
+    // Query all edges connected to boost nodes in one query
+    const projectDb = await getDb("project");
+    let edgeSql = "SELECT source_node_id, target_node_id FROM temporal_edges WHERE (source_node_id IN (";
+    edgeSql += boost.nodeIds.map(() => "?").join(",");
+    edgeSql += ") OR target_node_id IN (";
+    edgeSql += boost.nodeIds.map(() => "?").join(",");
+    edgeSql += "))";
+    if (edgeTypeFilter) {
+      edgeSql += " AND edge_type = ?";
+    }
+    const edgeParams = [...boost.nodeIds, ...boost.nodeIds];
+    if (edgeTypeFilter) edgeParams.push(edgeTypeFilter);
+    const edgeRows = projectDb.query(edgeSql).all(...edgeParams) as { source_node_id: string; target_node_id: string }[];
+
+    // Build set of node IDs that are temporally connected to any boost node
+    const tempConnected = new Set<string>();
+    for (const row of edgeRows) {
+      if (boostIds.has(row.source_node_id)) tempConnected.add(row.target_node_id);
+      if (boostIds.has(row.target_node_id)) tempConnected.add(row.source_node_id);
+    }
+
+    // Apply boost
+    for (const node of finalNodes) {
+      if (tempConnected.has(node.id)) {
+        node.importance = (node.importance ?? 0.5) * factor;
+      }
+    }
+
+    // Re-sort
+    finalNodes.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+  }
 
   let finalResults = finalNodes.slice(0, limit);
   if (doRerank && queryText.length > 0 && finalResults.length > 3) {

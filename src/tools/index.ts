@@ -11,4 +11,5 @@ export { MemorySkillLoad } from "./skill";
 export { MemoryDashboard } from "./dashboard";
 export { MemoryCacheStatus } from "./cache-status";
 export { MemoryHelp } from "./help";
+export { MemoryTemporalEdges } from "./temporal";
 export type { MemoryScope, MemoryStore } from "../storage/sqlite";

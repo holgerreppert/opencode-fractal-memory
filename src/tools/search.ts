@@ -7,10 +7,10 @@ export function MemoryDrilldown(store: MemoryStore) {
   const t = tool({
     description: "Retrieve a memory node with path to source nodes (fractal retrieval).",
     args: {
-      id: tool.schema.string().optional(),
-      label: tool.schema.string().optional(),
-      scope: tool.schema.enum(["global", "project"]).optional(),
-      max_depth: tool.schema.number().int().nonnegative().optional(),
+      id: tool.schema.string().optional().describe("Node ID to drill down from"),
+      label: tool.schema.string().optional().describe("Node label to drill down from"),
+      scope: tool.schema.enum(["global", "project"]).optional().describe("Scope of the node"),
+      max_depth: tool.schema.number().int().nonnegative().optional().describe("Maximum depth to traverse (default 10)"),
     },
     async execute(args) {
       const node = await resolveNode(store, args);
@@ -54,14 +54,15 @@ export function MemorySearch(store: MemoryStore) {
   const t = tool({
     description: "Search memory for relevant context.",
     args: {
-      query: tool.schema.string(),
-      limit: tool.schema.number().int().positive().optional(),
-      min_level: tool.schema.number().int().nonnegative().optional(),
-      max_level: tool.schema.number().int().nonnegative().optional(),
-      min_usefulness: tool.schema.number().min(0).max(5).optional(),
-      bm25_weight: tool.schema.number().min(0).max(1).optional(),
-      rerank: tool.schema.boolean().optional(),
-      expand_links: tool.schema.boolean().optional(),
+      query: tool.schema.string().describe("Search query text"),
+      limit: tool.schema.number().int().positive().optional().describe("Maximum results to return (default 10)"),
+      min_level: tool.schema.number().int().nonnegative().optional().describe("Minimum compression level (0=raw, 5=highest)"),
+      max_level: tool.schema.number().int().nonnegative().optional().describe("Maximum compression level"),
+      min_usefulness: tool.schema.number().min(0).max(5).optional().describe("Minimum usefulness score filter"),
+      bm25_weight: tool.schema.number().min(0).max(1).optional().describe("BM25 vs semantic weight (0=full semantic, 1=full BM25)"),
+      rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
+      expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
+      expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
@@ -110,6 +111,27 @@ export function MemorySearch(store: MemoryStore) {
         nodes = nodes.slice(0, expandLimit);
       }
 
+      if (args.expand_temporal === true && nodes.length > 0) {
+        const expandLimit = (args.limit ?? 10) + 5;
+        const seenIds = new Set(nodes.map(n => n.id));
+        const sourceIds = nodes.slice(0, 5).map(n => n.id);
+        const temporalIds = await store.expandWithTemporalContext(sourceIds, 1);
+
+        const tempNodes: Array<typeof nodes[0]> = [];
+        for (const tid of temporalIds) {
+          if (seenIds.has(tid)) continue;
+          seenIds.add(tid);
+          try {
+            const node = await store.getNode(tid);
+            tempNodes.push({ ...node, importance: (node.importance ?? 0.5) * 0.7 });
+          } catch { /* node deleted */ }
+        }
+
+        nodes.push(...tempNodes);
+        nodes.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+        nodes = nodes.slice(0, expandLimit);
+      }
+
       if (nodes.length === 0) {
         return "No matching memory found. Try different keywords.";
       }
@@ -131,6 +153,7 @@ export function MemorySearch(store: MemoryStore) {
         }),
         "",
         "Use memory_drilldown(label) to see full content of any node.",
+        "Use memory_temporal_edges(node_id=\"...\") to explore conversation flow.",
         "",
         "**Self-Reflection**: After using these memories, rate their usefulness (0-5):",
         "  `memory_rate { label: \"<node-label>\", helpful: true, usefulness_score: <rating> }`",
@@ -148,8 +171,8 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
   const t = tool({
     description: "Top-down drilldown query.",
     args: {
-      query: tool.schema.string(),
-      max_results: tool.schema.number().int().positive().optional(),
+      query: tool.schema.string().describe("Search query for top-down drilldown"),
+      max_results: tool.schema.number().int().positive().optional().describe("Maximum results to return (default 20)"),
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {

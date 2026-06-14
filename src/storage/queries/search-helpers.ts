@@ -44,8 +44,18 @@ export function removeBM25Index(db: Database, nodeId: string): void {
 
 export function calculateDynamicBm25Weight(queryLength: number, baseWeight: number): number {
   if (queryLength === 0) return baseWeight;
-  const decay = Math.max(0.3, 0.6 - 0.002 * queryLength);
-  return Math.min(baseWeight, decay);
+  const lengthDecay = Math.max(0.3, 0.6 - 0.002 * queryLength);
+  return Math.min(baseWeight, lengthDecay);
+}
+
+export function detectCodeQuery(text: string): boolean {
+  // Detect code-heavy queries: backtick code blocks, file paths, function calls, file extensions
+  if (/`[^`]+`/.test(text)) return true;
+  if (/\.\w{2,4}\b/.test(text)) return true;
+  if (/\b\w+\(\)/.test(text)) return true;
+  if (/[\/\\][\w.-]+\.[\w]+/.test(text)) return true;
+  if (/\b(function|class|import|export|const|let|var|def|fn)\b/.test(text)) return true;
+  return false;
 }
 
 export function computeRecencyScore(lastAccessed: Date | null): number {
@@ -332,7 +342,12 @@ export function computeFinalScores(
   const bm25Weight = options?.bm25Weight ?? 0.4;
   const queryText = options?.queryText ?? "";
   const queryLength = queryText ? tokenize(queryText).length : 0;
-  const dynamicBm25Weight = calculateDynamicBm25Weight(queryLength, bm25Weight);
+  let dynamicBm25Weight = calculateDynamicBm25Weight(queryLength, bm25Weight);
+
+  // Code-heavy queries get higher BM25 weight (exact keyword matching preferred)
+  if (queryText && detectCodeQuery(queryText)) {
+    dynamicBm25Weight = Math.max(dynamicBm25Weight, 0.7);
+  }
   
   const bm25Scores = options?.bm25Scores ?? (bm25Weight > 0 && queryText
     ? computeBM25Scores({ queryTerms: tokenize(queryText), nodes: scoredNodes })

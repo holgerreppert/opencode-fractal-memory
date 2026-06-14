@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-06-14T19:28:03.955Z",
+  "config": {
+    "dataset": "./scripts/benchmark/data/locomo10.json",
+    "topK": 20,
+    "model": "llama3.1:8b"
+  },
+  "overall_f1": 0.08911827956989248,
+  "categories": {
+    "multi_hop": {
+      "f1": 0,
+      "count": 2
+    },
+    "temporal": {
+      "f1": 0.03225806451612903,
+      "count": 1
+    },
+    "single_hop": {
+      "f1": 0.2066666666666667,
+      "count": 2
+    }
+  },
+  "total_questions": 5,
+  "total_latency_ms": 12548,
+  "errors": []
+}

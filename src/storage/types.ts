@@ -4,6 +4,17 @@ export type MemoryNodeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
 export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook";
 
+export type TemporalEdge = {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  edgeType: string;
+  scope: string;
+  createdAt: number;
+  confidence: number;
+  metadata: Record<string, unknown> | null;
+};
+
 export type MemoryNode = {
   id: string;
   scope: MemoryScope;
@@ -86,7 +97,7 @@ export type MemoryStore = {
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
   updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void>;
   deleteNode(id: string): Promise<void>;
-  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string }): Promise<MemoryNode[]>;
+  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } }): Promise<MemoryNode[]>;
   runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown, projectName?: string): Promise<{ compressed: number; created: number }>;
   runPatternExtraction(scope: MemoryScope | "all", minSourceCount?: number, projectName?: string): Promise<{ created: number; sources: number }>;
   getCompressionCandidates(scope: MemoryScope | "all", level: MemoryNodeLevel, maxAgeMs?: number, force?: boolean, projectName?: string): Promise<MemoryNode[]>;
@@ -118,6 +129,9 @@ export type MemoryStore = {
   getLinkedNodes(scope: MemoryScope, sourceId: string): Promise<MemoryNode[]>;
   backfillLinks(scope: MemoryScope): Promise<void>;
   updateLinksForNewNode(scope: MemoryScope, label: string, nodeId: string): Promise<void>;
+  createTemporalEdge(sourceNodeId: string, targetNodeId: string, edgeType: string, scope?: string, confidence?: number, metadata?: Record<string, unknown> | null): Promise<TemporalEdge>;
+  getTemporalEdges(nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string): Promise<TemporalEdge[]>;
+  expandWithTemporalContext(nodeIds: string[], maxHops?: number, edgeType?: string): Promise<string[]>;
   backfillBinaryEmbeddingsAndBM25(scope: MemoryScope): Promise<void>;
   rebuildHNSWIndex(scope?: MemoryScope | "all"): Promise<void>;
   logInjectionMetrics(sessionId: string, data: {

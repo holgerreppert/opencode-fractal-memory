@@ -15,6 +15,7 @@ export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, wi
 import type { MemoryNode, MemoryScope, MemoryNodeLevel, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
 import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
+import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
 import { updateBM25Index, removeBM25Index } from "./queries/search-helpers";
 import { CompressionHelper, COMPRESSION_LEVELS } from "./compression";
 export { CompressionHelper, COMPRESSION_LEVELS };
@@ -268,6 +269,7 @@ class SqliteMemoryStore {
     await withRetryableTransaction(db, async () => {
       queryDeleteNode(db, id);
       queryDeleteLinks(db, id);
+      queryDeleteTemporalEdgesForNode(db, id);
       removeBM25Index(db, id);
     });
 
@@ -319,6 +321,29 @@ class SqliteMemoryStore {
     return linkedNodes;
   }
 
+  async createTemporalEdge(
+    sourceNodeId: string, targetNodeId: string, edgeType: string,
+    scope?: string, confidence?: number, metadata?: Record<string, unknown> | null,
+  ): Promise<import("./types").TemporalEdge> {
+    const db = await this.getDb(scope as any ?? "project");
+    return queryCreateTemporalEdge(db, { sourceNodeId, targetNodeId, edgeType, scope, confidence, metadata });
+  }
+
+  async getTemporalEdges(
+    nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string,
+  ): Promise<import("./types").TemporalEdge[]> {
+    const db = await this.getDb("project");
+    return queryGetTemporalEdges(db, nodeId, direction, edgeType);
+  }
+
+  async expandWithTemporalContext(
+    nodeIds: string[], maxHops?: number, edgeType?: string,
+  ): Promise<string[]> {
+    const db = await this.getDb("project");
+    const expanded = queryExpandWithTemporalEdges(db, nodeIds, maxHops, edgeType);
+    return [...expanded.keys()];
+  }
+
   async backfillBinaryEmbeddingsAndBM25(scope: MemoryScope): Promise<void> {
     const db = await this.getDb(scope);
     return backfillBinaryEmbeddingsAndBM25Fn(db, scope);
@@ -331,7 +356,7 @@ class SqliteMemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string }
+    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
   }

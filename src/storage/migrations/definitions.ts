@@ -415,4 +415,26 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* column may already exist */ }
     },
   },
+  {
+    version: 22,
+    name: "add-temporal-edges",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS temporal_edges (
+          id TEXT PRIMARY KEY,
+          source_node_id TEXT NOT NULL,
+          target_node_id TEXT NOT NULL,
+          edge_type TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT 'project',
+          created_at INT NOT NULL,
+          confidence REAL DEFAULT 1.0,
+          metadata TEXT
+        )
+      `);
+      db.run("CREATE INDEX IF NOT EXISTS idx_temp_edges_source ON temporal_edges(source_node_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_temp_edges_target ON temporal_edges(target_node_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_temp_edges_type ON temporal_edges(edge_type)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_temp_edges_scope ON temporal_edges(scope)");
+    },
+  },
 ];

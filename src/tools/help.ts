@@ -38,6 +38,7 @@ const COMMANDS = [
   { name: "memory_generate_embeddings", desc: "Generate embeddings for nodes that lack them" },
   { name: "memory_cache_status", desc: "Show working-memory cache usage" },
   { name: "memory_help", desc: "Show this help message" },
+  { name: "memory_temporal_edges", desc: "Retrieve temporal edges for a memory node (conversation flow)" },
 ];
 
 export function MemoryHelp(store?: MemoryStore) {
