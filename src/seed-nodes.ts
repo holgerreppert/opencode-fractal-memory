@@ -86,6 +86,14 @@ tag: rule:mandatory
 2. Check results - if >50% match, use memory_drilldown for details
 3. Reference memory in your response with file:line format
 
+### Memory Categories (Episodic vs Semantic)
+Memory nodes have a \`category\` that determines retention:
+
+- **Semantic** (persists long-term, 365d half-life): \`concept\`, \`fact\`, \`lesson\`, \`howto\`, \`preference\`, \`decision\`, \`architecture\`, \`best-practices\`, \`convention\`, \`knowledge\`, \`research\`, \`rule:*\`, \`skill\`, \`playbook\`, \`core\`, \`summary\`, \`bug\`, \`fix\`
+- **Episodic** (short-term, 7d half-life, 30d TTL): \`event\`, \`note\`, \`session\`, \`task\`, \`plan\`, \`exploration\`, \`debug-investigation\`, \`improvement\`, \`review\`
+
+When storing important facts with \`memory_set\`, use a **semantic type** so the fact persists. Episodic types are for session-scoped traces that decay automatically.
+
 ### Decision Flow
 User request → Check memory → Verify codebase → Act
 Only skip memory search for trivial tasks (<2 steps)`,
