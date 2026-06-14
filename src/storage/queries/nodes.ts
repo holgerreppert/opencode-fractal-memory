@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import type { SqliteNode } from "./base";
 import { blobToEmbedding, embeddingToBlob, rowToNode } from "./base";
-import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, CreateNodeInput } from "../types";
+import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, CreateNodeInput } from "../types";
 import { getHNSWIndex } from "../../hnsw-index";
 
 const TYPE_METADATA: Record<string, Record<string, unknown>> = {
@@ -45,6 +45,23 @@ const TYPE_METADATA: Record<string, Record<string, unknown>> = {
   skill:               { tags: ["skill"] },
 };
 
+const TYPE_CATEGORY: Record<string, MemoryCategory> = {
+  event: "episodic",
+  note: "episodic",
+  session: "episodic",
+  task: "episodic",
+  plan: "episodic",
+  exploration: "episodic",
+  "debug-investigation": "episodic",
+  improvement: "episodic",
+  review: "episodic",
+};
+
+function resolveNodeCategory(type: string | null | undefined): MemoryCategory | null {
+  if (!type) return null;
+  return TYPE_CATEGORY[type] ?? "semantic";
+}
+
 function autoGenerateMetadata(type: string | null | undefined): Record<string, unknown> | null {
   if (!type) return { tags: ["untyped"] };
   return TYPE_METADATA[type] ?? { tags: [type] };
@@ -67,7 +84,8 @@ export async function queryListNodes(
   limit = 50,
   offset = 0,
   includeExpired = false,
-  projectName?: string
+  projectName?: string,
+  category?: MemoryCategory
 ): Promise<MemoryNode[]> {
   let query = "SELECT * FROM memory_nodes";
   const params: (string | number)[] = [];
@@ -84,6 +102,11 @@ export async function queryListNodes(
   if (projectName !== undefined) {
     conditions.push("project_name = ?");
     params.push(projectName);
+  }
+
+  if (category !== undefined) {
+    conditions.push("category = ?");
+    params.push(category);
   }
 
   if (!includeExpired) {
@@ -167,9 +190,10 @@ export async function queryCreateNode(
   const timesUsed = node.timesUsed ?? 0;
   const timesHelpful = node.timesHelpful ?? 0;
   const resolvedMetadata = node.metadata ?? autoGenerateMetadata(node.type ?? null);
+  const resolvedCategory = node.category !== undefined ? node.category : resolveNodeCategory(node.type ?? null);
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, ttl_days, expires_at, confidence, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, category, metadata, sticky, ttl_days, expires_at, confidence, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
@@ -186,6 +210,7 @@ export async function queryCreateNode(
       0,
       null,
       node.type ?? null,
+      resolvedCategory,
       resolvedMetadata ? JSON.stringify(resolvedMetadata) : null,
       sticky,
       ttlDays,
@@ -226,6 +251,7 @@ export async function queryCreateNode(
     accessCount: 0,
     lastAccessed: null,
     type: node.type ?? null,
+    category: resolvedCategory,
     metadata: node.metadata ?? null,
     sticky: Boolean(sticky),
     ttlDays,
@@ -248,6 +274,7 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
   parentIds: (v) => [["parent_ids = ?", v ? JSON.stringify(v) : null]],
   importance: (v) => [["importance = ?", v as number]],
   type: (v) => [["type = ?", v as string | null]],
+  category: (v) => [["category = ?", v as string | null]],
   metadata: (v) => [["metadata = ?", v ? JSON.stringify(v) : null]],
   embedding: (v) => [
     ["embedding = ?", v ? JSON.stringify(v) : null],
@@ -269,7 +296,7 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
 export async function queryUpdateNode(
   db: Database,
   id: string,
-  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>
+  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>
 ): Promise<void> {
   const setClauses: string[] = ["updated_at = ?"];
   const params: (string | number | Buffer | null)[] = [Date.now()];

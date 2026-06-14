@@ -12,7 +12,7 @@ import { getHNSWIndex } from "../hnsw-index";
 import { rowToNode, type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
-import type { MemoryNode, MemoryScope, MemoryNodeLevel, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
+import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
 import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
@@ -31,7 +31,7 @@ import { getCompressionCandidates as getCompressionCandidatesFn, runCompression 
 import { getExpiredNodes as getExpiredNodesFn, deleteExpiredNodes as deleteExpiredNodesFn, pruneNodes as pruneNodesFn } from "./expiration";
 import { backfillLinks as backfillLinksFn, backfillBinaryEmbeddingsAndBM25 as backfillBinaryEmbeddingsAndBM25Fn, rebuildHNSWIndex as rebuildHNSWIndexFn } from "./maintenance";
 
-export type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
+export type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
 
 const SEED_BLOCKS: Array<{ scope: MemoryScope; label: string }> = [
   { scope: "global", label: "persona" },
@@ -203,14 +203,14 @@ class SqliteMemoryStore {
     return migrated;
   }
 
-  async listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit: number = 50, offset: number = 0, includeExpired?: boolean, projectName?: string): Promise<MemoryNode[]> {
+  async listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit: number = 50, offset: number = 0, includeExpired?: boolean, projectName?: string, category?: MemoryCategory): Promise<MemoryNode[]> {
     const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
     const nodes: MemoryNode[] = [];
 
     for (const s of scopes) {
       const db = await this.getDb(s);
       const projectFilter = projectName !== undefined && s === "project" ? projectName : undefined;
-      const rows = await queryListNodes(db, s, level, limit, offset, includeExpired, projectFilter);
+      const rows = await queryListNodes(db, s, level, limit, offset, includeExpired, projectFilter, category);
       nodes.push(...rows);
     }
 
@@ -249,7 +249,7 @@ class SqliteMemoryStore {
     });
   }
 
-  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
+  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
     const { db, scope } = await resolveNodeFn((s) => this.getDb(s), this.idScopeCache, id);
 
     await withRetryableTransaction(db, async () => {

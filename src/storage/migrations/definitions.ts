@@ -437,4 +437,18 @@ export const MIGRATIONS: Migration[] = [
       db.run("CREATE INDEX IF NOT EXISTS idx_temp_edges_scope ON temporal_edges(scope)");
     },
   },
+  {
+    version: 23,
+    name: "add-category-column",
+    up: (db) => {
+      try {
+        const tableInfo = db.query("PRAGMA table_info(memory_nodes)").all() as { name: string }[];
+        const existingColumns = new Set(tableInfo.map(c => c.name));
+        if (!existingColumns.has("category")) {
+          db.run("ALTER TABLE memory_nodes ADD COLUMN category TEXT");
+          db.run("CREATE INDEX IF NOT EXISTS idx_nodes_category ON memory_nodes(category)");
+        }
+      } catch { /* table may not exist yet */ }
+    },
+  },
 ];

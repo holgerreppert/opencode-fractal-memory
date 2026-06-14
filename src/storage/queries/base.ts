@@ -16,6 +16,7 @@ export interface SqliteNode {
   access_count: number;
   last_accessed: number | null;
   type: string | null;
+  category: string | null;
   metadata: string | null;
   sticky: number;
   ttl_days: number | null;
@@ -28,8 +29,8 @@ export interface SqliteNode {
   project_name: string | null;
 }
 
-import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode } from "../../storage/types";
-export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode } from "../../storage/types";
+import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory } from "../../storage/types";
+export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory } from "../../storage/types";
 
 export function blobToEmbedding(blob: Buffer | null): number[] | null {
   if (!blob) return null;
@@ -65,6 +66,7 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     accessCount: row.access_count,
     lastAccessed: row.last_accessed ? new Date(row.last_accessed) : null,
     type: row.type as MemoryNodeType | null,
+    category: row.category as MemoryCategory | null,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,
     sticky: Boolean(row.sticky),
     ttlDays: row.ttl_days ?? null,

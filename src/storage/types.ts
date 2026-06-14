@@ -4,6 +4,8 @@ export type MemoryNodeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
 export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook";
 
+export type MemoryCategory = "episodic" | "semantic";
+
 export type TemporalEdge = {
   id: string;
   sourceNodeId: string;
@@ -30,6 +32,7 @@ export type MemoryNode = {
   accessCount: number;
   lastAccessed: Date | null;
   type: MemoryNodeType | null;
+  category: MemoryCategory | null;
   metadata: Record<string, unknown> | null;
   sticky: boolean;
   ttlDays: number | null;
@@ -52,6 +55,7 @@ export type CreateNodeInput = {
   embedding?: number[] | null;
   importance?: number;
   type?: MemoryNodeType | null;
+  category?: MemoryCategory | null;
   metadata?: Record<string, unknown> | null;
   sticky?: boolean;
   ttlDays?: number | null;
@@ -90,14 +94,14 @@ export type DrilldownResult = {
 export type MemoryStore = {
   readonly projectName: string;
   ensureSeed(): Promise<void>;
-  listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string): Promise<MemoryNode[]>;
+  listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string, category?: MemoryCategory): Promise<MemoryNode[]>;
   getNode(id: string): Promise<MemoryNode>;
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
   getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode>;
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
-  updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void>;
+  updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void>;
   deleteNode(id: string): Promise<void>;
-  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } }): Promise<MemoryNode[]>;
+  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number }; categoryFilter?: MemoryCategory }): Promise<MemoryNode[]>;
   runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown, projectName?: string): Promise<{ compressed: number; created: number }>;
   runPatternExtraction(scope: MemoryScope | "all", minSourceCount?: number, projectName?: string): Promise<{ created: number; sources: number }>;
   getCompressionCandidates(scope: MemoryScope | "all", level: MemoryNodeLevel, maxAgeMs?: number, force?: boolean, projectName?: string): Promise<MemoryNode[]>;
