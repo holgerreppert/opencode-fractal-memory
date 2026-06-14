@@ -6,7 +6,7 @@ const COMMANDS = [
   { name: "memory_stats", desc: "Fractal memory statistics – nodes per level, compression ratios, tree structure" },
   { name: "memory_dashboard", desc: "Top nodes by access, type distribution, compression health, usefulness" },
   { name: "memory_list", desc: "List all memory nodes with content preview" },
-  { name: "memory_search", desc: "Semantic / BM25 search over memory nodes" },
+  { name: "memory_search", desc: "Semantic / BM25 search over memory nodes (supports category_filter)" },
   { name: "memory_get", desc: "Get a single memory node by ID or label" },
   { name: "memory_fetch", desc: "Fetch a memory node by exact label (returns JSON)" },
   { name: "memory_set", desc: "Create or update a memory node" },
@@ -56,7 +56,14 @@ export function MemoryHelp(store?: MemoryStore) {
         lines.push(`  ${cmd.name.padEnd(28)} ${cmd.desc}`);
       }
 
-      lines.push("```", "", "### About Fractal Memory", "");
+      lines.push("```", "", "### Memory Categories", "",
+        "Nodes have a `category` (semantic / episodic) that controls retention:",
+        "- **Semantic** – long-term facts (365d half-life): concept, fact, lesson, howto, decision, architecture, preference, convention, bug, fix, rule:*, skill, playbook, knowledge, research, core, summary",
+        "- **Episodic** – session traces (7d half-life, 30d TTL): event, note, session, task, plan, exploration, debug-investigation, improvement, review",
+        "",
+        "Use `memory_search` with `category_filter` to target a specific category.",
+        "Use `memory_set` with a semantic type for important facts that should persist.",
+        "", "### About Fractal Memory", "");
       lines.push(
         "Fractal memory organizes knowledge as a hierarchy of increasingly compressed summaries:",
         "- **L0 (raw)** – Full content, no compression",

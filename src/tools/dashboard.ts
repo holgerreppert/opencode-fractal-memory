@@ -50,10 +50,19 @@ export function MemoryDashboard(store: MemoryStore) {
 
       // 2. Type distribution
       const typeCount = new Map<string, number>();
+      const catCount = new Map<string, number>();
       for (const n of allNodes) {
         const t = n.type ?? "none";
         typeCount.set(t, (typeCount.get(t) ?? 0) + 1);
+        const c = n.category ?? "none";
+        catCount.set(c, (catCount.get(c) ?? 0) + 1);
       }
+
+      lines.push("### Category Distribution");
+      const episodic = catCount.get("episodic") ?? 0;
+      const semantic = catCount.get("semantic") ?? 0;
+      const uncategorized = catCount.get("none") ?? 0;
+      lines.push(`- Episodic: ${episodic} | Semantic: ${semantic} | Uncategorized: ${uncategorized}`);
 
       lines.push("### Type Distribution");
       lines.push("| Type | Count |");

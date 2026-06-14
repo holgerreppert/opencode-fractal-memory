@@ -18,9 +18,10 @@ export function MemoryDrilldown(store: MemoryStore) {
 
       const result = await store.retrieveFractal(nodeId, args.max_depth ?? 10);
       
+      const catInfo = result.node.category ? ` | Category: ${result.node.category}` : "";
       const lines: string[] = [
         `## Fractal Retrieval: ${result.node.label ?? result.node.id.slice(0, 8)}`,
-        `Level: ${result.node.level} | Depth: ${result.depth} | Relevance: ${result.relevanceScore.toFixed(2)}`,
+        `Level: ${result.node.level} | Depth: ${result.depth} | Relevance: ${result.relevanceScore.toFixed(2)}${catInfo}`,
         "",
         "### Path (current → sources)",
         ...result.path.map((n, i) => {
@@ -63,12 +64,13 @@ export function MemorySearch(store: MemoryStore) {
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
       expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
       expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
+      category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const queryEmbedding = await generateEmbedding(args.query);
       
-      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string } = {
+      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string; categoryFilter?: "episodic" | "semantic" } = {
         bm25Weight: args.bm25_weight ?? 0.4,
         queryText: args.query,
         rerank: args.rerank ?? true,
@@ -77,6 +79,7 @@ export function MemorySearch(store: MemoryStore) {
       if (args.max_level !== undefined) options.maxLevel = args.max_level as 0 | 1 | 2 | 3 | 4 | 5;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;
       if (args.project_name !== undefined) options.projectName = args.project_name;
+      if (args.category_filter !== undefined) options.categoryFilter = args.category_filter;
 
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 
@@ -148,8 +151,9 @@ export function MemorySearch(store: MemoryStore) {
             : "";
           const matchPct = (n.importance! * 100).toFixed(0);
           const label = n.label ?? n.id.slice(0, 8);
+          const catTag = n.category ? ` [${n.category}]` : "";
           const content = n.summary || n.content.slice(0, 300);
-          return `### [L${n.level}] ${label} - ${matchPct}% match${parentInfo}${linkInfo}\n${content}${content.length >= 300 ? "..." : ""}`;
+          return `### [L${n.level}]${catTag} ${label} - ${matchPct}% match${parentInfo}${linkInfo}\n${content}${content.length >= 300 ? "..." : ""}`;
         }),
         "",
         "Use memory_drilldown(label) to see full content of any node.",
