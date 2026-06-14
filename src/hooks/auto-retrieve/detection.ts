@@ -47,12 +47,14 @@ export async function detectRelevantSkills(
   }
 }
 
+export type PlaybookInfo = { label: string; description: string; steps: number; executionCount: number };
+
 export async function detectRelevantPlaybooks(
   store: MemoryStore,
   queryEmbedding: number[],
   maxPlaybooks: number,
   log: LogFn
-): Promise<Array<{ label: string; description: string; steps: number; executionCount: number }>> {
+): Promise<PlaybookInfo[]> {
   try {
     const candidates = await store.searchByEmbedding(
       queryEmbedding,

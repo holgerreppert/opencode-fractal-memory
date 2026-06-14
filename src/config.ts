@@ -22,6 +22,8 @@ export interface MemConfig {
     candidateCount: number;
     maxInjectNodes: number;
     maxInjectPlaybooks: number;
+    minQueryLength: number;
+    injectionCooldownMs: number;
   };
   ollama?: {
     enabled: boolean;
@@ -67,6 +69,8 @@ const AutoRetrieveSchema = z.object({
   candidateCount: z.number().positive().int().default(30),
   maxInjectNodes: z.number().positive().int().default(5),
   maxInjectPlaybooks: z.number().positive().int().default(3),
+  minQueryLength: z.number().int().default(10),
+  injectionCooldownMs: z.number().int().default(30000),
 });
 
 const OllamaSchema = z.object({
@@ -136,6 +140,8 @@ const DEFAULT_CONFIG: MemConfig = {
     candidateCount: 30,
     maxInjectNodes: 5,
     maxInjectPlaybooks: 3,
+    minQueryLength: 10,
+    injectionCooldownMs: 30000,
   },
   ollama: {
     enabled: false,

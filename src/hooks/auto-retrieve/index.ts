@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { scoreCandidates } from "./scoring";
-import { detectRelevantSkills, detectRelevantPlaybooks } from "./detection";
+import { detectRelevantSkills, detectRelevantPlaybooks, type PlaybookInfo } from "./detection";
 import { formatPlaybooksAsAvailable, formatSkillsAsAvailable } from "./formatting";
 import { formatNodeForInjection } from "./content";
 
@@ -15,6 +15,16 @@ const INJECTION_LOG_FILE = path.join(INJECTION_LOG_DIR, "memory-injection.log");
 const INJECTION_LOG_MAX_SIZE = 1024 * 1024;
 
 try { fs.mkdirSync(INJECTION_LOG_DIR, { recursive: true }); } catch {}
+
+const SKILL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface SessionState {
+  injectedNodeIds: Set<string>;
+  lastQuery: string;
+  lastQueryEmbedding: number[];
+  lastInjectTime: number;
+  skillsCache: { skills: MemoryNode[]; playbooks: PlaybookInfo[]; timestamp: number } | null;
+}
 
 export interface AutoRetrieveDeps {
   store: MemoryStore;
@@ -39,18 +49,61 @@ interface Message {
 
 type MessagesHook = (input: unknown, output: { messages: Message[] }) => Promise<void>;
 
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const ai = a[i]!;
+    const bi = b[i]!;
+    dot += ai * bi;
+    normA += ai * ai;
+    normB += bi * bi;
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+}
+
 export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, MessagesHook> {
   const { store, config, log } = deps;
 
   const autoConfig = config.autoRetrieve;
   const ollamaConfig = config.ollama;
 
-  const recentToolNames: string[] = [];
+  const sessionState = new Map<string, SessionState>();
 
   log("info", "Auto-retrieve hook created", { enabled: autoConfig?.enabled, ollamaEnabled: ollamaConfig?.enabled });
 
+  function getSessionState(sessionId: string): SessionState {
+    let state = sessionState.get(sessionId);
+    if (!state) {
+      state = {
+        injectedNodeIds: new Set(),
+        lastQuery: "",
+        lastQueryEmbedding: [],
+        lastInjectTime: 0,
+        skillsCache: null,
+      };
+      sessionState.set(sessionId, state);
+    }
+    return state;
+  }
+
+  function appendInjectionLog(debugLine: string): void {
+    try {
+      try {
+        const stat = fs.statSync(INJECTION_LOG_FILE);
+        if (stat.size > INJECTION_LOG_MAX_SIZE) {
+          fs.renameSync(INJECTION_LOG_FILE, INJECTION_LOG_FILE + ".old");
+        }
+      } catch { }
+      fs.appendFileSync(INJECTION_LOG_FILE, debugLine);
+    } catch { /* silent fail */ }
+  }
+
   return {
-    "experimental.chat.messages.transform": async (_input, output) => {
+    "experimental.chat.messages.transform": async (input, output) => {
+      const inputRecord = input as Record<string, unknown>;
+      const sessionId = typeof inputRecord.sessionID === "string" ? inputRecord.sessionID : "unknown";
+
       // Process pending injection queue first
       try {
         const pending = await store.getPendingInjections();
@@ -113,20 +166,53 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           .join(" ")
           .trim();
 
-        if (!userText || userText.length < 3) {
-          log("debug", "User message too short", { length: userText?.length });
+        if (!userText || userText.length < (autoConfig.minQueryLength ?? 10)) {
+          log("debug", "User message too short, skipping auto-retrieve", { length: userText?.length });
           return;
+        }
+
+        const state = getSessionState(sessionId);
+
+        // Rate limit: skip if last injection was too recent
+        const cooldown = autoConfig.injectionCooldownMs ?? 30000;
+        const timeSinceLastInject = Date.now() - state.lastInjectTime;
+        if (timeSinceLastInject < cooldown) {
+          log("debug", "Rate-limited, skipping auto-retrieve", { lastInject: timeSinceLastInject + "ms ago", cooldown });
+          return;
+        }
+
+        const queryEmbedding = await generateEmbedding(userText);
+
+        // Query similarity check: if query is very similar to last, skip
+        if (state.lastQuery && state.lastQueryEmbedding.length > 0) {
+          const sim = cosineSimilarity(queryEmbedding, state.lastQueryEmbedding);
+          if (sim > 0.95) {
+            log("debug", "Query nearly identical to previous, skipping auto-retrieve", { similarity: sim.toFixed(3), lastQuery: state.lastQuery.slice(0, 30) });
+            return;
+          }
         }
 
         log("info", "Auto-retrieving for query", { query: userText.slice(0, 50) + "..." });
 
-        const queryEmbedding = await generateEmbedding(userText);
-
         const maxPlaybooks = autoConfig.maxInjectPlaybooks ?? 3;
-        const [candidates, relevantSkills, relevantPlaybooks] = await Promise.all([
+
+        // Skills/playbooks cache: re-use if cached < 5 min
+        let relevantSkills: MemoryNode[] = [];
+        let relevantPlaybooks: PlaybookInfo[] = [];
+        if (state.skillsCache && (Date.now() - state.skillsCache.timestamp) < SKILL_CACHE_TTL_MS) {
+          relevantSkills = state.skillsCache.skills;
+          relevantPlaybooks = state.skillsCache.playbooks;
+          log("debug", "Using cached skills/playbooks", { skills: relevantSkills.length, playbooks: relevantPlaybooks.length, cacheAge: ((Date.now() - state.skillsCache.timestamp) / 1000).toFixed(0) + "s" });
+        } else {
+          [relevantSkills, relevantPlaybooks] = await Promise.all([
+            detectRelevantSkills(store, userText, queryEmbedding, 3, log),
+            detectRelevantPlaybooks(store, queryEmbedding, maxPlaybooks, log),
+          ]);
+          state.skillsCache = { skills: relevantSkills, playbooks: relevantPlaybooks, timestamp: Date.now() };
+        }
+
+        const [candidates] = await Promise.all([
           store.searchByEmbedding(queryEmbedding, autoConfig.candidateCount ?? 30, { bm25Weight: 0.4 }),
-          detectRelevantSkills(store, userText, queryEmbedding, 3, log),
-          detectRelevantPlaybooks(store, queryEmbedding, maxPlaybooks, log),
         ]);
 
         if (candidates.length === 0 && relevantSkills.length === 0 && relevantPlaybooks.length === 0) {
@@ -138,14 +224,18 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           !c.label?.startsWith("rule:") && c.type !== "skill"
         );
 
-        if (filtered.length === 0 && relevantSkills.length === 0 && relevantPlaybooks.length === 0) {
-          log("debug", "No candidates after dedup");
+        // Deduplicate against already-injected nodes in this session
+        const uniqueFiltered = filtered.filter(c => !state.injectedNodeIds.has(c.id));
+        log("debug", "Candidates after session dedup", { before: filtered.length, after: uniqueFiltered.length, alreadyInjected: state.injectedNodeIds.size });
+
+        if (uniqueFiltered.length === 0 && relevantSkills.length === 0 && relevantPlaybooks.length === 0) {
+          log("debug", "No unique candidates (all already injected)");
           return;
         }
 
-        log("debug", "Candidates after dedup", { count: filtered.length, skills: relevantSkills.length, playbooks: relevantPlaybooks.length });
+        log("debug", "Candidates after dedup", { count: uniqueFiltered.length, skills: relevantSkills.length, playbooks: relevantPlaybooks.length });
 
-        let scored = filtered.length > 0 ? scoreCandidates(filtered, userText, queryEmbedding) : [];
+        let scored = uniqueFiltered.length > 0 ? scoreCandidates(uniqueFiltered, userText, queryEmbedding) : [];
 
         if (ollamaConfig?.enabled && scored.length > 0) {
           log("info", "Ollama reranking", { model: ollamaConfig.model, candidateCount: scored.length });
@@ -170,18 +260,21 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         const maxMemoryNodes = Math.max(0, maxNodes - relevantSkills.length - relevantPlaybooks.length);
         scored = scored.slice(0, maxMemoryNodes);
 
-        const AUTO_RETRIEVE_TOKENS = 150;
+        // Track injected nodes for this session
+        for (const n of scored) {
+          state.injectedNodeIds.add(n.id);
+        }
+        for (const s of relevantSkills) {
+          state.injectedNodeIds.add(s.id);
+        }
 
+        const AUTO_RETRIEVE_TOKENS = 150;
         const memoriesJson = scored.map(n => formatNodeForInjection(n, AUTO_RETRIEVE_TOKENS));
 
         let fullBlock = "";
 
         if (memoriesJson.length > 0) {
-          fullBlock += `### Retrieved Context:
-Use the following memories to inform your response. Do not repeat or summarize them.
-
-${JSON.stringify(memoriesJson, null, 2)}
----`;
+          fullBlock += `### Retrieved Context:\nUse the following memories to inform your response. Do not repeat or summarize them.\n\n${JSON.stringify(memoriesJson, null, 2)}\n---`;
         }
 
         if (relevantSkills.length > 0) {
@@ -201,19 +294,15 @@ ${JSON.stringify(memoriesJson, null, 2)}
         if (!fullBlock) return;
 
         const debugLine = `[${new Date().toISOString()}] Query: ${userText.slice(0, 100)}...\n${fullBlock}\n\n`;
-        try {
-          try {
-            const stat = fs.statSync(INJECTION_LOG_FILE);
-            if (stat.size > INJECTION_LOG_MAX_SIZE) {
-              fs.renameSync(INJECTION_LOG_FILE, INJECTION_LOG_FILE + ".old");
-            }
-          } catch { }
-          fs.appendFileSync(INJECTION_LOG_FILE, debugLine);
-        } catch { /* silent fail */ }
+        appendInjectionLog(debugLine);
 
         if (userMsg && userMsg.parts) {
           userMsg.parts.unshift({ type: "text", text: fullBlock + "\n\n" });
         }
+
+        state.lastQuery = userText;
+        state.lastQueryEmbedding = queryEmbedding;
+        state.lastInjectTime = Date.now();
 
         log("info", "Memory injected", { nodeCount: scored.length, skillCount: relevantSkills.length, playbookCount: relevantPlaybooks.length, queryLength: userText.length });
       } catch (err) {
