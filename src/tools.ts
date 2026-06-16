@@ -1,4 +1,3 @@
-import { tool } from "@opencode-ai/plugin";
 import { MemoryInjectionDebug } from "./tools/injection-debug";
 import { MemoryInject } from "./tools/inject";
 import { MemoryMiddleTerm } from "./tools/middle-term";

@@ -47,6 +47,3 @@ export function queryDeleteLinks(db: Database, sourceId: string): void {
   db.run("DELETE FROM memory_links WHERE source_id = ?", [sourceId]);
 }
 
-export function queryDeleteLinksForTarget(db: Database, targetId: string): void {
-  db.run("DELETE FROM memory_links WHERE target_id = ?", [targetId]);
-}

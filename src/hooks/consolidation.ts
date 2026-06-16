@@ -10,11 +10,6 @@ export interface ConsolidationConfig {
   minClusterSize: number;
 }
 
-const EPISODIC_TYPES = [
-  "event", "note", "session", "task", "plan", "exploration",
-  "debug-investigation", "improvement", "review",
-];
-
 function extractFactsFromCluster(cluster: MemoryNode[], maxFacts: number): string[] {
   const facts: string[] = [];
   const seen = new Set<string>();
@@ -58,12 +53,6 @@ function extractFactsFromCluster(cluster: MemoryNode[], maxFacts: number): strin
 }
 
 function buildFactLabel(fact: string, cluster: MemoryNode[]): string {
-  const sourceLabels = cluster
-    .map(n => n.label)
-    .filter(Boolean)
-    .slice(0, 3)
-    .join("-");
-
   const shortFact = fact
     .replace(/[^\w\s]/g, "")
     .trim()

@@ -1,0 +1,24 @@
+{
+  "conversationIndex": 0,
+  "qaIndex": 2,
+  "results": [
+    {
+      "question": "When did Caroline go to the LGBTQ support group?",
+      "groundTruth": "7 May 2023",
+      "prediction": "7 May 2023",
+      "category": "multi_hop",
+      "f1": 1,
+      "evidenceChunks": 20,
+      "latencyMs": 33071
+    },
+    {
+      "question": "When did Melanie paint a sunrise?",
+      "groundTruth": 2022,
+      "prediction": "In 2022.",
+      "category": "multi_hop",
+      "f1": 0,
+      "evidenceChunks": 20,
+      "latencyMs": 18704
+    }
+  ]
+}

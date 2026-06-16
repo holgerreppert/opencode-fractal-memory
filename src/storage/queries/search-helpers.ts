@@ -2,17 +2,6 @@ import type { Database } from "bun:sqlite";
 import type { MemoryNode, MemoryNodeLevel } from "../types";
 import { tokenize } from "../utils";
 import { estimateTokens } from "../../embeddings";
-import { cosineSimilarity } from "../../math";const CHUNK_SIZE_TOKENS = 500;
-const OVERLAP_TOKENS = 50;
-
-export interface Chunk {
-  id: string;
-  nodeId: string;
-  content: string;
-  startToken: number;
-  endToken: number;
-}
-
 export function updateBM25Index(db: Database, nodeId: string, content: string, label: string | undefined, scope: string): void {
   const tokens = tokenize(content + ' ' + (label ?? ''));
   const termFreq = new Map<string, number>();
@@ -62,34 +51,6 @@ export function computeRecencyScore(lastAccessed: Date | null): number {
   if (!lastAccessed) return 0;
   const hoursSinceAccess = (Date.now() - lastAccessed.getTime()) / (1000 * 60 * 60);
   return Math.exp(-hoursSinceAccess / 24);
-}
-
-export function chunkContent(content: string, nodeId: string): Chunk[] {
-  const tokens = content.split(/\s+/);
-  const chunks: Chunk[] = [];
-  
-  const step = CHUNK_SIZE_TOKENS - OVERLAP_TOKENS;
-  
-  for (let i = 0; i < tokens.length; i += step) {
-    const chunkTokens = tokens.slice(i, i + CHUNK_SIZE_TOKENS);
-    if (chunkTokens.length < 20) {
-      if (chunks.length > 0) break;
-    }
-    
-    chunks.push({
-      id: `${nodeId}:chunk:${chunks.length}`,
-      nodeId,
-      content: chunkTokens.join(' '),
-      startToken: i,
-      endToken: Math.min(i + CHUNK_SIZE_TOKENS, tokens.length),
-    });
-  }
-  
-  return chunks;
-}
-
-export function isLargeNode(content: string): boolean {
-  return estimateTokens(content) > CHUNK_SIZE_TOKENS;
 }
 
 export interface RerankResult {
@@ -302,38 +263,6 @@ export type SearchOptions = {
   rerank?: boolean;
   bm25Scores?: Map<string, number>;
 };
-
-export function buildScoredNodes(
-  query: number[],
-  nodesWithEmbeddings: Array<{ node: MemoryNode; embedding: number[]; hnswScore?: number }>,
-  weights: Partial<Record<MemoryNodeLevel, number>>,
-  options?: SearchOptions
-): MemoryNode[] {
-  const scoredNodes: MemoryNode[] = [];
-  
-  for (const { node, embedding, hnswScore } of nodesWithEmbeddings) {
-    const level = node.level as MemoryNodeLevel;
-    
-    if (options?.minLevel !== undefined && level < options.minLevel) continue;
-    if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
-    if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
-    
-    const baseScore = hnswScore !== undefined
-      ? (cosineSimilarity(query, embedding) + hnswScore) / 2
-      : cosineSimilarity(query, embedding);
-    
-    const levelWeight = weights[level] ?? 1;
-    const confidence = node.confidence ?? 0.5;
-    const confidenceWeight = 0.5 + 0.5 * confidence;
-    
-    scoredNodes.push({
-      ...node,
-      importance: baseScore * levelWeight * confidenceWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
-    });
-  }
-  
-  return scoredNodes;
-}
 
 export function computeFinalScores(
   scoredNodes: MemoryNode[],

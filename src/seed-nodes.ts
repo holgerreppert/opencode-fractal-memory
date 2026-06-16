@@ -1334,24 +1334,5 @@ As of npm v12 (July 2026), \`--ignore-scripts\` is the default — \`postinstall
   },
 ];
 
-export async function ensureRuleNodes(store: { getNodeByLabel: (scope: string, label: string) => Promise<any>; createNode: (args: any) => Promise<void> }): Promise<void> {
-  for (const seed of SEED_NODES) {
-    try {
-      await store.getNodeByLabel("global", seed.label);
-    } catch {
-      await store.createNode({
-        scope: "global",
-        label: seed.label,
-        content: seed.content,
-        summary: seed.summary ?? null,
-        type: seed.type ?? "note",
-        level: 0,
-        parentIds: null,
-        embedding: null,
-        importance: 1,
-        metadata: seed.metadata ?? null,
-        sticky: seed.type === "playbook" ? true : undefined,
-      });
-    }
-  }
-}
+
+

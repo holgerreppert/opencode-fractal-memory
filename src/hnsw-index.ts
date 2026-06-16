@@ -1,6 +1,4 @@
 import { HNSW } from "hnsw";
-import { writeFile, readFile } from "node:fs/promises";
-import { join } from "path";
 
 const M = 16;
 const EF_CONSTRUCTION = 200;
@@ -179,6 +177,5 @@ export function getHNSWIndex(dimension: number = 384): HNSWIndex {
   return hnswInstance;
 }
 
-export function resetHNSWIndex(): void {
-  hnswInstance = null;
-}
+
+

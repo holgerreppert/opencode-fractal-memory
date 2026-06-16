@@ -10,10 +10,6 @@ let activeProcess: import("bun").Subprocess | null = null;
 
 let mgmtConfig: { enabled: boolean; port: number; directory: string } | null = null;
 
-export function isManagementServerRunning(): boolean {
-  return activeProcess !== null;
-}
-
 export function ensureManagementServer(): void {
   if (mgmtConfig && mgmtConfig.enabled) {
     startManagementServer(null as any, mgmtConfig.directory, { enabled: true, port: mgmtConfig.port });

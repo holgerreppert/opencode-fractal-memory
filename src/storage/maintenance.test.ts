@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { runMigrations } from "./migrations";
 import { backfillBinaryEmbeddingsAndBM25, rebuildHNSWIndex, backfillLinks } from "./maintenance";
-import { resetHNSWIndex, getHNSWIndex } from "../hnsw-index";
+import { getHNSWIndex } from "../hnsw-index";
 import type { MemoryScope } from "./types";
 
 type MemoryScopes = "global" | "project";
@@ -168,7 +168,7 @@ describe("backfillBinaryEmbeddingsAndBM25", () => {
 
 describe("rebuildHNSWIndex", () => {
   beforeEach(() => {
-    resetHNSWIndex();
+    getHNSWIndex().rebuild([]);
   });
 
   test("skips when HNSW already matches DB node count", async () => {

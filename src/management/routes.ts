@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { memLog } from "../logging";
 import { generateEmbedding } from "../embeddings";
 import { Router } from "./router";
@@ -7,8 +6,7 @@ import {
   queryNodes, getAvailableScopes, extractLinks, computeStats,
   readProjectConfig, writeProjectConfig, rowToNode,
   withDb, jsonResponse, getAvailableProjects,
-  getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup, formatSize,
-  initDbPaths, getConfigDir, getBackupDir,
+  getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup,
 } from "./helpers";
 import { VERSION } from "../version";
 

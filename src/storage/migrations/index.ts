@@ -6,11 +6,6 @@ export type { Migration } from "./definitions";
 
 export const CURRENT_VERSION = 23;
 
-export function getCurrentVersion(db: Database): number {
-  const row = db.query("PRAGMA user_version").get() as { user_version: number } | null;
-  return row?.user_version ?? 0;
-}
-
 export function runMigrations(db: Database): number {
   for (const migration of MIGRATIONS) {
     migration.up(db);

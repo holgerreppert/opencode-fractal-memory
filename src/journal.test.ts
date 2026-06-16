@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { createJournalStore, loadConfig } from "./journal";
+import { createJournalStore } from "./journal";
 
 // Mock the embeddings module to avoid downloading a real model in tests
 mock.module("./embeddings", () => ({
@@ -33,62 +33,6 @@ mock.module("./embeddings", () => ({
 async function mkTmpDir(): Promise<string> {
   return fs.mkdtemp(path.join("/tmp/", "opencode-journal-"));
 }
-
-describe("loadConfig", () => {
-  test("returns empty config when file does not exist", async () => {
-    const dir = await mkTmpDir();
-    const config = await loadConfig(dir);
-    expect(config).toEqual({});
-  });
-
-  test("returns parsed config when file is valid", async () => {
-    const dir = await mkTmpDir();
-    await fs.writeFile(
-      path.join(dir, "agent-memory.json"),
-      JSON.stringify({ journal: { enabled: true } }),
-    );
-    const config = await loadConfig(dir);
-    expect(config.journal?.enabled).toBe(true);
-  });
-
-  test("returns empty config when file has invalid JSON", async () => {
-    const dir = await mkTmpDir();
-    await fs.writeFile(path.join(dir, "agent-memory.json"), "not json{{{");
-    const config = await loadConfig(dir);
-    expect(config).toEqual({});
-  });
-
-  test("returns custom tags from config", async () => {
-    const dir = await mkTmpDir();
-    await fs.writeFile(
-      path.join(dir, "agent-memory.json"),
-      JSON.stringify({
-        journal: {
-          enabled: true,
-          tags: [
-            { name: "perf", description: "Performance optimization work" },
-            { name: "debug", description: "Debugging sessions" },
-          ],
-        },
-      }),
-    );
-    const config = await loadConfig(dir);
-    expect(config.journal?.tags).toEqual([
-      { name: "perf", description: "Performance optimization work" },
-      { name: "debug", description: "Debugging sessions" },
-    ]);
-  });
-
-  test("returns empty config when schema validation fails", async () => {
-    const dir = await mkTmpDir();
-    await fs.writeFile(
-      path.join(dir, "agent-memory.json"),
-      JSON.stringify({ journal: { enabled: "yes" } }),
-    );
-    const config = await loadConfig(dir);
-    expect(config).toEqual({});
-  });
-});
 
 describe("journal store", () => {
   let tmpDir: string;

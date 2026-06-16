@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { Database } from "bun:sqlite";
-import { generateEmbedding } from "../embeddings";
 import { memLog } from "../logging";
 
 const ALLOWED_SCOPES = new Set(["global", "project"]);

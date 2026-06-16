@@ -4,11 +4,12 @@ import { Database } from "bun:sqlite";
 import {
   CURRENT_VERSION,
   MIGRATIONS,
-  getCurrentVersion,
   runMigrations,
   getConfig,
   setConfig,
 } from "./migrations";
+
+const getDbVersion = (db: Database) => (db.query("PRAGMA user_version").get() as { user_version: number } | undefined)?.user_version ?? 0;
 
 describe("migrations", () => {
   test("creates full schema from scratch (v0 → current)", async () => {
@@ -67,7 +68,7 @@ describe("migrations", () => {
     runMigrations(db); // Should not error
     runMigrations(db); // Should not error
     
-    const version = getCurrentVersion(db);
+    const version = getDbVersion(db);
     expect(version).toBe(CURRENT_VERSION);
   });
 
@@ -75,11 +76,11 @@ describe("migrations", () => {
     const db = new Database(":memory:");
     
     // Start with version 0
-    expect(getCurrentVersion(db)).toBe(0);
+    expect(getDbVersion(db)).toBe(0);
     
     const version = runMigrations(db);
     expect(version).toBe(CURRENT_VERSION);
-    expect(getCurrentVersion(db)).toBe(CURRENT_VERSION);
+    expect(getDbVersion(db)).toBe(CURRENT_VERSION);
   });
 
   test("partially migrated database gets remaining migrations", async () => {
@@ -105,7 +106,7 @@ describe("migrations", () => {
     `);
     db.run(`PRAGMA user_version = 1`);
     
-    expect(getCurrentVersion(db)).toBe(1);
+    expect(getDbVersion(db)).toBe(1);
     
     // Run migrations - should add config table (v2)
     const version = runMigrations(db);
@@ -137,10 +138,10 @@ describe("migrations", () => {
     const db = new Database(":memory:");
     
     runMigrations(db);
-    const version1 = getCurrentVersion(db);
+    const version1 = getDbVersion(db);
     
     runMigrations(db);
-    const version2 = getCurrentVersion(db);
+    const version2 = getDbVersion(db);
     
     expect(version1).toBe(version2);
     expect(version1).toBe(CURRENT_VERSION);

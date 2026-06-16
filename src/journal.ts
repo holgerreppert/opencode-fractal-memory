@@ -30,21 +30,6 @@ const ConfigSchema = z.looseObject({
 
 export type AgentMemoryConfig = z.infer<typeof ConfigSchema>;
 
-export async function loadConfig(
-  configDir?: string,
-): Promise<AgentMemoryConfig> {
-  const dir = configDir ?? path.join(os.homedir(), ".config", "opencode");
-  const configPath = path.join(dir, "agent-memory.json");
-  try {
-    const raw = await fs.readFile(configPath, "utf-8");
-    const parsed = ConfigSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return {};
-    return parsed.data;
-  } catch {
-    return {};
-  }
-}
-
 export type JournalTag = {
   name: string;
   description: string;
@@ -350,21 +335,5 @@ export function createJournalStore(configDir?: string): JournalStore {
   };
 }
 
-export function buildJournalSystemNote(
-  tags?: readonly JournalTag[],
-): string {
-  const tagSection =
-    tags && tags.length > 0
-      ? `\n\nSuggested tags:\n${tags.map((t) => `- ${t.name}: ${t.description}`).join("\n")}`
-      : "";
 
-  return `<journal_instructions>
-You have access to a private journal. Use it to record thoughts, discoveries, and decisions as you work.
-Tags are free-form strings — use them to classify entries however makes sense.${tagSection}
 
-Before starting complex tasks, search the journal for relevant past context.
-Journal entries are append-only: you write new entries but never edit old ones.
-Use journal_search to find past entries semantically, and journal_read to read a specific entry.
-The journal is global across all projects but each entry records which project it was written from.
-</journal_instructions>`;
-}

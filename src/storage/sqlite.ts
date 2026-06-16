@@ -2,14 +2,11 @@ import * as fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
-
 import { Database } from "bun:sqlite";
 
 import { runMigrations, getConfig, setConfig } from "./migrations";
-import { generateEmbedding, estimateTokens } from "../embeddings";
 import { getHNSWIndex } from "../hnsw-index";
-import { rowToNode, type SqliteNode } from "./queries/base";
+import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
 import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";

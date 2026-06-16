@@ -610,6 +610,21 @@ MIT
 
 ## Changelog
 
+### v0.6.26 (2026-06-16)
+- **Dead code cleanup** — removed 2 dead files (`auto-discover.ts`, `procedural/store.ts`), 25 dead exports, 6 unused imports, and 2 unused variables. Total -421 lines.
+- **Test fixes** — `maintenance.test.ts` adapted for removed `resetHNSWIndex`; `journal.test.ts` removed dead `loadConfig` tests; `migrations.test.ts` replaced `getCurrentVersion` with inline pragma.
+- **275 tests pass, 0 fail**
+
+### v0.6.25 (2026-06-15)
+- **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls, and injection-event calls now properly awaited.
+- **Bug fix: HNSW ghost entries** — `.filter(r => r.id !== "")` strips ghost results from deleted nodes.
+- **Bug fix: pruneNodes HNSW cleanup** — `pruneNodes` now calls `hnsw.removeNode()` for each pruned node.
+- **Benchmark improvement** — hybrid BM25+vector search at 0.5× weight, multi-hop temporal expansion up to 3 hops, score decay 0.7^depth. Overall F1: 14.33% → 16.10%.
+- **Model-router configured** — "local" preset with budget mode: @fast=gemma4:latest, @medium=gemma4:latest, @heavy=deepseek-v4-flash-free.
+- **Translate subagent** — read-only agent for natural language translation (mittwald/gpt-oss-120b).
+- **12 maintenance tests** added in `src/storage/maintenance.test.ts`.
+- **Published to npm** as `opencode-fractal-memory@0.6.25`.
+
 ### v0.6.24 (2026-06-15)
 - **Episodic / Semantic memory categories** — all nodes auto-categorized on creation. Episodic types (event, session, task, etc.) decay with 7-day half-life and 0.5× search weight. Semantic types (concept, fact, lesson, rule, etc.) decay with 365-day half-life and 1.0× search weight. Dashboard shows category distribution; search/drilldown show `[episodic]`/`[semantic]` tags; `category_filter` arg on `memory_search`.
 - **Consolidation bridge** — `autoConsolidate` extracts semantic facts from episodic clusters on `session.idle` and stores them as persistent `type: "fact"` nodes with `parentIds` back to source nodes. New `"fact"` node type added.
