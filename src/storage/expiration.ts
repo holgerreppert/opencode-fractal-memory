@@ -3,6 +3,7 @@ import type { MemoryScope, MemoryNode, MemoryNodeLevel } from "./types";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { withRetry } from "./utils";
+import { getHNSWIndex } from "../hnsw-index";
 
 export async function getExpiredNodes(
   getDb: (scope: MemoryScope) => Promise<Database>,
@@ -107,10 +108,14 @@ export async function pruneNodes(
       if (list) list.push(node.id);
       else byScope.set(node.scope, [node.id]);
     }
+    const hnsw = getHNSWIndex();
     for (const [s, ids] of byScope) {
       const db = await deps.getDb(s);
       const placeholders = ids.map(() => "?").join(",");
       await withRetry(() => db.run(`DELETE FROM memory_nodes WHERE id IN (${placeholders})`, ids));
+      for (const id of ids) {
+        await hnsw.removeNode(s, id);
+      }
       pruned += ids.length;
     }
   }

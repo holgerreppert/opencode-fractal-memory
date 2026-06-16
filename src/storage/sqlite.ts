@@ -267,7 +267,7 @@ class SqliteMemoryStore {
     const { db, scope } = await resolveNodeFn((s) => this.getDb(s), this.idScopeCache, id);
 
     await withRetryableTransaction(db, async () => {
-      queryDeleteNode(db, id);
+      await queryDeleteNode(db, id);
       queryDeleteLinks(db, id);
       queryDeleteTemporalEdgesForNode(db, id);
       removeBM25Index(db, id);
@@ -418,7 +418,7 @@ class SqliteMemoryStore {
 
   async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {
     const db = await this.getDb("global");
-    insertToolUsageLog(db, toolName, resultTokens, contextWarning, success, durationMs);
+    await insertToolUsageLog(db, toolName, resultTokens, contextWarning, success, durationMs);
   }
 
   async getToolPatterns(_scope: MemoryScope | "all"): Promise<Array<{ toolName: string; count: number; avgTokens: number; avgDurationMs: number; warningRate: number; successRate: number }>> {
@@ -450,7 +450,7 @@ class SqliteMemoryStore {
   ): Promise<void> {
     const db = await this.getGlobalDb();
     const category = getToolCategory(toolName);
-    insertAgentToolCall(db, sessionId, toolName, args, output, success, durationMs, category);
+    await insertAgentToolCall(db, sessionId, toolName, args, output, success, durationMs, category);
 
     if (sessionId) {
       await this.incrementSessionToolCall(sessionId, toolName, success ?? true, null);
@@ -459,7 +459,7 @@ class SqliteMemoryStore {
 
   async createSessionMetrics(sessionId: string, startedAt?: number): Promise<void> {
     const db = await this.getGlobalDb();
-    createSessionMetricsRow(db, sessionId, startedAt);
+    await createSessionMetricsRow(db, sessionId, startedAt);
   }
 
   async updateSessionMetrics(
@@ -480,7 +480,7 @@ class SqliteMemoryStore {
     }>
   ): Promise<void> {
     const db = await this.getGlobalDb();
-    updateSessionMetrics(db, sessionId, updates);
+    await updateSessionMetrics(db, sessionId, updates);
   }
 
   async incrementSessionToolCall(
@@ -490,7 +490,7 @@ class SqliteMemoryStore {
     filePath?: string | null
   ): Promise<void> {
     const db = await this.getGlobalDb();
-    incrementSessionToolCall(db, sessionId, toolName, success, filePath);
+    await incrementSessionToolCall(db, sessionId, toolName, success, filePath);
   }
 
   async getSessionStats(sessionId: string): Promise<{
@@ -577,7 +577,7 @@ class SqliteMemoryStore {
     }
   ): Promise<void> {
     const db = await this.getGlobalDb();
-    insertInjectionMetrics(db, sessionId, data);
+    await insertInjectionMetrics(db, sessionId, data);
   }
 
   async getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>> {
@@ -592,12 +592,12 @@ class SqliteMemoryStore {
 
   async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
     const db = await this.getGlobalDb();
-    updateMemoryToolCall(db, sessionId, toolName);
+    await updateMemoryToolCall(db, sessionId, toolName);
   }
 
   async finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void> {
     const db = await this.getGlobalDb();
-    finalizeInjection(db, sessionId, effectivenessScore, taskDescription);
+    await finalizeInjection(db, sessionId, effectivenessScore, taskDescription);
   }
 
   async recordInjectionFeedback(
@@ -608,7 +608,7 @@ class SqliteMemoryStore {
     neededNodes?: string[]
   ): Promise<void> {
     const db = await this.getGlobalDb();
-    insertInjectionFeedback(db, sessionId, upvotes, downvotes, taskOutcome, neededNodes);
+    await insertInjectionFeedback(db, sessionId, upvotes, downvotes, taskOutcome, neededNodes);
   }
 
   async getInjectionMetrics(limit = 100): Promise<Array<{

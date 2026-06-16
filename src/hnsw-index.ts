@@ -124,17 +124,19 @@ export class HNSWIndex {
       results = combined.slice(0, limit);
     }
 
-    return results.map(r => {
-      let nodeId: string;
-      if (scope === "global") {
-        nodeId = this.globalLabelMap.get(r.id) ?? "";
-      } else if (scope === "project") {
-        nodeId = this.projectLabelMap.get(r.id) ?? "";
-      } else {
-        nodeId = this.globalLabelMap.get(r.id) ?? this.projectLabelMap.get(r.id) ?? "";
-      }
-      return { id: nodeId, score: r.score };
-    });
+    return results
+      .map(r => {
+        let nodeId: string;
+        if (scope === "global") {
+          nodeId = this.globalLabelMap.get(r.id) ?? "";
+        } else if (scope === "project") {
+          nodeId = this.projectLabelMap.get(r.id) ?? "";
+        } else {
+          nodeId = this.globalLabelMap.get(r.id) ?? this.projectLabelMap.get(r.id) ?? "";
+        }
+        return { id: nodeId, score: r.score };
+      })
+      .filter(r => r.id !== "");
   }
 
   async rebuild(

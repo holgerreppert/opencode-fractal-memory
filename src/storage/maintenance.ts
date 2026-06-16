@@ -38,6 +38,14 @@ export async function backfillBinaryEmbeddingsAndBM25(
   db: Database,
   scope: MemoryScope
 ): Promise<void> {
+  // Quick check: skip if BM25 already populated and no blob conversion needed
+  const bm25Count = db.query("SELECT COUNT(*) as c FROM bm25_doc_stats WHERE scope = ?").get(scope) as { c: number } | undefined;
+  const needsBlob = db.query("SELECT COUNT(*) as c FROM memory_nodes WHERE embedding IS NOT NULL AND embedding_blob IS NULL").get() as { c: number } | undefined;
+
+  if ((bm25Count?.c ?? 0) > 0 && (needsBlob?.c ?? 0) === 0) {
+    return; // Already up to date — BM25 is maintained by create/update/delete paths
+  }
+
   const rows = db.query("SELECT id, label, content, embedding, embedding_blob FROM memory_nodes").all() as {
     id: string;
     label: string;
@@ -46,16 +54,21 @@ export async function backfillBinaryEmbeddingsAndBM25(
     embedding_blob: Buffer | null;
   }[];
 
-  for (const row of rows) {
-    if (row.embedding && !row.embedding_blob) {
-      const embedding = JSON.parse(row.embedding) as number[];
-      const blob = embeddingToBlob(embedding);
-      await withRetry(() => {
+  db.run("BEGIN TRANSACTION");
+  try {
+    for (const row of rows) {
+      if (row.embedding && !row.embedding_blob) {
+        const embedding = JSON.parse(row.embedding) as number[];
+        const blob = embeddingToBlob(embedding);
         db.run("UPDATE memory_nodes SET embedding_blob = ? WHERE id = ?", [blob, row.id]);
-      });
-    }
+      }
 
-    updateBM25Index(db, row.id, row.content, row.label, scope);
+      updateBM25Index(db, row.id, row.content, row.label, scope);
+    }
+    db.run("COMMIT");
+  } catch (e) {
+    db.run("ROLLBACK");
+    throw e;
   }
 }
 
@@ -64,13 +77,28 @@ export async function rebuildHNSWIndex(
   scope?: MemoryScope | "all"
 ): Promise<void> {
   const hnsw = getHNSWIndex();
-  const nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }> = [];
+  let totalWithEmbeddings = 0;
 
   const scopes: MemoryScope[] = scope === "all" || !scope ? ["global", "project"] : [scope];
 
   for (const s of scopes) {
     const db = await getDb(s);
-    const rows = db.query("SELECT id, embedding, embedding_blob FROM memory_nodes WHERE embedding IS NOT NULL OR embedding_blob IS NOT NULL").all() as Array<{
+    const count = db.query("SELECT COUNT(*) as c FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND scope = ?").get(s) as { c: number } | undefined;
+    totalWithEmbeddings += count?.c ?? 0;
+  }
+
+  // Skip if HNSW already has the same number of nodes
+  const stats = hnsw.getStats();
+  const totalInIndex = stats.globalNodes + stats.projectNodes;
+  if (totalWithEmbeddings > 0 && totalInIndex === totalWithEmbeddings) {
+    return;
+  }
+
+  const nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }> = [];
+
+  for (const s of scopes) {
+    const db = await getDb(s);
+    const rows = db.query("SELECT id, embedding, embedding_blob FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND scope = ?").all(s) as Array<{
       id: string;
       embedding: string | null;
       embedding_blob: Buffer | null;

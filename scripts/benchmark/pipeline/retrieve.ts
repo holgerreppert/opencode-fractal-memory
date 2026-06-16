@@ -1,5 +1,6 @@
 import { type MemoryStore } from "../../../src/storage/types";
 import { tokenize } from "../../../src/storage/utils";
+import { generateEmbedding } from "../../../src/embeddings";
 import { type TurnInfo, type SessionInfo } from "./ingest";
 
 export type EvidenceResult = {
@@ -142,6 +143,30 @@ function resolveRelativeDate(text: string, sessionDateTime: string): string {
   return text;
 }
 
+async function expandTemporalEdges(
+  store: MemoryStore,
+  nodeId: string,
+  maxHops: number,
+  visited: Set<string>,
+  depth: number = 0,
+): Promise<Set<string>> {
+  if (depth >= maxHops || visited.has(nodeId)) return visited;
+  visited.add(nodeId);
+
+  const edgeTypes = depth === 0 ? ["DURING_SESSION", "NEXT"] : ["NEXT"];
+  for (const edgeType of edgeTypes) {
+    const edges = await store.getTemporalEdges(nodeId, "both", edgeType);
+    for (const e of edges) {
+      const neighborId = e.sourceNodeId === nodeId ? e.targetNodeId : e.sourceNodeId;
+      if (!visited.has(neighborId)) {
+        visited.add(neighborId);
+        await expandTemporalEdges(store, neighborId, maxHops, visited, depth + 1);
+      }
+    }
+  }
+  return visited;
+}
+
 export async function retrieveEvidence(
   store: MemoryStore,
   question: string,
@@ -153,41 +178,49 @@ export async function retrieveEvidence(
   const queryTerms = tokenize(question).filter(t => t.length > 2);
   if (queryTerms.length === 0) return [];
 
+  // Phase 1: BM25 search
   let scores = bm25Search(db, queryTerms, topK * 3);
   if (scores.size === 0) {
     scores = likeFallbackSearch(db, queryTerms, topK * 3);
   }
+
+  // Phase 2: Vector search (run alongside BM25, combine results)
+  if (queryTerms.length > 0) {
+    try {
+      const embedding = await generateEmbedding(question);
+      const vectorNodes = await store.searchByEmbedding(embedding, topK * 2, {
+        bm25Weight: 0,
+        queryText: question,
+      });
+      const vectorMax = Math.max(...vectorNodes.map(n => n.importance ?? 0.5), 1);
+      for (const node of vectorNodes) {
+        const vectorScore = (node.importance ?? 0.5) / vectorMax;
+        const existing = scores.get(node.id);
+        if (existing !== undefined) {
+          scores.set(node.id, existing + vectorScore * 0.5);
+        } else {
+          scores.set(node.id, vectorScore * 0.5);
+        }
+      }
+    } catch { /* embedding failed, proceed with BM25 only */ }
+  }
+
   if (scores.size === 0) return [];
 
-  // Get top BM25 candidates
+  // Get top candidates for temporal seeding
   const maxScore = Math.max(...scores.values(), 1);
   const topCandidates = [...scores.entries()]
     .map(([id, s]) => ({ nodeId: id, score: s / maxScore }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(topK, 3)); // At least 3 for temporal expansion
+    .slice(0, Math.max(topK, 5));
 
-  // Temporal edge expansion: follow NEXT edges from top candidates
+  // Phase 3: Multi-hop temporal edge expansion
   const expandedIds = new Set<string>();
   for (const c of topCandidates) {
-    expandedIds.add(c.nodeId);
-    // 1-hop temporal expansion via DURING_SESSION (gets session summary)
-    const duringEdges = await store.getTemporalEdges(c.nodeId, "both", "DURING_SESSION");
-    for (const e of duringEdges) {
-      const neighborId = e.sourceNodeId === c.nodeId ? e.targetNodeId : e.sourceNodeId;
-      expandedIds.add(neighborId);
-    }
-    // Expanded via NEXT (adjacent turns)
-    const nextEdges = await store.getTemporalEdges(c.nodeId, "both", "NEXT");
-    for (const e of nextEdges) {
-      const neighborId = e.sourceNodeId === c.nodeId ? e.targetNodeId : e.sourceNodeId;
-      expandedIds.add(neighborId);
-    }
+    await expandTemporalEdges(store, c.nodeId, 3, expandedIds);
   }
 
   // Build results with temporal context resolution
-  const results: EvidenceResult[] = [];
-
-  // Fetch and optionally resolve dates in evidence
   const nodeIdToSession = new Map<string, SessionInfo>();
   if (turnIndex && sessions) {
     for (const [label, info] of turnIndex) {
@@ -196,24 +229,43 @@ export async function retrieveEvidence(
     }
   }
 
+  // Assign scores: BM25 scores directly, expanded nodes get decaying scores
+  const temporalHopScore = new Map<string, number>();
+  async function assignHopScores(nodeId: string, hopScore: number, depth: number, visitedForScore: Set<string>) {
+    if (depth > 3 || visitedForScore.has(nodeId)) return;
+    visitedForScore.add(nodeId);
+    const existing = scores.get(nodeId);
+    const base = existing !== undefined ? existing / maxScore : hopScore;
+    temporalHopScore.set(nodeId, Math.max(temporalHopScore.get(nodeId) ?? 0, base));
+    if (depth < 3) {
+      const edges = await store.getTemporalEdges(nodeId, "both", "NEXT");
+      for (const e of edges) {
+        const neighborId = e.sourceNodeId === nodeId ? e.targetNodeId : e.sourceNodeId;
+        await assignHopScores(neighborId, hopScore * 0.7, depth + 1, visitedForScore);
+      }
+    }
+  }
+  for (const c of topCandidates) {
+    await assignHopScores(c.nodeId, c.score, 0, new Set());
+  }
+
+  const results: EvidenceResult[] = [];
   for (const nodeId of expandedIds) {
     try {
       const node = await store.getNode(nodeId);
-      const baseScore = scores.get(nodeId) ?? 0;
-      const normalizedScore = baseScore / maxScore;
+      const finalScore = temporalHopScore.get(nodeId) ?? 0;
 
-      // Resolve relative dates if session info is available
       let content = node.content;
       const session = nodeIdToSession.get(nodeId);
       if (session && session.dateTime) {
         content = resolveRelativeDate(content, session.dateTime);
       }
 
-      results.push({ nodeId, content, score: normalizedScore });
+      results.push({ nodeId, content, score: finalScore });
     } catch { /* node deleted */ }
   }
 
-  // Sort by score descending, limit to topK
   results.sort((a, b) => b.score - a.score);
-  return results.slice(0, topK);
+  const deduped = results.filter((r, i) => results.findIndex(r2 => r2.nodeId === r.nodeId) === i);
+  return deduped.slice(0, topK);
 }

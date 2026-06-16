@@ -610,7 +610,7 @@ MIT
 
 ## Changelog
 
-### v0.6.24 (2026-06-14)
+### v0.6.24 (2026-06-15)
 - **Episodic / Semantic memory categories** — all nodes auto-categorized on creation. Episodic types (event, session, task, etc.) decay with 7-day half-life and 0.5× search weight. Semantic types (concept, fact, lesson, rule, etc.) decay with 365-day half-life and 1.0× search weight. Dashboard shows category distribution; search/drilldown show `[episodic]`/`[semantic]` tags; `category_filter` arg on `memory_search`.
 - **Consolidation bridge** — `autoConsolidate` extracts semantic facts from episodic clusters on `session.idle` and stores them as persistent `type: "fact"` nodes with `parentIds` back to source nodes. New `"fact"` node type added.
 - **Auto-retrieve relevance filters** — `maxLevel: 0` blocks L1+ compression summaries from injection; `categoryFilter: "semantic"` blocks episodic session traces. Config gains `minQueryLength` and `injectionCooldownMs`.
@@ -623,7 +623,10 @@ MIT
 - **`memory_list scope=project` auto-scopes to current project** — `memory_list scope=project` now defaults `project_name` to the current project, avoiding confusing cross-project node listings. To see all projects, pass `project_name=""` explicitly.
 - **Management UI project dropdown** — replaced button-based project filter with a `<select>` dropdown for cleaner project selection.
 - **Management API `?project_name=` support** — `/api/nodes`, `/api/links`, `/api/stats` accept optional `project_name` query param for server-side filtering.
-- **Fix: `validateLabel` rejects periods in file labels** — `validateLabel()` regex now allows `.` characters, fixing file summary UNIQUE constraint recovery for files with extensions (e.g. `file:sqlite.ts:5zc`).
+- **Fix: `validateLabel` allows periods in file labels** — `validateLabel()` regex now allows `.` characters, fixing file summary UNIQUE constraint recovery for files with extensions (e.g. `file:sqlite.ts:5zc`).
+- **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls (`insertAgentToolCall`, `createSessionMetricsRow`, `updateSessionMetrics`, `incrementSessionToolCall`), and injection-event calls (`insertInjectionMetrics`, `updateMemoryToolCall`, `finalizeInjection`, `insertInjectionFeedback`, `insertToolUsageLog`) now properly awaited. Critical: `queryDeleteNode` inside a transaction callback could commit before the DELETE completed.
+- **Bug fix: HNSW search returning ghost entries** — `HNSW.removeNode` only removed the label-map entry (the HNSW library doesn't support point deletion), causing `search()` to return `{ id: "", score }` for deleted nodes. Added `.filter(r => r.id !== "")` to strip ghost results.
+- **Bug fix: pruneNodes not cleaning up HNSW index** — `pruneNodes` deleted nodes from the database but didn't call `hnsw.removeNode()`, leaving ghost points in the HNSW graph. Added cleanup loop for each pruned node.
 
 ### v0.6.23 (2026-06-08)
 - **Backup/Restore** — new Backup tab in the management UI. Create timestamped snapshots of config, global DB, and project DB. Restore with per-source selection; pre-restore safety backup auto-created. Backups stored as flat directories at `~/.config/opencode/backups/` — zero external deps.
