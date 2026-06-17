@@ -64,5 +64,20 @@ export function perfNow(): number {
   return Date.now();
 }
 
+const SESSION_LOG_FILE = path.join(LOG_DIR, "sessionlog.log");
+const SESSION_LOG_MAX_SIZE = 1024 * 1024;
+
+export function appendSessionLog(line: string): void {
+  try {
+    try {
+      const stat = fs.statSync(SESSION_LOG_FILE);
+      if (stat.size > SESSION_LOG_MAX_SIZE) {
+        fs.renameSync(SESSION_LOG_FILE, SESSION_LOG_FILE + ".old");
+      }
+    } catch {}
+    fs.appendFileSync(SESSION_LOG_FILE, line + "\n");
+  } catch {}
+}
+
 
 

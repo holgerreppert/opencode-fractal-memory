@@ -39,6 +39,7 @@ const COMMANDS = [
   { name: "memory_cache_status", desc: "Show working-memory cache usage" },
   { name: "memory_help", desc: "Show this help message" },
   { name: "memory_temporal_edges", desc: "Retrieve temporal edges for a memory node (conversation flow)" },
+  { name: "memory_recall_context", desc: "Recall stored conversation context archived during compaction (supports query, sessionId, limit)" },
 ];
 
 export function MemoryHelp(store?: MemoryStore) {

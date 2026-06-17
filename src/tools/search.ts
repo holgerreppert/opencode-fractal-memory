@@ -1,5 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
+import type { MemoryNodeType } from "../storage/types";
 import { estimateTokens, generateEmbedding } from "../embeddings";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking, lastSearchResults } from "./shared";
 
@@ -61,16 +62,18 @@ export function MemorySearch(store: MemoryStore) {
       max_level: tool.schema.number().int().nonnegative().optional().describe("Maximum compression level"),
       min_usefulness: tool.schema.number().min(0).max(5).optional().describe("Minimum usefulness score filter"),
       bm25_weight: tool.schema.number().min(0).max(1).optional().describe("BM25 vs semantic weight (0=full semantic, 1=full BM25)"),
+      temporal_hops: tool.schema.number().int().min(0).max(5).optional().describe("Multi-hop temporal expansion depth (0=off, 1-5 for depth)"),
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
       expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
       expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
+      type: tool.schema.enum(["storedcontext"]).optional().describe("Filter by memory node type (e.g. storedcontext)"),
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
       const queryEmbedding = await generateEmbedding(args.query);
       
-      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string; categoryFilter?: "episodic" | "semantic" } = {
+      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string; categoryFilter?: "episodic" | "semantic"; typeFilter?: MemoryNodeType } = {
         bm25Weight: args.bm25_weight ?? 0.4,
         queryText: args.query,
         rerank: args.rerank ?? true,
@@ -80,6 +83,8 @@ export function MemorySearch(store: MemoryStore) {
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;
       if (args.project_name !== undefined) options.projectName = args.project_name;
       if (args.category_filter !== undefined) options.categoryFilter = args.category_filter;
+      if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
+      if (args.temporal_hops !== undefined && args.temporal_hops > 0) (options as any).temporalHops = args.temporal_hops;
 
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 

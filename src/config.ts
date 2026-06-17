@@ -68,6 +68,9 @@ export interface MemConfig {
     enabled: boolean;
     port?: number;
   };
+  sessionLog?: {
+    enabled: boolean;
+  };
 }
 
 const AutoRetrieveSchema = z.object({
@@ -135,6 +138,10 @@ const ManagementSchema = z.object({
   port: z.number().positive().int().optional(),
 });
 
+const SessionLogSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 const DEFAULT_CONFIG: MemConfig = {
   maxInjectionTokens: 8000,
   coreInjectionTokens: 2000,
@@ -196,6 +203,9 @@ const DEFAULT_CONFIG: MemConfig = {
   management: {
     enabled: false,
   },
+  sessionLog: {
+    enabled: false,
+  },
 };
 
 const MemConfigSchema = z.object({
@@ -220,6 +230,7 @@ const MemConfigSchema = z.object({
   autoConsolidate: AutoConsolidateSchema.optional(),
   journal: JournalSchema.optional(),
   management: ManagementSchema.optional(),
+  sessionLog: SessionLogSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

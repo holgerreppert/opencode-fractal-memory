@@ -8,6 +8,56 @@ import { cosineSimilarity } from "../math";
 import { computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding, withRetry } from "./utils";
 
+async function expandTemporalEdges(
+  getDb: (scope: MemoryScope) => Promise<Database>,
+  nodeId: string,
+  maxHops: number,
+  visited: Set<string>,
+  depth: number = 0,
+): Promise<Set<string>> {
+  if (depth >= maxHops || visited.has(nodeId)) return visited;
+  visited.add(nodeId);
+  const edgeTypes = depth === 0 ? ["DURING_SESSION", "NEXT"] : ["NEXT"];
+  for (const edgeType of edgeTypes) {
+    const db = await getDb("project");
+    const rows = db.query(
+      "SELECT source_node_id, target_node_id FROM temporal_edges WHERE edge_type = ? AND (source_node_id = ? OR target_node_id = ?)"
+    ).all(edgeType, nodeId, nodeId) as { source_node_id: string; target_node_id: string }[];
+    for (const row of rows) {
+      const neighborId = row.source_node_id === nodeId ? row.target_node_id : row.source_node_id;
+      if (!visited.has(neighborId)) {
+        await expandTemporalEdges(getDb, neighborId, maxHops, visited, depth + 1);
+      }
+    }
+  }
+  return visited;
+}
+
+async function assignTemporalHopScores(
+  getDb: (scope: MemoryScope) => Promise<Database>,
+  nodeId: string,
+  hopScore: number,
+  depth: number,
+  maxHops: number,
+  visited: Set<string>,
+  scores: Map<string, number>,
+): Promise<void> {
+  if (depth > maxHops || visited.has(nodeId)) return;
+  visited.add(nodeId);
+  const existing = scores.get(nodeId) ?? 0;
+  scores.set(nodeId, Math.max(existing, hopScore));
+  if (depth < maxHops) {
+    const db = await getDb("project");
+    const rows = db.query(
+      "SELECT source_node_id, target_node_id FROM temporal_edges WHERE edge_type = 'NEXT' AND (source_node_id = ? OR target_node_id = ?)"
+    ).all(nodeId, nodeId) as { source_node_id: string; target_node_id: string }[];
+    for (const row of rows) {
+      const neighborId = row.source_node_id === nodeId ? row.target_node_id : row.source_node_id;
+      await assignTemporalHopScores(getDb, neighborId, hopScore * 0.7, depth + 1, maxHops, visited, scores);
+    }
+  }
+}
+
 export async function searchByEmbedding(
   getDb: (scope: MemoryScope) => Promise<Database>,
   query: number[],
@@ -23,11 +73,13 @@ export async function searchByEmbedding(
     bm25Scores?: Map<string, number>;
     projectName?: string;
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number };
+    temporalHops?: number;
     categoryFilter?: MemoryCategory;
+    typeFilter?: MemoryNodeType;
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
-  const bm25Weight = options?.bm25Weight ?? 0;
+  const bm25Weight = options?.bm25Weight ?? 0.4;
   const doRerank = options?.rerank ?? false;
   const queryText = options?.queryText ?? "";
 
@@ -61,6 +113,7 @@ export async function searchByEmbedding(
         if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
         if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
+        if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
 
         let embedding = node.embedding;
         if (row.embedding_blob) {
@@ -109,6 +162,7 @@ export async function searchByEmbedding(
         }
 
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
+        if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
 
         const semanticScore = cosineSimilarity(query, embedding);
         const levelWeight = weights[level] ?? 1;
@@ -124,7 +178,7 @@ export async function searchByEmbedding(
     }
   }
 
-  if (bm25Weight > 0 && queryText) {
+  if (queryText) {
     const queryTerms = tokenize(queryText);
     const bm25Scores = new Map<string, number>();
     for (const scope of ["global", "project"] as MemoryScope[]) {
@@ -141,45 +195,55 @@ export async function searchByEmbedding(
 
   const finalNodes = computeFinalScores(scoredNodes, options);
 
-  // Temporal boost: if temporalBoost is specified, boost nodes temporally connected to the given node IDs
-  if (options?.temporalBoost && finalNodes.length > 0) {
-    const boost = options.temporalBoost;
-    const factor = boost.boostFactor ?? 1.3;
-    const boostIds = new Set(boost.nodeIds);
-    const edgeTypeFilter = boost.edgeType;
+  // Multi-hop temporal expansion: expand top candidates along temporal edges with score decay
+  const temporalHops = options?.temporalBoost?.boostFactor !== undefined ? 1 : (options?.temporalHops ?? 0);
+  if (temporalHops > 0 && finalNodes.length > 0) {
+    const topK = Math.min(5, finalNodes.length);
+    const seeds = finalNodes.slice(0, topK).map(n => n.id);
+    const maxScore = Math.max(...finalNodes.map(n => n.importance ?? 0.5), 1);
 
-    // Query all edges connected to boost nodes in one query
-    const projectDb = await getDb("project");
-    let edgeSql = "SELECT source_node_id, target_node_id FROM temporal_edges WHERE (source_node_id IN (";
-    edgeSql += boost.nodeIds.map(() => "?").join(",");
-    edgeSql += ") OR target_node_id IN (";
-    edgeSql += boost.nodeIds.map(() => "?").join(",");
-    edgeSql += "))";
-    if (edgeTypeFilter) {
-      edgeSql += " AND edge_type = ?";
-    }
-    const edgeParams = [...boost.nodeIds, ...boost.nodeIds];
-    if (edgeTypeFilter) edgeParams.push(edgeTypeFilter);
-    const edgeRows = projectDb.query(edgeSql).all(...edgeParams) as { source_node_id: string; target_node_id: string }[];
-
-    // Build set of node IDs that are temporally connected to any boost node
-    const tempConnected = new Set<string>();
-    for (const row of edgeRows) {
-      if (boostIds.has(row.source_node_id)) tempConnected.add(row.target_node_id);
-      if (boostIds.has(row.target_node_id)) tempConnected.add(row.source_node_id);
+    // Expand along temporal edges up to temporalHops hops
+    const expandedIds = new Set<string>();
+    for (const seedId of seeds) {
+      await expandTemporalEdges(getDb, seedId, temporalHops, expandedIds);
     }
 
-    // Apply boost
-    for (const node of finalNodes) {
-      if (tempConnected.has(node.id)) {
-        node.importance = (node.importance ?? 0.5) * factor;
+    // Assign decaying scores to expanded nodes
+    const hopScores = new Map<string, number>();
+    for (const seedId of seeds) {
+      const seedScore = (finalNodes.find(n => n.id === seedId)?.importance ?? 0.5) / maxScore;
+      await assignTemporalHopScores(getDb, seedId, seedScore, 0, temporalHops, new Set(), hopScores);
+    }
+
+    // Add expanded nodes not already in finalNodes
+    const existingIds = new Set(finalNodes.map(n => n.id));
+    const allScope: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    for (const scope of allScope) {
+      const db = await getDb(scope);
+      const toFetch = [...expandedIds].filter(id => !existingIds.has(id));
+      if (toFetch.length === 0) continue;
+      const placeholders = toFetch.map(() => "?").join(",");
+      const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders})`).all(...toFetch) as SqliteNode[];
+      for (const row of rows) {
+        const node = rowToNode(row);
+        const hopScore = hopScores.get(node.id) ?? 0;
+        existingIds.add(node.id);
+        finalNodes.push({ ...node, importance: hopScore });
       }
     }
 
-    // Re-sort
+    // Apply hop scores to all expanded nodes
+    for (const node of finalNodes) {
+      const hopScore = hopScores.get(node.id);
+      if (hopScore !== undefined) {
+        node.importance = Math.max(node.importance ?? 0, hopScore);
+      }
+    }
+
     finalNodes.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
   }
 
+  finalNodes.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
   let finalResults = finalNodes.slice(0, limit);
   if (doRerank && queryText.length > 0 && finalResults.length > 3) {
     const reranked = rerankResults(queryText, finalResults, limit);

@@ -2,7 +2,7 @@ export type MemoryScope = "global" | "project";
 
 export type MemoryNodeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact";
+export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact" | "storedcontext";
 
 export type MemoryCategory = "episodic" | "semantic";
 
@@ -101,7 +101,7 @@ export type MemoryStore = {
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
   updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void>;
   deleteNode(id: string): Promise<void>;
-  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number }; categoryFilter?: MemoryCategory }): Promise<MemoryNode[]>;
+  searchByEmbedding(query: number[], limit?: number, options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number }; categoryFilter?: MemoryCategory; typeFilter?: MemoryNodeType }): Promise<MemoryNode[]>;
   runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown, projectName?: string): Promise<{ compressed: number; created: number }>;
   runPatternExtraction(scope: MemoryScope | "all", minSourceCount?: number, projectName?: string): Promise<{ created: number; sources: number }>;
   getCompressionCandidates(scope: MemoryScope | "all", level: MemoryNodeLevel, maxAgeMs?: number, force?: boolean, projectName?: string): Promise<MemoryNode[]>;

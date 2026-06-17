@@ -30,19 +30,22 @@ if you find bugs or if you just want to suggest improvements
 
 - **Memory nodes** — structured persistent memory with labels, content, metadata, and type system
 - **Semantic search** — ONNX-powered embeddings (all-MiniLM-L6-v2) with HNSW vector index for fast ANN retrieval
-- **BM25 full-text search** — keyword search as a fallback, hybrid-scored with embeddings for best results
+- **BM25 hybrid search** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching
+- **Multi-hop temporal expansion** — temporally adjacent nodes (NEXT / DURING_SESSION edges) expanded up to 3 hops with 0.7^depth score decay, configurable via `temporal_hops` arg
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
-- **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels)
-- **Auto-retrieve** — context-aware injection of relevant memories, skills, and playbooks into the prompt
+- **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels + LLM-powered summaries)
+- **Auto-retrieve** — context-aware injection of relevant memories, skills, and playbooks into the prompt with dedup, rate limiting, and cross-project isolation
 - **Ollama reranking** — re-ranks memory search results with a local LLM for better relevance
 - **LLM compression** — uses LLM to generate richer summaries instead of regex extraction
-- **Auto-distill** — automatically extracts actionable rules from lesson nodes
+- **Auto-distill** — automatically extracts actionable rules from lesson nodes into `### Auto-Learned` section
 - **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
 - **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
+- **Consolidation** — extracts semantic facts from episodic node clusters on session idle
+- **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
 - **Playbooks** — reusable workflow templates (sticky memory nodes) proposed by the agent
-- **Management server** — local web UI (port 8787) for browsing, searching, and editing memory
-- **Sub-agents** — `memory-hints` and `memory-researcher` agents for guided memory interaction
+- **Management server** — local web UI (port 8787) for browsing, searching, editing, backup/restore, and 3D visualization
+- **Sub-agents** — `memory-hints`, `memory-researcher`, and `translate` agents for guided interaction
 
 ## Prerequisites
 
@@ -610,10 +613,35 @@ MIT
 
 ## Changelog
 
-### v0.6.26 (2026-06-16)
-- **Dead code cleanup** — removed 2 dead files (`auto-discover.ts`, `procedural/store.ts`), 25 dead exports, 6 unused imports, and 2 unused variables. Total -421 lines.
-- **Test fixes** — `maintenance.test.ts` adapted for removed `resetHNSWIndex`; `journal.test.ts` removed dead `loadConfig` tests; `migrations.test.ts` replaced `getCurrentVersion` with inline pragma.
-- **275 tests pass, 0 fail**
+### v0.6.30 (2026-06-16)
+- **Working cache population** — `addToWorkingCache`/`clearWorkingCache` added to `src/cache.ts`; previously the working cache was declared but never written to (always returned `[]`).
+- **Memory tool tracking** — `tool.execute.after` handler now populates the working cache from `memory_fetch`, `memory_get`, `memory_drilldown`, `memory_set`, `memory_replace`, and `memory_search` results. Each cache population logs the full content via `memLog("debug", "working-cache", ...)`.
+- **Middle-term capture now includes full content** — capture nodes store the complete `content` per working cache entry (previously truncated at 500 chars). Full capture JSON logged via `memLog("info", "compaction", ...)`.
+- **Store fallback** — `experimental.session.compacting` handler falls back to the 8 most recently created nodes from the database when the in-memory working cache is empty, ensuring middle-term captures always have data. Fallback content logged via `memLog("debug", "compaction", ...)`.
+- **339 tests, 0 fail** (unchanged).
+
+### v0.6.29 (2026-06-16)
+- **Compaction hooks integration** — three new handler registrations:
+  - `experimental.session.compacting`: captures middle-term context (working cache snapshot) as a sticky metadata node before compaction runs. Gated by `enableMiddleTermCapture` config (default: true).
+  - `session.compacted` event: runs cleanup for old middle-term captures, score decay, and consolidation after compaction completes.
+  - `experimental.compaction.autocontinue`: defaults to `enabled: true` (pass-through).
+- **6 new tests** for `cleanupMiddleTermCaptures` in `src/plugin/hooks.test.ts`.
+- **339 tests, 0 fail** (was 333).
+
+### v0.6.28 (2026-06-16)
+- **HNSW combined-search bug fix** — when searching both global and project scopes simultaneously, overlapping internal HNSW integer IDs caused project results to be mapped through the global label map. Fixes `searchByEmbedding` returning wrong/missing nodes when both scopes are populated.
+- **searchByEmbedding sort fix** — `computeFinalScores` doesn't sort, and SQL `WHERE id IN (...)` returns rows in arbitrary order, so top HNSW results could fall outside the `slice(0, limit)` window. Added sort by importance before slicing.
+- **333 tests, 0 fail** — 58 new tests added:
+  - `search-helpers.test.ts` (34 tests) — `calculateDynamicBm25Weight`, `detectCodeQuery`, `computeRecencyScore`, `computeBM25TermScore`, `computeBM25Scores`, `computeBM25ScoresSQL`, `updateBM25Index`/`removeBM25Index`, `computeFinalScores`, `rerankResults`
+  - `search.test.ts` (20 tests) — `searchByEmbedding` with HNSW, level/category/usefulness filters, fallback cosine path, expired exclusion, multi-scope; temporal expansion with 1-2 hops, DURING_SESSION edges; BM25 integration with rerank
+
+### v0.6.27 (2026-06-16)
+- **Session logging** — opt-in session log via `sessionLog.enabled` config field. Writes to `~/.config/opencode/logs/sessionlog.log` with 1MB rotation. Log calls in session lifecycle hooks and auto-retrieve. Toggle in management app settings panel.
+- **Management server caching fix** — `Cache-Control: no-cache` headers on all served files so browser always fetches latest management app HTML/JS.
+- **Orphaned management server fix** — PID file at `~/.config/opencode/management-server.pid`, kill orphaned servers on restart, `GET /api/shutdown` endpoint.
+- **Model-router: toolStreaming fix** — `toolStreaming: false` added to mittwald provider-level options in `opencode.json`; model-router config hook now forwards model-level options into subagent agent definitions.
+- **Hybrid retrieval ported to core** — default `bm25Weight` changed from 0 to 0.4 in `searchByEmbedding`. Multi-hop temporal expansion (`temporalHops` option, up to 3 hops, 0.7^depth score decay) ported from benchmark to `src/storage/search.ts`. `temporal_hops` arg added to `memory_search` tool and MCP server.
+- **Published to npm** as `opencode-fractal-memory@0.6.27`.
 
 ### v0.6.25 (2026-06-15)
 - **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls, and injection-event calls now properly awaited.

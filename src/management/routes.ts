@@ -192,6 +192,12 @@ function handleVersion(): Response {
   return jsonResponse({ version: VERSION });
 }
 
+function handleShutdown(): Response {
+  // Respond first, then die — gives the caller time to receive the response
+  setTimeout(() => process.exit(0), 100);
+  return jsonResponse({ ok: true, message: "shutting down" });
+}
+
 // ==================== Backup / Restore Handlers ====================
 
 function handleBackupSources(): Response {
@@ -250,6 +256,7 @@ async function handleDeleteBackup(ctx: { params: Record<string, string> }): Prom
 export function registerRoutes(router: Router): void {
   router.get(/^\/api\/scopes$/, () => handleScopes());
   router.get(/^\/api\/version$/, () => handleVersion());
+  router.get(/^\/api\/shutdown$/, () => handleShutdown());
   router.get(/^\/api\/nodes$/, (_, ctx) => handleNodes(ctx));
   router.get(/^\/api\/links$/, (_, ctx) => handleLinks(ctx));
   router.get(/^\/api\/stats$/, (_, ctx) => handleStats(ctx));

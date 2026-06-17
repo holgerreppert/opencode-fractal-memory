@@ -535,7 +535,7 @@ describe("sqlite store", () => {
       summary: null,
       level: 0,
       parentIds: null,
-      embedding: [0.1, 0.2, 0.3],
+      embedding: Array.from({ length: 384 }, (_, i) => i < 3 ? [0.1, 0.2, 0.3][i]! : 0),
       importance: 0.8,
       type: "concept",
       metadata: null,
@@ -547,7 +547,7 @@ describe("sqlite store", () => {
       summary: null,
       level: 1,
       parentIds: null,
-      embedding: [0.15, 0.25, 0.35],
+      embedding: Array.from({ length: 384 }, (_, i) => i < 3 ? [0.15, 0.25, 0.35][i]! : 0),
       importance: 0.7,
       type: "summary",
       metadata: null,
@@ -559,7 +559,7 @@ describe("sqlite store", () => {
       summary: null,
       level: 2,
       parentIds: null,
-      embedding: [0.12, 0.22, 0.32],
+      embedding: Array.from({ length: 384 }, (_, i) => i < 3 ? [0.12, 0.22, 0.32][i]! : 0),
       importance: 0.6,
       type: "summary",
       metadata: null,
@@ -580,8 +580,8 @@ describe("sqlite store", () => {
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
 
-    await store.createNode({ scope: "project", content: "Auth module in project A", level: 0, parentIds: null, embedding: [0.1, 0.2, 0.3], projectName: "project-a" });
-    await store.createNode({ scope: "project", content: "Auth module in project B", level: 0, parentIds: null, embedding: [0.1, 0.2, 0.3], projectName: "project-b" });
+    await store.createNode({ scope: "project", content: "Auth module in project A", level: 0, parentIds: null, embedding: Array(384).fill(0.1), projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "Auth module in project B", level: 0, parentIds: null, embedding: Array(384).fill(0.1), projectName: "project-b" });
 
     const results = await store.drilldownQuery("auth module", 10, "project-a");
     expect(results.length).toBeGreaterThanOrEqual(1);

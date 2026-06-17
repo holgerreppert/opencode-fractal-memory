@@ -48,7 +48,7 @@ export function serveFile(filePath: string) {
     const ext = path.extname(filePath);
     const mimeType = MIME_TYPES[ext] || "application/octet-stream";
     const body = Bun.file(filePath);
-    return new Response(body, { headers: { "Content-Type": mimeType } });
+    return new Response(body, { headers: { "Content-Type": mimeType, "Cache-Control": "no-cache" } });
   } catch {
     return new Response("Not found", { status: 404 });
   }
@@ -57,7 +57,7 @@ export function serveFile(filePath: string) {
 export function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
   });
 }
 

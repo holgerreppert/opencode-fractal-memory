@@ -1712,6 +1712,7 @@ async function loadSettings() {
     document.getElementById('journal-enabled').value = String(config.journal?.enabled ?? false);
     document.getElementById('management-enabled').value = String(config.management?.enabled ?? false);
     document.getElementById('management-port').value = config.management?.port ?? 8787;
+    document.getElementById('sessionLog-enabled').value = String(config.sessionLog?.enabled ?? false);
   } catch (e) {
     console.error('Failed to load config:', e);
   }
@@ -1780,6 +1781,9 @@ async function saveSettings() {
     management: {
       enabled: document.getElementById('management-enabled').value === 'true',
       port: parseInt(document.getElementById('management-port').value) || 8787,
+    },
+    sessionLog: {
+      enabled: document.getElementById('sessionLog-enabled').value === 'true',
     },
   };
   try {

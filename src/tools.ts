@@ -23,3 +23,4 @@ export { MemoryHelp } from "./tools/help";
 export { MemoryVersion } from "./tools/version";
 export { createMemoryAutoTest } from "./tools/auto-test";
 export { MemoryTemporalEdges } from "./tools/temporal";
+export { MemoryRecallContext } from "./tools/recall-context";

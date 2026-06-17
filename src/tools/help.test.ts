@@ -15,6 +15,7 @@ describe("MemoryHelp", () => {
     expect(result).toContain("memory_stats");
     expect(result).toContain("memory_search");
     expect(result).toContain("memory_help");
+    expect(result).toContain("memory_recall_context");
   });
 
   test("contains fractal levels section", async () => {

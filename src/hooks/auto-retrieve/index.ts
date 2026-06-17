@@ -9,6 +9,7 @@ import { scoreCandidates } from "./scoring";
 import { detectRelevantSkills, detectRelevantPlaybooks, type PlaybookInfo } from "./detection";
 import { formatPlaybooksAsAvailable, formatSkillsAsAvailable } from "./formatting";
 import { formatNodeForInjection } from "./content";
+import { appendSessionLog } from "../../logging";
 
 const INJECTION_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
 const INJECTION_LOG_FILE = path.join(INJECTION_LOG_DIR, "memory-injection.log");
@@ -303,6 +304,10 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
 
         const debugLine = `[${new Date().toISOString()}] Query: ${userText.slice(0, 100)}...\n${fullBlock}\n\n`;
         appendInjectionLog(debugLine);
+
+        if (deps.config?.sessionLog?.enabled) {
+          appendSessionLog(`[${new Date().toISOString()}] AUTO RETRIEVE | id=${sessionId} | query="${userText.slice(0, 50)}" | nodes=${scored.length} skills=${relevantSkills.length} playbooks=${relevantPlaybooks.length} | duration=${Date.now() - state.lastInjectTime}ms`);
+        }
 
         if (userMsg && userMsg.parts) {
           userMsg.parts.unshift({ type: "text", text: fullBlock + "\n\n" });

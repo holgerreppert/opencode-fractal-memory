@@ -116,22 +116,26 @@ export class HNSWIndex {
     } else {
       const globalResults = this.globalIndex!.searchKNN(query, limit);
       const projectResults = this.projectIndex!.searchKNN(query, limit);
-      
-      const combined = [...globalResults, ...projectResults];
+
+      const globalMapped = globalResults.map(r => ({
+        id: this.globalLabelMap.get(r.id) ?? "",
+        score: r.score,
+      }));
+      const projectMapped = projectResults.map(r => ({
+        id: this.projectLabelMap.get(r.id) ?? "",
+        score: r.score,
+      }));
+
+      const combined = [...globalMapped, ...projectMapped];
       combined.sort((a, b) => b.score - a.score);
-      results = combined.slice(0, limit);
+      return combined.filter(r => r.id !== "").slice(0, limit);
     }
 
     return results
       .map(r => {
-        let nodeId: string;
-        if (scope === "global") {
-          nodeId = this.globalLabelMap.get(r.id) ?? "";
-        } else if (scope === "project") {
-          nodeId = this.projectLabelMap.get(r.id) ?? "";
-        } else {
-          nodeId = this.globalLabelMap.get(r.id) ?? this.projectLabelMap.get(r.id) ?? "";
-        }
+        const nodeId = scope === "global"
+          ? this.globalLabelMap.get(r.id) ?? ""
+          : this.projectLabelMap.get(r.id) ?? "";
         return { id: nodeId, score: r.score };
       })
       .filter(r => r.id !== "");
