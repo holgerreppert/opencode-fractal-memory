@@ -10,3 +10,6 @@ memory.db
 .DS_Store
 session-*.md
 ocam.ses
+tests/dbs/locomo-seeded/memory.db-shm
+tests/dbs/locomo-seeded/memory.db-wal
+tests/dbs/locomo-seeded/memory.db
