@@ -209,16 +209,13 @@ export function computeBM25ScoresSQL(
 
   // Batch 4: all frequencies in one query
   const freqMap = new Map<string, number>();
-  const freqParams: string[] = [];
-  const freqConditions: string[] = [];
-  for (const nodeId of nodeIds) {
-    for (const term of queryTerms) {
-      freqConditions.push("(term = ? AND node_id = ?)");
-      freqParams.push(term, nodeId);
-    }
-  }
-  if (freqConditions.length > 0) {
-    const freqRows = db.query("SELECT term, node_id, frequency FROM bm25_index WHERE " + freqConditions.join(" OR ")).all(...freqParams) as { term: string; node_id: string; frequency: number }[];
+  const activeTerms = queryTerms.filter(t => dfMap.has(t));
+  if (activeTerms.length > 0 && nodeIds.length > 0) {
+    const termPlaceholders = activeTerms.map(() => "?").join(",");
+    const nodePlaceholders = nodeIds.map(() => "?").join(",");
+    const freqRows = db.query(
+      "SELECT term, node_id, frequency FROM bm25_index WHERE term IN (" + termPlaceholders + ") AND node_id IN (" + nodePlaceholders + ")"
+    ).all(...activeTerms, ...nodeIds) as { term: string; node_id: string; frequency: number }[];
     for (const row of freqRows) {
       freqMap.set(`${row.term}:${row.node_id}`, row.frequency);
     }
