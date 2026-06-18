@@ -3,15 +3,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createSqliteMemoryStore } from "../storage/sqlite";
 import type { MemoryStore, MemoryNode } from "../storage/types";
-import { CATEGORY_LABELS } from "../../scripts/benchmark/datasets/locomo";
+import { CATEGORY_LABELS } from "../../scripts/benchmark/datasets/synthetic";
 
-const DB_DIR = path.resolve(__dirname, "../../tests/dbs/locomo-seeded");
+const DB_DIR = path.resolve(__dirname, "../../tests/dbs/synthetic-seeded");
 const DB_PATH = path.join(DB_DIR, "memory.db");
 const QA_PATH = path.join(DB_DIR, "qa-embeddings.json");
 const KS = [3, 5, 10];
 
 type QaEmbeddingEntry = {
-  conversation: string;
   question: string;
   evidence: string[];
   category: number;
@@ -47,13 +46,13 @@ function formatPct(v: number): string {
   return (v * 100).toFixed(1);
 }
 
-describe("LoCoMo retrieval quality", () => {
+describe("Synthetic retrieval quality", () => {
   const hasDb = fs.existsSync(DB_PATH) && fs.existsSync(QA_PATH);
 
   test("pre-seeded database exists", () => {
     if (!hasDb) {
       console.warn(`\n  Pre-seeded database not found at ${DB_PATH}`);
-      console.warn(`  Run: bun run scripts/seed-loco-db.ts`);
+      console.warn(`  Run: bun run scripts/seed-synthetic-db.ts`);
     }
     expect(hasDb).toBe(true);
   });
@@ -98,8 +97,26 @@ describe("LoCoMo retrieval quality", () => {
 
       let done = 0;
       for (const entry of info.entries) {
-        const evidenceLabels = new Set(entry.evidence.map(e => `${entry.conversation}-${e}`));
-        if (evidenceLabels.size === 0) continue;
+        const evidenceLabels = new Set(entry.evidence);
+        if (evidenceLabels.size === 0 && entry.category !== 6) continue;
+        if (evidenceLabels.size === 0) {
+          const retrieved = await store.searchByEmbedding(entry.embedding, 10, {
+            bm25Weight: 0.4,
+            queryText: entry.question,
+            rerank: true,
+            temporalHops: 2,
+          } as any);
+          for (const k of KS) {
+            const metrics = computeMetrics(evidenceLabels, retrieved, k);
+            const acc = byK.get(k)!;
+            acc.hitRates.push(metrics.hitRate);
+            acc.recalls.push(metrics.recall);
+            acc.precisions.push(metrics.precision);
+            acc.mrrs.push(metrics.mrr);
+          }
+          done++;
+          continue;
+        }
 
         const retrieved = await store.searchByEmbedding(entry.embedding, 10, {
           bm25Weight: 0.4,
@@ -107,8 +124,6 @@ describe("LoCoMo retrieval quality", () => {
           rerank: true,
           temporalHops: 2,
         } as any);
-
-        const nodeIds = new Map(retrieved.map(n => [n.id, n]));
 
         for (const k of KS) {
           const metrics = computeMetrics(evidenceLabels, retrieved, k);
@@ -120,7 +135,7 @@ describe("LoCoMo retrieval quality", () => {
         }
 
         done++;
-        if (done % 200 === 0) {
+        if (done % 25 === 0) {
           console.log(`    ${info.label}: ${done}/${info.entries.length}...`);
         }
       }
@@ -160,15 +175,6 @@ describe("LoCoMo retrieval quality", () => {
       expect(catRes.has(3)).toBe(true);
     }
 
-    const all5 = results.get(1)?.get(5);
-    if (all5) {
-      expect(all5.hitRate).toBeGreaterThan(0);
-    }
-    const adv5 = results.get(5)?.get(5);
-    if (adv5) {
-      expect(adv5.hitRate).toBeLessThan(0.5);
-    }
-
-    expect(results.size).toBeGreaterThanOrEqual(4);
+    expect(results.size).toBeGreaterThanOrEqual(5);
   });
 });

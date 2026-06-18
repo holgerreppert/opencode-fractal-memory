@@ -1,8 +1,9 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryScope, MemoryStore } from "../storage/sqlite";
 import { generateEmbedding } from "../embeddings";
-import { memLog } from "../logging";
+import { memLog, getSessionId } from "../logging";
 import type { MemoryNodeLevel } from "../memory";
+import { onNodeCreated } from "../storage/auto-edges";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking } from "./shared";
 
 // Try to generate embedding, returning null on failure instead of throwing
@@ -139,6 +140,12 @@ export function MemorySet(store: MemoryStore) {
       });
       
       const ttlSuffix = ttlDays ? ` [TTL: ${ttlDays}d]` : "";
+
+      const sessionId = getSessionId();
+      if (sessionId) {
+        onNodeCreated(store, scope, node.id, args.label, args.content, sessionId);
+      }
+
       return `Created memory node ${node.id.slice(0,8)} at level ${node.level}${sticky ? " [sticky]" : ""}${ttlSuffix}${embedding ? " (with embedding)" : " (no embedding)"}.`;
     },
   });

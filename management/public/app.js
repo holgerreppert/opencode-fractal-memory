@@ -410,13 +410,55 @@ class SceneController {
       const g = new THREE.BufferGeometry().setFromPoints([sp, tp]);
       const m = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
       const line = new THREE.Line(g, m);
-      line.userData = { source: link.source, target: link.target };
+      line.userData = { source: link.source, target: link.target, edgeType: link.type };
       this.scene.add(line);
       this.edgeObjects.push(line);
     });
   }
 
-  runSimulation(iterations, linkData) {
+  buildTemporalEdges(edgeData) {
+    if (!edgeData || edgeData.length === 0) return;
+    const seen = new Set();
+    const TEMPORAL_EDGE_STYLES = {
+      NEXT:            { color: 0x22c55e, opacity: 0.6, dashSize: 0, gapSize: 0 },
+      DURING_SESSION:  { color: 0x3b82f6, opacity: 0.4, dashSize: 8, gapSize: 4 },
+      CAUSAL:          { color: 0xef4444, opacity: 0.7, dashSize: 0, gapSize: 0 },
+      REFERENCES:      { color: 0xeab308, opacity: 0.4, dashSize: 6, gapSize: 6 },
+      RELATED_TO:      { color: 0xd946ef, opacity: 0.3, dashSize: 0, gapSize: 0 },
+    };
+
+    edgeData.forEach(edge => {
+      const style = TEMPORAL_EDGE_STYLES[edge.edge_type] || { color: 0x888888, opacity: 0.2, dashSize: 0, gapSize: 0 };
+      if (edge.source_node_id === edge.target_node_id) return;
+      const key = `${edge.source_node_id}-${edge.target_node_id}-${edge.edge_type}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const sp = this.nodePositions.get(edge.source_node_id);
+      const tp = this.nodePositions.get(edge.target_node_id);
+      if (!sp || !tp) return;
+
+      const g = new THREE.BufferGeometry().setFromPoints([sp, tp]);
+      let line;
+      if (style.dashSize > 0) {
+        const m = new THREE.LineDashedMaterial({
+          color: style.color, transparent: true, opacity: style.opacity,
+          dashSize: style.dashSize, gapSize: style.gapSize,
+        });
+        line = new THREE.Line(g, m);
+        line.computeLineDistances();
+      } else {
+        const m = new THREE.LineBasicMaterial({ color: style.color, transparent: true, opacity: style.opacity });
+        line = new THREE.Line(g, m);
+      }
+      line.userData = { source: edge.source_node_id, target: edge.target_node_id, edgeType: edge.edge_type, isTemporal: true };
+      this.scene.add(line);
+      this.edgeObjects.push(line);
+    });
+    console.log(`[scene] Built ${edgeData.length} temporal edges (${this.edgeObjects.filter(o => o.userData.isTemporal).length} rendered)`);
+  }
+
+  runSimulation(iterations, linkData, temporalEdgeData) {
     const ids = Array.from(this.nodePositions.keys());
     const radii = this.shellRadii || {};
 
@@ -452,23 +494,26 @@ class SceneController {
         }
       }
 
-      if (linkData) {
-        linkData.forEach(link => {
-          const sp = this.nodePositions.get(link.source);
-          const tp = this.nodePositions.get(link.target);
+      const applySpringForces = (edges, sourceKey, targetKey) => {
+        edges.forEach(edge => {
+          const sp = this.nodePositions.get(edge[sourceKey]);
+          const tp = this.nodePositions.get(edge[targetKey]);
           if (!sp || !tp) return;
           const dx = tp.x - sp.x, dy = tp.y - sp.y, dz = tp.z - sp.z;
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-          const lvlA = nodeLevels.get(link.source) ?? 3;
-          const lvlB = nodeLevels.get(link.target) ?? 3;
+          const lvlA = nodeLevels.get(edge[sourceKey]) ?? 3;
+          const lvlB = nodeLevels.get(edge[targetKey]) ?? 3;
           const restLen = 40 + (lvlA + lvlB) * 8;
           const f = (dist - restLen) * 0.06;
-          const sv = this.nodeVelocities.get(link.source);
-          const tv = this.nodeVelocities.get(link.target);
+          const sv = this.nodeVelocities.get(edge[sourceKey]);
+          const tv = this.nodeVelocities.get(edge[targetKey]);
           sv.x += dx * f * 0.01; sv.y += dy * f * 0.01; sv.z += dz * f * 0.01;
           tv.x -= dx * f * 0.01; tv.y -= dy * f * 0.01; tv.z -= dz * f * 0.01;
         });
-      }
+      };
+
+      if (linkData) applySpringForces(linkData, "source", "target");
+      if (temporalEdgeData) applySpringForces(temporalEdgeData, "source_node_id", "target_node_id");
 
       for (const id of ids) {
         const pos = this.nodePositions.get(id);
@@ -631,6 +676,7 @@ let filterEngine;
 let sceneCtrl;
 let nodeData = [];
 let linkData = [];
+let temporalEdgeData = [];
 let statsData = null;
 let editingNode = null;
 let currentScope = "project";
@@ -832,10 +878,11 @@ function setupEventListeners() {
 
 async function loadData() {
   try {
-    const [scopesRes, nodesRes, linksRes, statsRes, versionRes] = await Promise.all([
+    const [scopesRes, nodesRes, linksRes, temporalRes, statsRes, versionRes] = await Promise.all([
       fetch("/api/scopes"),
       fetch(`/api/nodes?scope=${currentScope}`),
       fetch(`/api/links?scope=${currentScope}`),
+      fetch(`/api/temporal-edges?scope=${currentScope}`),
       fetch(`/api/stats?scope=${currentScope}`),
       fetch("/api/version"),
     ]);
@@ -847,13 +894,14 @@ async function loadData() {
     availableScopes = await scopesRes.json();
     nodeData = await nodesRes.json();
     linkData = await linksRes.json();
+    temporalEdgeData = temporalRes.ok ? await temporalRes.json() : [];
     statsData = await statsRes.json();
     const versionData = await versionRes.json();
     document.getElementById("version").textContent = `v${versionData.version}`;
 
     document.getElementById("loading").style.display = "none";
 
-    console.log(`[data] Scope=${currentScope} nodes=${nodeData.length} links=${linkData.length} stats=${JSON.stringify({ total: statsData.totalNodes, levels: Object.keys(statsData.nodesPerLevel || {}), types: Object.keys(statsData.nodesPerType || {}), shapes: Object.keys(statsData.nodesPerShape || {}), customTypes: Object.keys(statsData.nodesPerCustomType || {}) })}`);
+    console.log(`[data] Scope=${currentScope} nodes=${nodeData.length} links=${linkData.length} temporalEdges=${temporalEdgeData.length} stats=${JSON.stringify({ total: statsData.totalNodes, levels: Object.keys(statsData.nodesPerLevel || {}), types: Object.keys(statsData.nodesPerType || {}), shapes: Object.keys(statsData.nodesPerShape || {}), customTypes: Object.keys(statsData.nodesPerCustomType || {}) })}`);
 
     if (nodeData.length > 0) {
       console.log(`[data] Sample node:`, { id: nodeData[0].id, label: nodeData[0].label, level: nodeData[0].level, type: nodeData[0].type, importance: nodeData[0].importance, customType: nodeData[0].metadata?.customType });
@@ -862,7 +910,8 @@ async function loadData() {
     try {
       sceneCtrl.buildFromData(nodeData);
       sceneCtrl.buildEdges(linkData);
-      sceneCtrl.runSimulation(100, linkData);
+      sceneCtrl.buildTemporalEdges(temporalEdgeData);
+      sceneCtrl.runSimulation(100, linkData, temporalEdgeData);
     } catch (vizErr) {
       console.error("[viewer] Visualization error:", vizErr);
     }
@@ -1065,6 +1114,12 @@ function buildLegend() {
   html += `<div class="legend-item"><div class="legend-dot" style="background: #f472b6; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Icosahedron = Skill / Rule</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus (orange) = Playbook</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus (red) = Middle-Term</span></div>`;
+  html += `<div style="margin-top: 10px; font-weight: bold; color: #aaa;">Temporal Edges:</div>`;
+  html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #22c55e; border-radius: 1px; flex-shrink: 0;"></div><span class="legend-label">NEXT (sequence)</span></div>`;
+  html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #3b82f6; border-radius: 1px; border-top: 1px dashed #3b82f6;"></div><span class="legend-label">DURING_SESSION</span></div>`;
+  html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #ef4444; border-radius: 1px;"></div><span class="legend-label">CAUSAL (cause-effect)</span></div>`;
+  html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #eab308; border-radius: 1px; border-top: 1px dotted #eab308;"></div><span class="legend-label">REFERENCES (label refs)</span></div>`;
+  html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #d946ef; border-radius: 1px;"></div><span class="legend-label">RELATED_TO (related)</span></div>`;
   html += `</div>`;
   legend.innerHTML = html;
 }
@@ -1196,6 +1251,29 @@ function showDetailPanel(node) {
     ${metadataHtml}
     ${skillHtml}
     ${playbookHtml}
+    ${(() => {
+      const connected = temporalEdgeData.filter(e => e.source_node_id === node.id || e.target_node_id === node.id);
+      if (connected.length === 0) return "";
+      const edgeColors = { NEXT: "#22c55e", DURING_SESSION: "#3b82f6", CAUSAL: "#ef4444", REFERENCES: "#eab308", RELATED_TO: "#d946ef" };
+      const edgeLabels = { NEXT: "Next", DURING_SESSION: "In Session", CAUSAL: "Causes", REFERENCES: "References", RELATED_TO: "Related" };
+      return `<div class="detail-section">
+        <h4>Temporal Connections (${connected.length})</h4>
+        ${connected.map(e => {
+          const isOutgoing = e.source_node_id === node.id;
+          const otherLabel = isOutgoing ? e.target_label : e.source_label;
+          const color = edgeColors[e.edge_type] || "#888";
+          const label = edgeLabels[e.edge_type] || e.edge_type;
+          const dir = isOutgoing ? "→" : "←";
+          return `<div style="padding: 4px 0; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <span style="display: inline-block; width: 8px; height: 2px; background: ${color}; flex-shrink: 0;"></span>
+            <span style="color: ${color}; font-weight: 600;">${label}</span>
+            <span>${dir}</span>
+            <span>${escapeHtml(otherLabel || "(unnamed)")}</span>
+            <span style="color: #666; font-size: 10px;">(c: ${e.confidence?.toFixed(2) || "1.00"})</span>
+          </div>`;
+        }).join("")}
+      </div>`;
+    })()}
     <div class="detail-section">
       <h4>Timestamps</h4>
       <div class="detail-value">Created: ${created}</div>

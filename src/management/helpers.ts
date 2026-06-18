@@ -227,6 +227,36 @@ export function getAvailableProjects(scope: string): string[] {
   return rows.map(r => r.project_name || "(default)");
 }
 
+export function queryTemporalEdges(scope: string, projectName?: string, nodeId?: string) {
+  const db = openDb(scope);
+  if (!db) return [];
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+  conditions.push("(n1.scope = ? OR n2.scope = ?)");
+  params.push(scope, scope);
+  if (nodeId) {
+    conditions.push("(te.source_node_id = ? OR te.target_node_id = ?)");
+    params.push(nodeId, nodeId);
+  }
+  if (projectName) {
+    conditions.push("(n1.project_name = ? OR n2.project_name = ?)");
+    params.push(projectName, projectName);
+  }
+  const sql = `
+    SELECT te.id, te.source_node_id, te.target_node_id, te.edge_type,
+           te.confidence, te.created_at, te.metadata,
+           n1.label as source_label, n2.label as target_label
+    FROM temporal_edges te
+    LEFT JOIN memory_nodes n1 ON te.source_node_id = n1.id
+    LEFT JOIN memory_nodes n2 ON te.target_node_id = n2.id
+    WHERE ${conditions.join(" AND ")}
+    ORDER BY te.created_at DESC
+  `;
+  const rows = db.query(sql).all(...params) as any[];
+  db.close();
+  return rows;
+}
+
 export function readProjectConfig(): Record<string, unknown> {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json");
   try {

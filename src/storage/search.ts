@@ -8,6 +8,8 @@ import { cosineSimilarity } from "../math";
 import { computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding, withRetry } from "./utils";
 
+const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
+
 async function expandTemporalEdges(
   getDb: (scope: MemoryScope) => Promise<Database>,
   nodeId: string,
@@ -17,17 +19,14 @@ async function expandTemporalEdges(
 ): Promise<Set<string>> {
   if (depth >= maxHops || visited.has(nodeId)) return visited;
   visited.add(nodeId);
-  const edgeTypes = depth === 0 ? ["DURING_SESSION", "NEXT"] : ["NEXT"];
-  for (const edgeType of edgeTypes) {
-    const db = await getDb("project");
-    const rows = db.query(
-      "SELECT source_node_id, target_node_id FROM temporal_edges WHERE edge_type = ? AND (source_node_id = ? OR target_node_id = ?)"
-    ).all(edgeType, nodeId, nodeId) as { source_node_id: string; target_node_id: string }[];
-    for (const row of rows) {
-      const neighborId = row.source_node_id === nodeId ? row.target_node_id : row.source_node_id;
-      if (!visited.has(neighborId)) {
-        await expandTemporalEdges(getDb, neighborId, maxHops, visited, depth + 1);
-      }
+  const db = await getDb("project");
+  const rows = db.query(
+    `SELECT source_node_id, target_node_id FROM temporal_edges WHERE edge_type IN (${ALL_EDGE_TYPES.map(() => "?").join(",")}) AND (source_node_id = ? OR target_node_id = ?)`
+  ).all(...ALL_EDGE_TYPES, nodeId, nodeId) as { source_node_id: string; target_node_id: string }[];
+  for (const row of rows) {
+    const neighborId = row.source_node_id === nodeId ? row.target_node_id : row.source_node_id;
+    if (!visited.has(neighborId)) {
+      await expandTemporalEdges(getDb, neighborId, maxHops, visited, depth + 1);
     }
   }
   return visited;
@@ -49,11 +48,12 @@ async function assignTemporalHopScores(
   if (depth < maxHops) {
     const db = await getDb("project");
     const rows = db.query(
-      "SELECT source_node_id, target_node_id FROM temporal_edges WHERE edge_type = 'NEXT' AND (source_node_id = ? OR target_node_id = ?)"
-    ).all(nodeId, nodeId) as { source_node_id: string; target_node_id: string }[];
+      `SELECT source_node_id, target_node_id, confidence FROM temporal_edges WHERE edge_type IN (${ALL_EDGE_TYPES.map(() => "?").join(",")}) AND (source_node_id = ? OR target_node_id = ?)`
+    ).all(...ALL_EDGE_TYPES, nodeId, nodeId) as { source_node_id: string; target_node_id: string; confidence: number }[];
     for (const row of rows) {
       const neighborId = row.source_node_id === nodeId ? row.target_node_id : row.source_node_id;
-      await assignTemporalHopScores(getDb, neighborId, hopScore * 0.7, depth + 1, maxHops, visited, scores);
+      const decay = (row.confidence ?? 0.5) * 0.8;
+      await assignTemporalHopScores(getDb, neighborId, hopScore * decay, depth + 1, maxHops, visited, scores);
     }
   }
 }
@@ -244,7 +244,18 @@ export async function searchByEmbedding(
   }
 
   finalNodes.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
-  let finalResults = finalNodes.slice(0, limit);
+
+  // Deduplicate: scope iteration may return the same nodes from both 'global' and 'project' scopes
+  const dedupedFinalNodes: MemoryNode[] = [];
+  const seenIds = new Set<string>();
+  for (const node of finalNodes) {
+    if (!seenIds.has(node.id)) {
+      seenIds.add(node.id);
+      dedupedFinalNodes.push(node);
+    }
+  }
+
+  let finalResults = dedupedFinalNodes.slice(0, limit);
   if (doRerank && queryText.length > 0 && finalResults.length > 3) {
     const reranked = rerankResults(queryText, finalResults, limit);
     finalResults = reranked.map(r => ({

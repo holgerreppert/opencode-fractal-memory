@@ -20,6 +20,10 @@ export function setSessionId(sessionId: string | null): void {
   currentSessionId = sessionId;
 }
 
+export function getSessionId(): string | null {
+  return currentSessionId;
+}
+
 function shouldLog(level: LogLevel, category?: string): boolean {
   if (SKIP_CATEGORIES.includes(category || "")) return false;
   const levels: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };

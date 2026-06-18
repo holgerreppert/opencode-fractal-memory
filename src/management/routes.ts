@@ -5,7 +5,7 @@ import { cosineSimilarity } from "../math";
 import {
   queryNodes, getAvailableScopes, extractLinks, computeStats,
   readProjectConfig, writeProjectConfig, rowToNode,
-  withDb, jsonResponse, getAvailableProjects,
+  withDb, jsonResponse, getAvailableProjects, queryTemporalEdges,
   getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup,
 } from "./helpers";
 import { VERSION } from "../version";
@@ -23,6 +23,12 @@ function handleLinks(ctx: { scope: string; url: URL }): Response {
   const projectName = ctx.url.searchParams.get("project_name") || undefined;
   const nodes = queryNodes(ctx.scope, projectName);
   return jsonResponse(extractLinks(nodes));
+}
+
+function handleTemporalEdges(ctx: { scope: string; url: URL }): Response {
+  const projectName = ctx.url.searchParams.get("project_name") || undefined;
+  const nodeId = ctx.url.searchParams.get("node_id") || undefined;
+  return jsonResponse(queryTemporalEdges(ctx.scope, projectName, nodeId));
 }
 
 function handleStats(ctx: { scope: string; url: URL }): Response {
@@ -259,6 +265,7 @@ export function registerRoutes(router: Router): void {
   router.get(/^\/api\/shutdown$/, () => handleShutdown());
   router.get(/^\/api\/nodes$/, (_, ctx) => handleNodes(ctx));
   router.get(/^\/api\/links$/, (_, ctx) => handleLinks(ctx));
+  router.get(/^\/api\/temporal-edges$/, (_, ctx) => handleTemporalEdges(ctx));
   router.get(/^\/api\/stats$/, (_, ctx) => handleStats(ctx));
   router.get(/^\/api\/projects$/, (_, ctx) => handleProjects(ctx));
 

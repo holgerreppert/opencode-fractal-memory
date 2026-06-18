@@ -44,7 +44,10 @@ if you find bugs or if you just want to suggest improvements
 - **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
 - **Playbooks** — reusable workflow templates (sticky memory nodes) proposed by the agent
-- **Management server** — local web UI (port 8787) for browsing, searching, editing, backup/restore, and 3D visualization
+- **Management server** — local web UI (port 8787) for browsing, searching, editing, backup/restore, and 3D visualization with temporal edge rendering
+- **Multi-graph retrieval** — temporal edges (NEXT, DURING_SESSION, CAUSAL, REFERENCES, RELATED_TO) expanded during search with confidence-weighted hop decay
+- **Auto-edge creation** — `memory_set` auto-creates NEXT edges (session chaining) and REFERENCES edges (from `label:xxx` patterns) during active sessions
+- **Synthetic evaluation** — 79-node/175-QA benchmark dataset for reproducible retrieval quality metrics (HitRate, Recall, Precision, MRR)
 - **Sub-agents** — `memory-hints`, `memory-researcher`, and `translate` agents for guided interaction
 
 ## Prerequisites
@@ -463,13 +466,15 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 
 ### Usage
 
-**3D Graph** — the default view shows memory nodes as spheres connected by `[[wiki-link]]` relationships:
+**3D Graph** — the default view shows memory nodes as spheres connected by `[[wiki-link]]` relationships and temporal edges:
 - **Drag** to rotate the scene
 - **Scroll** to zoom in/out
 - **Left-click** a node to select and inspect it
 - **Right-click drag** to pan
 - Nodes are color-coded by level and type (skill = gold icosahedron, playbook = orange torus, note = blue sphere)
 - Playbook nodes render as orange torus shapes with steps visible in the detail panel
+- **Temporal edges** render as colored lines: NEXT (green), DURING_SESSION (blue dashed), CAUSAL (red), REFERENCES (yellow dotted), RELATED_TO (magenta) — see the Legend panel for color mapping
+- Click a node to see its temporal connections in the detail panel with direction, edge type, and confidence score
 
 **Filters** — narrow down visible nodes:
 - **Scope** (global/project)
@@ -612,6 +617,10 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
+
+### v0.6.31 (2026-06-18)
+- **Temporal edges in management UI** — new `GET /api/temporal-edges` endpoint with optional `?node_id=` and `?project_name=` filters. Three.js 3D viewer renders 5 edge types with distinct colors and styles (NEXT=green solid, DURING_SESSION=blue dashed, CAUSAL=red solid, REFERENCES=yellow dotted, RELATED_TO=magenta solid). Spring forces applied during simulation pull temporally connected nodes closer. Detail panel shows per-node temporal connections with direction, type badge, and confidence score. Legend updated with temporal edge color swatches.
+- **366 tests, 0 fail** (was 363).
 
 ### v0.6.30 (2026-06-16)
 - **Working cache population** — `addToWorkingCache`/`clearWorkingCache` added to `src/cache.ts`; previously the working cache was declared but never written to (always returned `[]`).
