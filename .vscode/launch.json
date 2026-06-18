@@ -88,6 +88,33 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Debug LoCoMo Retrieval Test",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test", "src/storage/search.loco.test.ts"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Seed LoCoMo Database",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "scripts/seed-loco-db.ts"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Seed LoCoMo DB (sample 100)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "scripts/seed-loco-db.ts", "--sample", "100"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Publish: Typecheck",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "typecheck"],
