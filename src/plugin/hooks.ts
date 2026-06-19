@@ -4,6 +4,7 @@ import { memLog, memLogSimple, setSessionId, appendSessionLog } from "../logging
 import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "../file-summary";
 import { generateEmbedding } from "../embeddings";
 import { distillRules, runConsolidation, predictiveRateToolCall, applyScoreDecay } from "../hooks";
+import { compressCommandOutput } from "../hooks/compress-output";
 import { getWorkingCache, addToWorkingCache, clearWorkingCache } from "../cache";
 import { cleanupMiddleTermCaptures } from "./state";
 import * as fs from "node:fs";
@@ -288,6 +289,39 @@ export function createHookHandlers(
         }
       } catch (err) {
         memLog("warn", "file-summary", "Failed to store file memory", { error: String(err) });
+      }
+
+      const compressConfig = memConfig?.commandCompression;
+      if (compressConfig?.enabled && input.tool === "bash") {
+        try {
+          const cmd = (input as any).args?.command ?? "";
+          const raw = (output.output ?? "") as string;
+          const failed = !success || !!output.metadata?.error;
+          const t0 = performance.now();
+          const compressed = compressCommandOutput(cmd, raw, failed, compressConfig);
+          const durationMs = performance.now() - t0;
+          if (compressed !== null) {
+            output.output = compressed.output;
+            output.metadata = {
+              ...((output.metadata as Record<string, unknown>) ?? {}),
+              compressed: true,
+              compressStrategy: compressed.strategy,
+            };
+            if (memConfig?.sessionLog?.enabled) {
+              appendSessionLog(`[${new Date().toISOString()}] COMPRESS | id=${sessionId} | cmd=${cmd.slice(0, 40)} | ${compressed.strategy} | raw=${raw.length}c → ${compressed.output.length}c`);
+            }
+            store.recordCompressionStat({
+              sessionId,
+              command: cmd,
+              strategy: compressed.strategy,
+              originalChars: raw.length,
+              compressedChars: compressed.output.length,
+              durationMs,
+            }).catch(() => {});
+          }
+        } catch (err) {
+          memLog("debug", "compress", "Compression failed, passing through", { error: String(err) });
+        }
       }
     },
     "experimental.session.compacting": async (input: { sessionID: string }, output: { context: string[]; prompt?: string }) => {

@@ -468,4 +468,25 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* table may not exist yet */ }
     },
   },
+  {
+    version: 25,
+    name: "add-compression-stats",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS compression_stats (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT,
+          timestamp INT NOT NULL,
+          command TEXT NOT NULL,
+          strategy TEXT,
+          original_chars INT NOT NULL,
+          compressed_chars INT NOT NULL,
+          savings_ratio REAL NOT NULL,
+          duration_ms REAL
+        )
+      `);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_compress_ts ON compression_stats(timestamp)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_compress_cmd ON compression_stats(command)`);
+    },
+  },
 ];

@@ -277,6 +277,46 @@ async function handleDeleteBackup(ctx: { params: Record<string, string> }): Prom
   return jsonResponse({ success: true });
 }
 
+async function handleCompressionStats(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit ? Math.min(parseInt(rawLimit, 10), 500) : 100;
+  const days = parseInt(url.searchParams.get("days") ?? "7", 10);
+  const since = Date.now() - days * 86400000;
+
+  return withDb("global", (db) => {
+    const total = db.query("SELECT COUNT(*) as c, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats WHERE timestamp >= ?").get(since) as any;
+    const byStrategy = db.query(
+      "SELECT strategy, COUNT(*) as calls, SUM(original_chars) as raw, SUM(compressed_chars) as comp, ROUND(AVG(savings_ratio) * 100, 1) as avg_savings FROM compression_stats WHERE timestamp >= ? GROUP BY strategy ORDER BY calls DESC"
+    ).all(since) as any[];
+    const byCommand = db.query(
+      "SELECT command, COUNT(*) as calls, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats WHERE timestamp >= ? GROUP BY command ORDER BY calls DESC LIMIT ?"
+    ).all(since, limit) as any[];
+    const recent = db.query(
+      "SELECT timestamp, command, strategy, original_chars, compressed_chars, savings_ratio FROM compression_stats WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 20"
+    ).all(since) as any[];
+
+    return jsonResponse({
+      total: {
+        calls: total?.c ?? 0,
+        originalChars: total?.raw ?? 0,
+        compressedChars: total?.comp ?? 0,
+        savingsPercent: total?.raw ? Math.round((1 - (total?.comp ?? 0) / (total?.raw ?? 1)) * 100) : 0,
+      },
+      byStrategy,
+      byCommand: byCommand.slice(0, limit),
+      recent: recent.slice(0, 20).map((r: any) => ({
+        timestamp: r.timestamp,
+        command: r.command,
+        strategy: r.strategy,
+        originalChars: r.original_chars,
+        compressedChars: r.compressed_chars,
+        savingsRatio: r.savings_ratio,
+      })),
+    });
+  });
+}
+
 export function registerRoutes(router: Router): void {
   router.get(/^\/api\/scopes$/, () => handleScopes());
   router.get(/^\/api\/version$/, () => handleVersion());
@@ -298,6 +338,9 @@ export function registerRoutes(router: Router): void {
   router.put(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx));
   router.patch(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx));
   router.delete(/^\/api\/nodes\/(?<id>[^/]+)$/, (_, ctx) => handleNodeDelete(ctx));
+
+  // Compression stats route
+  router.get(/^\/api\/compress-stats$/, (req) => handleCompressionStats(req));
 
   // Injection quality route
   router.get(/^\/api\/injection-quality$/, (req) => handleInjectionQuality(req));

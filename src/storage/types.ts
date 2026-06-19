@@ -152,6 +152,14 @@ export type MemoryStore = {
     activeTypeBoosts?: Record<string, number>;
   }): Promise<void>;
   recordMemoryToolCall(sessionId: string, toolName: string, args?: Record<string, unknown>): Promise<void>;
+  recordCompressionStat(stat: {
+    sessionId?: string;
+    command: string;
+    strategy: string;
+    originalChars: number;
+    compressedChars: number;
+    durationMs?: number;
+  }): Promise<void>;
   finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void>;
   recordInjectionFeedback(sessionId: string, upvotes: number, downvotes: number, taskOutcome?: string, neededNodes?: string[]): Promise<void>;
   getInjectionMetrics(limit?: number): Promise<Array<{
