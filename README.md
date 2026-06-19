@@ -35,7 +35,8 @@ if you find bugs or if you just want to suggest improvements
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
 - **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels + LLM-powered summaries)
 - **Auto-retrieve** — context-aware injection of relevant memories, skills, and playbooks into the prompt with dedup, rate limiting, and cross-project isolation
-- **Ollama reranking** — re-ranks memory search results with a local LLM for better relevance
+- **Ollama / cross-encoder reranking** — dual-strategy reranking: LLM judge (via Ollama) or in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) for better relevance, configurable via management app or config
+- **Rerank intent system** — agents can signal what type of information to prioritize (facts, concepts, rules, etc.) via `pref:rerank-intent` preference node; scoring boosts matching node types
 - **LLM compression** — uses LLM to generate richer summaries instead of regex extraction
 - **Auto-distill** — automatically extracts actionable rules from lesson nodes into `### Auto-Learned` section
 - **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
@@ -136,7 +137,8 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "enabled": false,
     "baseUrl": "http://localhost:11434",
     "model": "qwen2.5-coder:1.5b",
-    "mode": "binary"
+    "mode": "binary",
+    "strategy": "llm"
   },
   "llmCompression": {
     "enabled": false,
@@ -193,6 +195,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `ollama.baseUrl` | string | `http://localhost:11434` | Ollama server URL |
 | `ollama.model` | string | `qwen2.5-coder:1.5b` | Model for reranking |
 | `ollama.mode` | enum | `"binary"` | `"binary"` (relevant/not) or `"score"` (0-1 rating) |
+| `ollama.strategy` | enum | `"llm"` | `"llm"` (LLM judge via Ollama) or `"cross-encoder"` (in-process ONNX cross-encoder) |
 | `llmCompression.enabled` | bool | `false` | Use LLM for richer compression summaries |
 | `llmCompression.model` | string | _none_ | LLM model name (uses ollama if not set) |
 | `llmCompression.maxSummaryTokens` | int | `500` | Max tokens per LLM-generated summary |
@@ -228,9 +231,9 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 
 ## Advanced Features
 
-### Ollama Reranking
+### Reranking (LLM / Cross-Encoder)
 
-When enabled in config, auto-retrieve results are re-ranked by a local LLM (via Ollama) for better relevance. The reranker scores candidates against the user's query and only keeps the most relevant ones:
+Auto-retrieve results can be re-ranked for better relevance using one of two strategies, configurable via the `ollama.strategy` field or the management app:
 
 ```json
 {
@@ -238,12 +241,31 @@ When enabled in config, auto-retrieve results are re-ranked by a local LLM (via 
     "enabled": true,
     "baseUrl": "http://localhost:11434",
     "model": "qwen2.5-coder:1.5b",
-    "mode": "binary"
+    "mode": "binary",
+    "strategy": "llm"
   }
 }
 ```
 
-In `"binary"` mode, the LLM labels each candidate as relevant or not. In `"score"` mode, it assigns a 0-1 relevance score.
+**LLM judge** (`strategy: "llm"`, default) — scores candidates via Ollama chat API. In `"binary"` mode the LLM labels each as relevant or not; in `"score"` mode it assigns a 0-1 relevance rating.
+
+**Cross-encoder** (`strategy: "cross-encoder"`) — runs an in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`, ~23 MB) for deterministic relevance scoring without needing Ollama. The model auto-downloads on first use via `ensureModels()`. This bypasses Ollama's missing `/api/rerank` endpoint entirely.
+
+### Rerank Intent
+
+Agents can tell the memory system what kind of information to prioritize by setting a preference node:
+
+```
+memory_set(
+  label: "pref:rerank-intent",
+  content: "boost: fact=1.5, rule=0.5, concept=1.2",
+  type: "pref"
+)
+```
+
+The `boost:` line lists node types with priority multipliers. Types not listed get neutral weight (1.0). Setting weight 0 suppresses a type entirely. The auto-retrieve hook reads this node before scoring and applies the multiplier to each candidate's hybrid score. The reranker then re-ranks the already-boosted candidates — effectively guiding the reranker toward the types the agent needs.
+
+Works with any memory type: `fact`, `concept`, `lesson`, `howto`, `decision`, `architecture`, `bug`, `fix`, and more. The rule is reset when a new `pref:rerank-intent` node is set.
 
 ### LLM Compression
 
@@ -617,6 +639,21 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
+
+### v0.6.32 (2026-06-19)
+- **Cross-encoder reranker** — in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) replaces the unavailable Ollama `/api/rerank` endpoint. Configurable via `ollama.strategy: "cross-encoder"` (vs `"llm"` default). Management app UI dropdown to switch strategies. Model auto-downloads with `ensureModels()`.
+- **Rerank intent system** — agents set `pref:rerank-intent` preference node with `boost: type=weight` directives. `resolveRerankIntent()` in auto-retrieve hook reads the node and applies type multipliers to scoring before the reranker runs. Instructions added to `rule:mandatory:tools` seed node so agents know the pattern.
+- **Bug fixes:**
+  - **HNSW `removeNode`** — `globalDeletedIds`/`projectDeletedIds` Sets filter deleted IDs from search results; previously was a no-op (only removed label-map entry). Rebuild clears deleted sets.
+  - **MemoryRate** — removed `updates.timesHelpful = 1` pre-set that caused double-counting (set to 1 then immediately incremented to 2).
+  - **MemoryReplace off-by-one** — `<=` → `<` in loop bound caused spurious match when content length equaled old text length.
+  - **MemorySet parent_ids** — now splits by comma/trims `args.parent_ids` instead of wrapping single string in array, fixing multi-parent input.
+  - **Sync I/O** — `fs.statSync`/`fs.readFileSync` replaced with `await fs.promises.stat`/`await fs.promises.readFile` in async hooks.
+  - **Score normalization** — min-max normalization of semantic scores before convex combination with BM25 in `computeFinalScores`, preventing BM25 from dominating on non-uniform score distributions.
+- **Memory leak fixes** — SESSION_LAST_NODE capped at 500 entries; workingMemoryCache prunes stale sessions at 100+; idScopeCache clears at 5000+ entries.
+- **Skills injection redesign** — replaced proactive XML block injection with `<!-- Relevant skills: ... -->` HTML comment; agent now calls `memory_skill_load()` reactively when needed.
+- **Graphviz diagram** — `docs/agent-communication-pipeline.{dot,svg,png}` documenting plugin ↔ agent communication channels.
+- **366 tests, 0 fail** (unchanged).
 
 ### v0.6.31 (2026-06-18)
 - **Temporal edges in management UI** — new `GET /api/temporal-edges` endpoint with optional `?node_id=` and `?project_name=` filters. Three.js 3D viewer renders 5 edge types with distinct colors and styles (NEXT=green solid, DURING_SESSION=blue dashed, CAUSAL=red solid, REFERENCES=yellow dotted, RELATED_TO=magenta solid). Spring forces applied during simulation pull temporally connected nodes closer. Detail panel shows per-node temporal connections with direction, type badge, and confidence score. Legend updated with temporal edge color swatches.
