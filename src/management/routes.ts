@@ -185,7 +185,11 @@ async function handleNodeDelete(ctx: { params: Record<string, string>; scope: st
     if (!existing) return jsonResponse({ success: false, error: "Node not found" }, 404);
 
     db.run("DELETE FROM memory_nodes WHERE id = ?", [nodeId]);
-    memLog("info", "management", `[api] Deleted node ${nodeId}`);
+    db.run("DELETE FROM memory_links WHERE source_id = ?", [nodeId]);
+    db.run("DELETE FROM temporal_edges WHERE source_node_id = ? OR target_node_id = ?", [nodeId, nodeId]);
+    db.run("DELETE FROM bm25_index WHERE node_id = ?", [nodeId]);
+    db.run("DELETE FROM bm25_doc_stats WHERE node_id = ?", [nodeId]);
+    memLog("info", "management", `[api] Deleted node ${nodeId} with associated links, edges, and BM25 index`);
     return jsonResponse({ success: true });
   });
 }

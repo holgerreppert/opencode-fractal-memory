@@ -1,7 +1,7 @@
 import type { MemoryNode } from "../../storage/sqlite";
 import { tokenize } from "../../storage/sqlite";
 
-export function scoreCandidates(candidates: MemoryNode[], query: string, queryEmbedding: number[]): MemoryNode[] {
+export function scoreCandidates(candidates: MemoryNode[], query: string, queryEmbedding: number[], typeBoosts?: Record<string, number>): MemoryNode[] {
   const DAY_MS = 24 * 60 * 60 * 1000;
   const now = Date.now();
 
@@ -52,7 +52,8 @@ export function scoreCandidates(candidates: MemoryNode[], query: string, queryEm
     const access = Math.min(0.05, (node.accessCount ?? 0) * 0.005);
     const recency = recencyBoost.get(node.id) ?? 0;
     const keyword = keywordBoost.get(node.id) ?? 0;
-    return { node, score: base + access + recency + keyword };
+    const typeBoost = typeBoosts?.[node.type ?? ""] ?? 1;
+    return { node, score: (base + access + recency + keyword) * typeBoost };
   });
 
   scored.sort((a, b) => b.score - a.score);

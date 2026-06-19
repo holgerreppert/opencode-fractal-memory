@@ -11,6 +11,18 @@ export interface CachedMemoryNode {
 const workingMemoryCache: Map<string, CachedMemoryNode[]> = new Map();
 let CACHE_MAX_SIZE = 8;
 let CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_STALE_SESSIONS = 100;
+
+function pruneStaleSessions(): void {
+  if (workingMemoryCache.size <= MAX_STALE_SESSIONS) return;
+  const now = Date.now();
+  for (const [sessionId, entries] of workingMemoryCache) {
+    if (entries.every(n => now - n.cachedAt >= CACHE_TTL_MS)) {
+      workingMemoryCache.delete(sessionId);
+    }
+    if (workingMemoryCache.size <= MAX_STALE_SESSIONS) break;
+  }
+}
 
 export function getWorkingCache(sessionId: string): CachedMemoryNode[] {
   const cache = workingMemoryCache.get(sessionId) || [];
@@ -34,6 +46,7 @@ export function addToWorkingCache(sessionId: string, node: { id: string; label: 
       cache.length = CACHE_MAX_SIZE;
     }
   }
+  pruneStaleSessions();
 }
 
 export function clearWorkingCache(sessionId: string): void {

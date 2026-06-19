@@ -30,6 +30,7 @@ export interface MemConfig {
     baseUrl: string;
     model: string;
     mode: "binary" | "score";
+    strategy: "llm" | "cross-encoder";
   };
   llmCompression?: {
     enabled: boolean;
@@ -87,6 +88,7 @@ const OllamaSchema = z.object({
   baseUrl: z.string().default("http://localhost:11434"),
   model: z.string().default("qwen2.5-coder:1.5b"),
   mode: z.enum(["binary", "score"]).default("binary"),
+  strategy: z.enum(["llm", "cross-encoder"]).default("llm"),
 });
 
 const LlmCompressionSchema = z.object({
@@ -168,6 +170,7 @@ const DEFAULT_CONFIG: MemConfig = {
     baseUrl: "http://localhost:11434",
     model: "qwen2.5-coder:1.5b",
     mode: "binary",
+    strategy: "llm",
   },
   llmCompression: {
     enabled: false,

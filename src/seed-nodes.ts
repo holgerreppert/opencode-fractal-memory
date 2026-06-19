@@ -125,7 +125,34 @@ tag: rule:mandatory
 
 ### memory_replace
 - ALWAYS re-read node with memory_get immediately before replacing
-- NEVER use cached content - content may change between operations`,
+- NEVER use cached content - content may change between operations
+
+### memory_skill_load / memory_playbook_execute
+- When a task matches known triggers (debug, test, refactor, three.js, etc.),
+  proactively call memory_skill_load(name="<skill-name>") to load relevant skill instructions
+- When you need to follow a standard workflow (debugging, testing, code review),
+  check for matching playbooks with memory_playbook_execute(playbook_id="<id>")
+- Skill names have triggers in their metadata; check if current task matches
+- Prefer loading skills reactively (when relevant) rather than asking the user
+
+### Rerank intent (pref:rerank-intent)
+Set a preference node to tell the memory system what kind of information to prioritize.
+Use when you know what type of node you need (facts, concepts, rules, etc.):
+
+\`memory_set(label="pref:rerank-intent", type="pref", content="boost: fact=1.5, rule=0.5, concept=1.2")\`
+
+How it works:
+- The \`boost:\` line lists node types and their priority multipliers
+- Types NOT listed get default weight (1.0 — neutral)
+- Set weight 0 to suppress a type entirely
+- Resets when you set a new \`pref:rerank-intent\` node
+- Works with any type in memory (\`fact\`, \`concept\`, \`lesson\`, \`howto\`, \`decision\`, \`architecture\`, \`best-practices\`, \`convention\`, \`knowledge\`, \`bug\`, \`fix\`, \`note\`, \`preference\`, \`summary\`, \`plan\`, \`task\`, \`research\`, \`event\`)
+
+When to use:
+- Before asking about a specific topic: "I need facts about X" → boost: fact=1.5
+- Before debugging: "prioritize bug/fix nodes" → boost: bug=1.5, fix=1.5
+- Before making decisions: "I need decisions and architecture" → boost: decision=1.5, architecture=1.2
+- When irrelevant types pollute results: "suppress rules" → boost: rule=0.1`,
   },
   // Seed nodes (on-demand, not injected)
   {

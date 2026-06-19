@@ -481,6 +481,13 @@
             <option value="score">Score (0-1 rating)</option>
           </select>
         </div>
+        <div class="config-field">
+          <label>Rerank Strategy</label>
+          <select id="ollama-strategy">
+            <option value="llm">LLM Judge (qwen2.5-coder)</option>
+            <option value="cross-encoder">Cross-Encoder (local ONNX)</option>
+          </select>
+        </div>
       </div>
 
       <div class="section">

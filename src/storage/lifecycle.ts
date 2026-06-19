@@ -31,6 +31,8 @@ export async function ensureSeed(
   }
 }
 
+const MAX_ID_SCOPE_CACHE = 5000;
+
 export async function resolveNode(
   getDb: (scope: MemoryScope) => Promise<Database>,
   idScopeCache: Map<string, MemoryScope>,
@@ -39,6 +41,10 @@ export async function resolveNode(
   if (idScopeCache.has(id)) {
     const scope = idScopeCache.get(id)!;
     return { scope, db: await getDb(scope) };
+  }
+
+  if (idScopeCache.size > MAX_ID_SCOPE_CACHE) {
+    idScopeCache.clear();
   }
 
   for (const scope of ["global", "project"] as MemoryScope[]) {

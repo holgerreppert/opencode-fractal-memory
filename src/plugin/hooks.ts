@@ -102,7 +102,7 @@ export function createHookHandlers(
         if (cached) {
           let isStale = false;
           try {
-            const fileMtime = fs.statSync(filePath).mtime;
+            const fileMtime = (await fs.promises.stat(filePath)).mtime;
             if (fileMtime.getTime() > cached.updatedAt.getTime()) {
               isStale = true;
             }
@@ -241,7 +241,7 @@ export function createHookHandlers(
 
         let fullContent = "";
         try {
-          fullContent = fs.readFileSync(filePath, "utf-8");
+          fullContent = await fs.promises.readFile(filePath, "utf-8");
         } catch (err) {
           memLog("warn", "file-summary", "Could not read full file, using tool output", { filePath, error: String(err) });
           fullContent = String(output.output ?? "");

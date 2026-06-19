@@ -279,17 +279,25 @@ export function computeFinalScores(
     ? computeBM25Scores({ queryTerms: tokenize(queryText), nodes: scoredNodes })
     : new Map<string, number>());
   
+  // Normalize semantic scores to [0,1] for fair convex combination
+  let semanticScores = scoredNodes.map(n => n.importance ?? 0);
+  const minSem = Math.min(...semanticScores);
+  const maxSem = Math.max(...semanticScores);
+  const semRange = maxSem - minSem;
+
   const finalNodes: MemoryNode[] = [];
-  for (const node of scoredNodes) {
+  for (let i = 0; i < scoredNodes.length; i++) {
+    const node = scoredNodes[i]!;
     const bm25Score = bm25Scores.get(node.id) ?? 0;
     const recencyScore = computeRecencyScore(node.lastAccessed);
+    const semanticScore = semRange > 0 ? (semanticScores[i]! - minSem) / semRange : 1.0;
     
     let finalScore: number;
     if (bm25Weight > 0 && queryText) {
       const semanticWeight = 1 - dynamicBm25Weight;
-      finalScore = ((node.importance ?? 0) * semanticWeight + bm25Score * dynamicBm25Weight);
+      finalScore = (semanticScore * semanticWeight + bm25Score * dynamicBm25Weight);
     } else {
-      finalScore = node.importance ?? 0;
+      finalScore = semanticScore;
     }
     
     finalScore = finalScore * (1 + recencyScore * 0.2);
@@ -297,7 +305,7 @@ export function computeFinalScores(
     finalNodes.push({
       ...node,
       importance: finalScore,
-    });
+    } as MemoryNode);
   }
   
   return finalNodes;

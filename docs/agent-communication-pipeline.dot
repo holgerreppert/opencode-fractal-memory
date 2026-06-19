@@ -1,0 +1,286 @@
+digraph AgentMemoryPipeline {
+  rankdir=LR;
+  splines=polyline;
+  fontname="Helvetica,Arial,sans-serif";
+  fontsize=11;
+  bgcolor="#0d1117";
+  labeljust=l;
+  label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="18" COLOR="#58a6ff">OpenCode Agent  ⇄  Fractal Memory Plugin</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="11" COLOR="#8b949e">Communication Architecture — 3 Agent Channels, 8 Silent Operations, 48 Tools</FONT></TD></TR></TABLE>>;
+  pad=0.5;
+  dpi=200;
+  nodesep=0.6;
+  ranksep=1.2;
+
+  /* ─── Color Palette ─── */
+  /* Agent:   blue    #1f6feb */
+  /* Channel: orange  #d29922 */
+  /* Plugin:  purple  #bc8cff / #8957e5 */
+  /* Silent:  red     #da3633 */
+  /* DB:      green   #238636 */
+  /* System:  gray    #30363d */
+
+  /* ─── Node Styles ─── */
+  node [shape=box, style="filled,rounded", fontname="Helvetica,Arial,sans-serif", fontcolor="white", fontsize=10];
+
+  /* ─── CLUSTER: Agent ─── */
+  subgraph cluster_agent {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#58a6ff">1  Agent Context (LLM)</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    Agent [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#1f6feb">
+        <TR><TD><B><FONT POINT-SIZE="14">Coding Agent</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">(Claude / GPT / Gemini / Copilot)</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Sees 48 tool definitions</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">System rules every turn</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Auto-injected context</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Tool return strings</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#1f6feb", shape=plain, margin=0];
+  }
+
+  /* ─── CLUSTER: Platform ─── */
+  subgraph cluster_platform {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#58a6ff">2  OpenCode Platform</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    ToolEngine [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B>Tool Engine</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">(function-calling router)</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Translates Zod schemas</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">→ LLM function definitions</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">→ Agent invokes by name</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#d29922", shape=plain, margin=0];
+
+    Compactor [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B>Context Compactor</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">(triggers on ctx full)</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Calls session.compacting hook</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Archives → storedcontext:*</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Snapshots → middle-term:*</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#d29922", shape=plain, margin=0];
+
+    PromptBuilder [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B>Prompt Builder</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">(system prompt assembler)</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Calls system.transform hook</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Injects rule:* as</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">&lt;system_reminder&gt; tags</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#d29922", shape=plain, margin=0];
+
+    MsgInterceptor [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B>Message Interceptor</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">(messages.transform)</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Prepend auto-retrieved</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">context to user message</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Agent sees results, not</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">the search call itself</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#d29922", shape=plain, margin=0];
+  }
+
+  /* ─── CLUSTER: Plugin ─── */
+  subgraph cluster_plugin {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#58a6ff">3  Fractal Memory Plugin</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    /* Visible tools group */
+    ToolsVisible [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="1" BGCOLOR="#8957e5">
+        <TR><TD COLSPAN="2"><B><FONT POINT-SIZE="11">48 Tools (agent-visible, explicit)</FONT></B></TD></TR>
+        <TR><TD COLSPAN="2" BGCOLOR="#bc8cff" HEIGHT="1"></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_set</FONT></TD><TD><FONT POINT-SIZE="9">Create / update node</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_get</FONT></TD><TD><FONT POINT-SIZE="9">Read node by ID</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_fetch</FONT></TD><TD><FONT POINT-SIZE="9">Read node by label</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_search</FONT></TD><TD><FONT POINT-SIZE="9">Semantic + BM25 + temporal</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_delete</FONT></TD><TD><FONT POINT-SIZE="9">Delete node</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_replace</FONT></TD><TD><FONT POINT-SIZE="9">Edit content</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_rate</FONT></TD><TD><FONT POINT-SIZE="9">Mark helpful / set score</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_list</FONT></TD><TD><FONT POINT-SIZE="9">List nodes</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_drilldown</FONT></TD><TD><FONT POINT-SIZE="9">Fractal retrieval</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_inject</FONT></TD><TD><FONT POINT-SIZE="9">Budget-aware injection</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_prune</FONT></TD><TD><FONT POINT-SIZE="9">Agent-driven pruning</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_compress</FONT></TD><TD><FONT POINT-SIZE="9">L0→L1 summarization</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_verify</FONT></TD><TD><FONT POINT-SIZE="9">Confirm correctness</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_stats</FONT></TD><TD><FONT POINT-SIZE="9">Index health</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_dashboard</FONT></TD><TD><FONT POINT-SIZE="9">Top nodes + types</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_reflect</FONT></TD><TD><FONT POINT-SIZE="9">Create lessons from</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_distill</FONT></TD><TD><FONT POINT-SIZE="9">Extract rules from</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">journal_write</FONT></TD><TD><FONT POINT-SIZE="9">Append-only journal</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory_help</FONT></TD><TD><FONT POINT-SIZE="9">Show all commands</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">+29 more</FONT></TD><TD><FONT POINT-SIZE="9">stats, sessions, meta</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#8957e5", shape=plain, margin=0];
+
+    /* Silent operations group */
+    SilentOps [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="1" BGCOLOR="#21262d">
+        <TR><TD COLSPAN="2"><B><FONT POINT-SIZE="11" COLOR="#f85149">Silent Operations (agent-invisible)</FONT></B></TD></TR>
+        <TR><TD COLSPAN="2" BGCOLOR="#da3633" HEIGHT="1"></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">TTL Expiration</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">deleteExpiredNodes() src/storage/expiration.ts — nodes vanish silently, no notification</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Score Decay</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">applyScoreDecay() src/storage/predictive-rating.ts — triggered on session.idle, scores drop between turns</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Fact Consolidation</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">runConsolidation() src/storage/compress-ops.ts — creates fact:* nodes from episodic clusters</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Auto-Distill</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">distillRules() — appends learned lessons to rule:mandatory:memory, affects next session's system prompt</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Cache Eviction</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">LRU + TTL in src/cache.ts — max 8 entries/session, 2h TTL, entries dropped without notice</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Embedding Gen</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">scheduledBackgroundEmbeddings() — auto-generates embeddings for nodes missing them, 1s post-init</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Prune (no dry-run)</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">memory_prune(dryRun=false) returns only node count, not list of deleted nodes</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Compaction Archive</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">session.compacting — creates middle-term:* + storedcontext:* nodes, agent sees summaries only</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#21262d", shape=plain, margin=0, color="#da3633"];
+  }
+
+  /* ─── CLUSTER: Storage ─── */
+  subgraph cluster_storage {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#58a6ff">4  Storage Layer</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    SQLite [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#238636">
+        <TR><TD><B>SQLite (Bun:sqlite)</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">~/.config/opencode/memory.db</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">memory_nodes, memory_links</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">temporal_edges (5 types)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">bm25_index, bm25_doc_stats</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">compression_tracker</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#238636", shape=plain, margin=0];
+
+    HNSW [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#238636">
+        <TR><TD><B>HNSW Vector Index</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">(in-memory, cosine distance)</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">~384-dim embeddings</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">M=16, efC=200, efS=64</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Rebuilt from scratch</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">on every init (~30-60s)</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#238636", shape=plain, margin=0];
+
+    ONNX [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#238636">
+        <TR><TD><B>Embedding Model</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">Xenova/all-MiniLM-L6-v2</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">ONNX WASM (CPU only)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">384-dim output</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">~50ms per inference</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#238636", shape=plain, margin=0];
+  }
+
+  /* ─── CLUSTER: External ─── */
+  subgraph cluster_external {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#58a6ff">5  External Integrations</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    MCP [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#1f6feb">
+        <TR><TD><B>MCP Server</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">src/mcp-server.ts</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Stdio-based protocol</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">IDE integration (VS Code, etc.)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Same store, same 48 tools</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#1f6feb", shape=plain, margin=0];
+
+    Management [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#1f6feb">
+        <TR><TD><B>Management UI</B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">src/management-server.ts</FONT></TD></TR>
+        <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Three.js 3D visualization</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Temporal edge viewer</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">WASD controls, port 8787</FONT></TD></TR>
+      </TABLE>
+    >, fillcolor="#1f6feb", shape=plain, margin=0];
+  }
+
+  /* ─── EDGES: Agent → Platform → Plugin → Storage ─── */
+
+  /* Channel 1: System Rules */
+  Agent:e -> PromptBuilder:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="10" COLOR="#d29922">CH 1</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="9">System prompt assembly</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5];
+  PromptBuilder:e -> ToolsVisible:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">system.transform hook</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">src/plugin/hooks.ts:25-84</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">reads rule:* nodes</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5];
+
+  /* Channel 2: Auto-Retrieve */
+  Agent:e -> MsgInterceptor:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="10" COLOR="#d29922">CH 2</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="9">User message sent to agent</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5];
+  MsgInterceptor:e -> ToolsVisible:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">messages.transform hook</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">auto-retrieve/index.ts</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">embeds + searches L0</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5];
+  MsgInterceptor:w -> Agent:n [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Prepended context block</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5, style=dashed, dir=back];
+
+  /* Channel 3: Explicit Tool Calls */
+  Agent:e -> ToolEngine:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="10" COLOR="#d29922">CH 3</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="9">Function call via LLM</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5];
+  ToolEngine:e -> ToolsVisible:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Invoke execute()</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">Zod-validated args</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5];
+  ToolsVisible:w -> ToolEngine:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Return string</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5, style=dashed, dir=back];
+  ToolEngine:w -> Agent:n [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Tool result</FONT></TD></TR></TABLE>>, color="#d29922", penwidth=1.5, style=dashed, dir=back];
+
+  /* Storage connections */
+  ToolsVisible:e -> SQLite:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">CRUD queries</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">SQL + embeddings</FONT></TD></TR></TABLE>>, color="#8b949e", penwidth=1];
+  ToolsVisible:e -> HNSW:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">vector search</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">searchKNN()</FONT></TD></TR></TABLE>>, color="#8b949e", penwidth=1];
+  HNSW:e -> SQLite:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">label to nodeId</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">resolve results</FONT></TD></TR></TABLE>>, color="#8b949e", penwidth=1, style=dotted];
+
+  /* Silent ops edges */
+  SilentOps:w -> SQLite:n [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">TTL deletion, decay,</FONT></TD></TR><TR><TD><FONT POINT-SIZE="9">consolidation writes</FONT></TD></TR></TABLE>>, color="#da3633", penwidth=1, style=dashed];
+  SilentOps:w -> ToolsVisible:s [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">distillRules() modifies</FONT></TD></TR><TR><TD><FONT POINT-SIZE="9">memory rules in DB</FONT></TD></TR></TABLE>>, color="#da3633", penwidth=1, style=dashed];
+
+  /* Compactor connections */
+  Compactor:e -> SilentOps:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Calls compaction hook</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">session.compacting</FONT></TD></TR></TABLE>>, color="#f0883e", penwidth=1];
+  Compactor:w -> Agent:s [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Compaction prompt</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">with context summaries</FONT></TD></TR></TABLE>>, color="#f0883e", penwidth=1, style=dashed, dir=back];
+
+  /* External integration edges */
+  ToolsVisible:s -> MCP:n [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Same store instance</FONT></TD></TR></TABLE>>, color="#8b949e", penwidth=1];
+  ToolsVisible:s -> Management:n [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">HTTP API</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">src/management/routes.ts</FONT></TD></TR></TABLE>>, color="#8b949e", penwidth=1];
+
+  /* Model download edge */
+  ONNX:w -> SQLite:w [label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><FONT POINT-SIZE="9">Embedding generation</FONT></TD></TR><TR><TD><FONT POINT-SIZE="8">(~50ms per call)</FONT></TD></TR></TABLE>>, color="#8b949e", penwidth=1, style=dotted];
+
+  /* ─── Legend ─── */
+  Legend [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#161b22">
+      <TR><TD COLSPAN="2"><B><FONT POINT-SIZE="10" COLOR="#c9d1d9">Legend</FONT></B></TD></TR>
+      <TR><TD BGCOLOR="#d29922" WIDTH="12" HEIGHT="12" FIXEDSIZE="TRUE"></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">Agent-visible channel</FONT></TD></TR>
+      <TR><TD BGCOLOR="#da3633" WIDTH="12" HEIGHT="12" FIXEDSIZE="TRUE"></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">Silent operation (invisible)</FONT></TD></TR>
+      <TR><TD BGCOLOR="#8957e5" WIDTH="12" HEIGHT="12" FIXEDSIZE="TRUE"></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">Plugin tool (explicit)</FONT></TD></TR>
+      <TR><TD BGCOLOR="#238636" WIDTH="12" HEIGHT="12" FIXEDSIZE="TRUE"></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">Persistence layer</FONT></TD></TR>
+      <TR><TD BGCOLOR="#1f6feb" WIDTH="12" HEIGHT="12" FIXEDSIZE="TRUE"></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">External integration</FONT></TD></TR>
+    </TABLE>
+  >, fillcolor="none", shape=plain, margin=0];
+}

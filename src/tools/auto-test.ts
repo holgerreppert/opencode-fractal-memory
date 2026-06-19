@@ -19,7 +19,7 @@ export function createMemoryAutoTest(store: MemoryStore) {
         const results = await rerankDocuments(
           testQuery,
           candidates.map((c) => ({ id: c.id, label: c.label ?? c.id, content: c.content.slice(0, 200) })),
-          { topK: 3 }
+          { topK: 3, strategy: "cross-encoder" }
         );
         
         const selected = candidates.filter((c) => results.some((r) => r.id === c.id));

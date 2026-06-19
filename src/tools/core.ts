@@ -121,7 +121,7 @@ export function MemorySet(store: MemoryStore) {
         }
       }
       
-      const parentIds = args.parent_ids ? [args.parent_ids] : null;
+      const parentIds = args.parent_ids ? args.parent_ids.split(",").map(s => s.trim()).filter(Boolean) : null;
       const embedding = args.no_embedding ? null : await tryGenerateEmbedding(args.content, "Failed to generate embedding");
       
       const node = await store.createNode({
@@ -174,18 +174,15 @@ export function MemoryRate(store: MemoryStore) {
         throw new Error("Must provide either id or label");
       }
       const updates: Record<string, unknown> = {};
-      if (args.helpful) {
-        updates.timesHelpful = 1;
-      }
       if (args.usefulness_score !== undefined) {
         updates.usefulnessScore = args.usefulness_score;
       }
+      if (args.helpful) {
+        const node = await store.getNode(nodeId);
+        updates.timesHelpful = (node.timesHelpful ?? 0) + 1;
+      }
       if (Object.keys(updates).length === 0) {
         return "No updates applied.";
-      }
-      const node = await store.getNode(nodeId);
-      if (args.helpful) {
-        updates.timesHelpful = (node.timesHelpful ?? 0) + 1;
       }
       await store.updateNode(nodeId, updates);
       return `Updated node ${nodeId?.slice(0,8)}: ${args.helpful ? "timesHelpful incremented" : ""}${args.usefulness_score !== undefined ? ` usefulnessScore set to ${args.usefulness_score}` : ""}`;
@@ -308,7 +305,7 @@ export function MemoryReplace(store: MemoryStore) {
       const contentLines = content.split("\n");
 
       let matchStart = -1;
-      for (let i = 0; i <= contentLines.length - oldTrimmedLines.length; i++) {
+      for (let i = 0; i < contentLines.length - oldTrimmedLines.length; i++) {
         let matched = true;
         for (let j = 0; j < oldTrimmedLines.length; j++) {
           const line = contentLines[i + j];

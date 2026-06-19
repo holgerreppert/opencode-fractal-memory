@@ -2,6 +2,18 @@ import type { MemoryStore } from "./sqlite";
 import { memLog } from "../logging";
 
 const SESSION_LAST_NODE = new Map<string, string>();
+const MAX_SESSION_ENTRIES = 500;
+
+function pruneSessionEdges(): void {
+  if (SESSION_LAST_NODE.size > MAX_SESSION_ENTRIES) {
+    const toDelete = SESSION_LAST_NODE.size - MAX_SESSION_ENTRIES;
+    const iter = SESSION_LAST_NODE.keys();
+    for (let i = 0; i < toDelete; i++) {
+      const key = iter.next().value;
+      if (key !== undefined) SESSION_LAST_NODE.delete(key as string);
+    }
+  }
+}
 
 export function clearSessionEdges(sessionId: string): void {
   SESSION_LAST_NODE.delete(sessionId);
@@ -27,6 +39,7 @@ export async function onNodeCreated(
     );
   }
   SESSION_LAST_NODE.set(sessionId, newNodeId);
+  pruneSessionEdges();
 
   if (content) {
     const refs = extractLabelRefs(content);

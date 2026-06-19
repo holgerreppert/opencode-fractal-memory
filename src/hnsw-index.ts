@@ -27,11 +27,16 @@ export class HNSWIndex {
   private projectIdCounter: number;
   private dimension: number;
   private initialized: boolean = false;
+  private globalDeletedIds: Set<number>;
+  private projectDeletedIds: Set<number>;
+  private static MAX_CACHE_SIZE = 10000;
 
   constructor(dimension: number = 384) {
     this.dimension = dimension;
     this.globalLabelMap = new Map();
     this.projectLabelMap = new Map();
+    this.globalDeletedIds = new Set();
+    this.projectDeletedIds = new Set();
     this.globalIdCounter = 0;
     this.projectIdCounter = 0;
   }
@@ -89,9 +94,14 @@ export class HNSWIndex {
 
   async removeNode(scope: "global" | "project", nodeId: string): Promise<void> {
     const labelMap = this.getMaps(scope);
+    const deletedSet = scope === "global" ? this.globalDeletedIds : this.projectDeletedIds;
     for (const [hnswId, storedId] of labelMap) {
       if (storedId === nodeId) {
         labelMap.delete(hnswId);
+        deletedSet.add(hnswId);
+        if (deletedSet.size > HNSWIndex.MAX_CACHE_SIZE) {
+          deletedSet.clear();
+        }
         return;
       }
     }
@@ -131,7 +141,9 @@ export class HNSWIndex {
       return combined.filter(r => r.id !== "").slice(0, limit);
     }
 
+    const deletedSet = scope === "global" ? this.globalDeletedIds : this.projectDeletedIds;
     return results
+      .filter(r => !deletedSet.has(r.id))
       .map(r => {
         const nodeId = scope === "global"
           ? this.globalLabelMap.get(r.id) ?? ""
@@ -152,6 +164,8 @@ export class HNSWIndex {
     this.projectIndex = new HNSW(M, EF_CONSTRUCTION, this.dimension, "cosine", EF_SEARCH);
     this.globalLabelMap.clear();
     this.projectLabelMap.clear();
+    this.globalDeletedIds.clear();
+    this.projectDeletedIds.clear();
     this.globalIdCounter = 0;
     this.projectIdCounter = 0;
     this.initialized = true;

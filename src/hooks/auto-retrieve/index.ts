@@ -7,9 +7,10 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { scoreCandidates } from "./scoring";
 import { detectRelevantSkills, detectRelevantPlaybooks, type PlaybookInfo } from "./detection";
-import { formatPlaybooksAsAvailable, formatSkillsAsAvailable } from "./formatting";
+
 import { formatNodeForInjection } from "./content";
 import { appendSessionLog } from "../../logging";
+import type { MemoryScope } from "../../storage/sqlite";
 
 const INJECTION_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
 const INJECTION_LOG_FILE = path.join(INJECTION_LOG_DIR, "memory-injection.log");
@@ -49,6 +50,36 @@ interface Message {
 }
 
 type MessagesHook = (input: unknown, output: { messages: Message[] }) => Promise<void>;
+
+function resolveRerankIntent(store: MemoryStore): Promise<Record<string, number>> {
+  const scopes: MemoryScope[] = ["global", "project"];
+  const results = scopes.map(s => {
+    try {
+      return store.getNodeByLabel(s, "pref:rerank-intent");
+    } catch {
+      return null;
+    }
+  });
+  return Promise.all(results).then(nodes => {
+    const intentNode = nodes.find(n => n !== null);
+    if (!intentNode) return {};
+    const content = intentNode!.content;
+    const boostMatch = content.match(/boost:\s*(.+?)(?:\n|$)/);
+    if (!boostMatch) return {};
+    const boostEntries = boostMatch[1]!.split(",").map(s => s.trim()).filter(Boolean);
+    const boosts: Record<string, number> = {};
+    for (const entry of boostEntries) {
+      const [type, weightStr] = entry.split("=").map(s => s.trim());
+      if (type && weightStr) {
+        const weight = parseFloat(weightStr);
+        if (!isNaN(weight) && weight >= 0) {
+          boosts[type] = weight;
+        }
+      }
+    }
+    return boosts;
+  });
+}
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0;
@@ -244,7 +275,11 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
 
         log("debug", "Candidates after dedup", { count: uniqueFiltered.length, skills: relevantSkills.length, playbooks: relevantPlaybooks.length });
 
-        let scored = uniqueFiltered.length > 0 ? scoreCandidates(uniqueFiltered, userText, queryEmbedding) : [];
+        const typeBoosts = await resolveRerankIntent(store);
+        if (Object.keys(typeBoosts).length > 0) {
+          log("info", "Rerank intent boosts active", { typeBoosts });
+        }
+        let scored = uniqueFiltered.length > 0 ? scoreCandidates(uniqueFiltered, userText, queryEmbedding, typeBoosts) : [];
 
         if (ollamaConfig?.enabled && scored.length > 0) {
           log("info", "Ollama reranking", { model: ollamaConfig.model, candidateCount: scored.length });
@@ -256,6 +291,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
               baseUrl: ollamaConfig.baseUrl,
               model: ollamaConfig.model,
               topK: autoConfig.maxInjectNodes ?? 5,
+              strategy: ollamaConfig.strategy ?? "cross-encoder",
             }
           );
           const ollamaDuration = Date.now() - startTime;
@@ -287,17 +323,15 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         }
 
         if (relevantSkills.length > 0) {
-          const skillsBlock = formatSkillsAsAvailable(relevantSkills);
-          if (skillsBlock) {
-            fullBlock += `\n\n### Available Skills:\nThe following skills are relevant to your task. Load full instructions with:\nmemory_skill_load(name="skill-name")\n\n${skillsBlock}`;
-          }
+          const skillNames = relevantSkills.map(s =>
+            s.label?.replace(/^skill:/, "") ?? s.id.slice(0, 8)
+          );
+          fullBlock += `\n\n<!-- Relevant skills: ${skillNames.join(", ")}. If needed, run: memory_skill_load(name="<name>") -->`;
         }
 
         if (relevantPlaybooks.length > 0) {
-          const playbooksBlock = formatPlaybooksAsAvailable(relevantPlaybooks);
-          if (playbooksBlock) {
-            fullBlock += `\n\n### Available Playbooks:\nThe following playbooks match your current task. Execute one with:\nmemory_playbook_execute playbook_id="<id>"\n\n${playbooksBlock}`;
-          }
+          const playbookIds = relevantPlaybooks.map(p => p.label);
+          fullBlock += `\n\n<!-- Relevant playbooks: ${playbookIds.join(", ")}. If needed, run: memory_playbook_execute(playbook_id="<id>") -->`;
         }
 
         if (!fullBlock) return;

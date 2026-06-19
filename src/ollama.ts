@@ -2,12 +2,16 @@
 const OLLAMA_BASE = "http://localhost:11434";
 
 import { memLog } from "./logging";
+import { scorePairs } from "./cross-encoder";
+
+export type RerankStrategy = "llm" | "cross-encoder";
 
 export interface OllamaOptions {
   baseUrl?: string;
   model?: string;
   temperature?: number;
   seed?: number;
+  strategy?: RerankStrategy;
 }
 
 export async function chat(
@@ -42,6 +46,18 @@ export interface RerankResult {
   score: number;
 }
 
+async function rerankCrossEncoder(
+  query: string,
+  candidates: Array<{ id: string; label: string; content: string }>,
+  opts: { topK: number }
+): Promise<RerankResult[]> {
+  return await scorePairs(
+    query,
+    candidates.map(c => ({ id: c.id, content: c.content })),
+    opts.topK
+  );
+}
+
 export async function rerankDocuments(
   query: string,
   candidates: Array<{ id: string; label: string; content: string }>,
@@ -50,8 +66,18 @@ export async function rerankDocuments(
   const baseUrl = opts.baseUrl ?? OLLAMA_BASE;
   const model = opts.model ?? "qwen2.5-coder:1.5b";
   const topK = opts.topK ?? 5;
+  const strategy: RerankStrategy = opts.strategy ?? "llm";
 
-  memLog("debug", "ollama", "[ollama] rerankDocuments called:", { model, baseUrl, candidateCount: candidates.length, topK });
+  memLog("debug", "ollama", "[ollama] rerankDocuments called:", { model, baseUrl, strategy, candidateCount: candidates.length, topK });
+
+  if (strategy === "cross-encoder") {
+    try {
+      return await rerankCrossEncoder(query, candidates, { topK });
+    } catch (err) {
+      memLog("error", "ollama", "Cross-encoder rerank error:", { error: err instanceof Error ? err.message : err });
+      return candidates.slice(0, topK).map(d => ({ id: d.id, score: 0 }));
+    }
+  }
 
   const docsList = candidates.map((doc, i) => {
     const content = doc.content.slice(0, 500);
@@ -89,10 +115,9 @@ Response (EXACTLY ${candidates.length} scores as JSON array):`;
       return candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
     }
 
-    // Handle mismatch gracefully: pad with 1s or trim excess
     const normalizedScores = [...scores];
     while (normalizedScores.length < candidates.length) {
-      normalizedScores.push(1); // Pad with 1s (relevant)
+      normalizedScores.push(1);
     }
     const finalScores = normalizedScores.slice(0, candidates.length);
 

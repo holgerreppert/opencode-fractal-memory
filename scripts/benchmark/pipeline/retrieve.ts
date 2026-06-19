@@ -3,6 +3,8 @@ import { tokenize } from "../../../src/storage/utils";
 import { generateEmbedding } from "../../../src/embeddings";
 import { type TurnInfo, type SessionInfo } from "./ingest";
 
+const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
+
 export type EvidenceResult = {
   nodeId: string;
   content: string;
@@ -153,8 +155,7 @@ async function expandTemporalEdges(
   if (depth >= maxHops || visited.has(nodeId)) return visited;
   visited.add(nodeId);
 
-  const edgeTypes = depth === 0 ? ["DURING_SESSION", "NEXT"] : ["NEXT"];
-  for (const edgeType of edgeTypes) {
+  for (const edgeType of ALL_EDGE_TYPES) {
     const edges = await store.getTemporalEdges(nodeId, "both", edgeType);
     for (const e of edges) {
       const neighborId = e.sourceNodeId === nodeId ? e.targetNodeId : e.sourceNodeId;

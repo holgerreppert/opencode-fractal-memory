@@ -319,8 +319,8 @@ describe("computeFinalScores", () => {
     const options = { bm25Weight: 0.4, queryText: "hello world", bm25Scores: new Map([["a", 0.9]]) };
     const result = computeFinalScores(nodes, options);
     expect(result[0]!.importance).toBeGreaterThan(0);
-    // Semantic 0.8 * 0.6 + BM25 0.9 * 0.4 = 0.48 + 0.36 = 0.84, then * recency boost
-    expect(result[0]!.importance).toBeCloseTo(0.84 * (1 + computeRecencyScore(nodes[0]!.lastAccessed) * 0.2), 5);
+    // Single node: semantic normalized to 1.0 (min=max). 1.0 * 0.6 + BM25 0.9 * 0.4 = 0.96, then * recency boost
+    expect(result[0]!.importance).toBeCloseTo(0.96 * (1 + computeRecencyScore(nodes[0]!.lastAccessed) * 0.2), 5);
   });
 
   test("boosts BM25 weight for code queries", () => {

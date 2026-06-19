@@ -194,6 +194,10 @@ class SceneController {
     this._spherical = { theta: 0, phi: Math.PI / 3, radius: 350 };
     this._target = new THREE.Vector3(0, 0, 0);
 
+    // WASD movement state
+    this._keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+    this._moveSpeed = 2;
+
     this._addLights();
     this._updateCamera();
     this._bindEvents();
@@ -251,6 +255,53 @@ class SceneController {
 
     el.addEventListener("mousemove", (e) => this._onMouseMove(e));
     el.addEventListener("click", () => this._onClick());
+
+    window.addEventListener("keydown", (e) => this._onKeyDown(e));
+    window.addEventListener("keyup", (e) => this._onKeyUp(e));
+  }
+
+  _onKeyDown(e) {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+    switch (e.code) {
+      case "KeyW": case "KeyA": case "KeyS": case "KeyD": case "KeyQ": case "KeyE":
+        e.preventDefault();
+        this._keys[e.code.slice(3).toLowerCase()] = true;
+        break;
+    }
+  }
+
+  _onKeyUp(e) {
+    switch (e.code) {
+      case "KeyW": case "KeyA": case "KeyS": case "KeyD": case "KeyQ": case "KeyE":
+        this._keys[e.code.slice(3).toLowerCase()] = false;
+        break;
+    }
+  }
+
+  _updateMovement() {
+    if (!this._keys.w && !this._keys.a && !this._keys.s && !this._keys.d && !this._keys.q && !this._keys.e) return;
+
+    const forward = new THREE.Vector3().subVectors(this._target, this.camera.position);
+    forward.y = 0;
+    if (forward.lengthSq() < 0.001) {
+      forward.set(0, 0, -1);
+    } else {
+      forward.normalize();
+    }
+
+    const right = new THREE.Vector3().crossVectors(forward, this.camera.up).normalize();
+    const move = new THREE.Vector3();
+    const speed = this._moveSpeed;
+
+    if (this._keys.w) move.add(forward.clone().multiplyScalar(speed));
+    if (this._keys.s) move.sub(forward.clone().multiplyScalar(speed));
+    if (this._keys.a) move.sub(right.clone().multiplyScalar(speed));
+    if (this._keys.d) move.add(right.clone().multiplyScalar(speed));
+    if (this._keys.q) move.y -= speed;
+    if (this._keys.e) move.y += speed;
+
+    this._target.add(move);
+    this._updateCamera();
   }
 
   _onMouseMove(event) {
@@ -346,11 +397,12 @@ class SceneController {
       const radius = shellRadii[lvl] ?? 120;
 
       const pos = fibonacciSphere(idx, count, radius);
-      // Add tiny random jitter to prevent exact overlaps
+      const nodeSize = getNodeSize(node);
+      const jitterScale = Math.max(1, nodeSize * 0.3);
       if (count > 1) {
-        pos.x += (Math.random() - 0.5) * 2;
-        pos.y += (Math.random() - 0.5) * 2;
-        pos.z += (Math.random() - 0.5) * 2;
+        pos.x += (Math.random() - 0.5) * jitterScale * 3;
+        pos.y += (Math.random() - 0.5) * jitterScale * 3;
+        pos.z += (Math.random() - 0.5) * jitterScale * 3;
       }
       this.nodePositions.set(node.id, pos);
       this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
@@ -488,9 +540,9 @@ class SceneController {
           const kB = 80 + lvlB * 10;
           const k = (kA + kB) / 2;
           const f = (k * k) / dist * ((wA + wB) / 2);
-          vel.x += (dx / dist) * f * 0.008;
-          vel.y += (dy / dist) * f * 0.008;
-          vel.z += (dz / dist) * f * 0.008;
+          vel.x += (dx / dist) * f * 0.015;
+          vel.y += (dy / dist) * f * 0.015;
+          vel.z += (dz / dist) * f * 0.015;
         }
       }
 
@@ -522,12 +574,12 @@ class SceneController {
         const targetRadius = radii[lvl] ?? 120;
         const curDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
 
-        const shellForce = (targetRadius - curDist) * 0.01;
+        const shellForce = (targetRadius - curDist) * 0.02;
         vel.x += (pos.x / curDist) * shellForce;
         vel.y += (pos.y / curDist) * shellForce;
         vel.z += (pos.z / curDist) * shellForce;
 
-        vel.x *= 0.9; vel.y *= 0.9; vel.z *= 0.9;
+        vel.x *= 0.85; vel.y *= 0.85; vel.z *= 0.85;
         const maxStep = 8 * temp + 1;
         vel.x = Math.max(-maxStep, Math.min(maxStep, vel.x));
         vel.y = Math.max(-maxStep, Math.min(maxStep, vel.y));
@@ -654,6 +706,7 @@ class SceneController {
   }
 
   render() {
+    this._updateMovement();
     this.nodeObjects.forEach(obj => {
       if (obj.isMesh && obj.userData.nodeData) {
         obj.rotation.y += 0.002;
@@ -911,7 +964,7 @@ async function loadData() {
       sceneCtrl.buildFromData(nodeData);
       sceneCtrl.buildEdges(linkData);
       sceneCtrl.buildTemporalEdges(temporalEdgeData);
-      sceneCtrl.runSimulation(100, linkData, temporalEdgeData);
+      sceneCtrl.runSimulation(150, linkData, temporalEdgeData);
     } catch (vizErr) {
       console.error("[viewer] Visualization error:", vizErr);
     }
@@ -949,10 +1002,10 @@ function computeShellRadii(levelCounts) {
   const sortedLevels = Object.keys(levelCounts).map(Number).sort((a, b) => a - b);
   if (sortedLevels.length === 0) return {};
   const maxCount = Math.max(...sortedLevels.map(l => levelCounts[l]));
-  const baseRadius = Math.max(40, Math.sqrt(maxCount) * 10);
+  const baseRadius = Math.max(60, Math.sqrt(maxCount) * 12);
   const radii = {};
   sortedLevels.forEach((lvl, i) => {
-    radii[lvl] = baseRadius + i * 60;
+    radii[lvl] = baseRadius * (1 + i * 0.7);
   });
   return radii;
 }
@@ -960,9 +1013,9 @@ function computeShellRadii(levelCounts) {
 // ==================== Visualization Helpers ====================
 
 function getNodeSize(node) {
-  const base = 3 + node.importance * 2;
-  const accessBoost = Math.min(node.accessCount * 0.5, 10);
-  return Math.max(3, Math.min(base + accessBoost, 25));
+  const base = 2 + node.importance * 1.5;
+  const accessBoost = Math.min(node.accessCount * 0.3, 6);
+  return Math.max(2, Math.min(base + accessBoost, 20));
 }
 
 function getNodeShape(node) {
@@ -1768,6 +1821,7 @@ async function loadSettings() {
     document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
     document.getElementById('ollama-baseUrl').value = config.ollama?.baseUrl ?? 'http://localhost:11434';
     document.getElementById('ollama-mode').value = config.ollama?.mode ?? 'binary';
+    document.getElementById('ollama-strategy').value = config.ollama?.strategy ?? 'llm';
     document.getElementById('llmCompression-enabled').value = String(config.llmCompression?.enabled ?? false);
     document.getElementById('llmCompression-maxSummaryTokens').value = config.llmCompression?.maxSummaryTokens ?? 500;
     document.getElementById('llmCompression-model').value = config.llmCompression?.model ?? '';
@@ -1823,6 +1877,7 @@ async function saveSettings() {
       model: document.getElementById('ollama-model').value || 'qwen2.5-coder:1.5b',
       baseUrl: document.getElementById('ollama-baseUrl').value || 'http://localhost:11434',
       mode: document.getElementById('ollama-mode').value || 'binary',
+      strategy: document.getElementById('ollama-strategy').value || 'llm',
     },
     llmCompression: {
       enabled: document.getElementById('llmCompression-enabled').value === 'true',
