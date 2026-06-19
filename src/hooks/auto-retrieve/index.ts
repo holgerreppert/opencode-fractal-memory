@@ -8,7 +8,7 @@ import * as os from "node:os";
 import { scoreCandidates } from "./scoring";
 import { detectRelevantSkills, detectRelevantPlaybooks, type PlaybookInfo } from "./detection";
 
-import { formatNodeForInjection } from "./content";
+import { formatNodeForInjection, formatNodeAsLine } from "./content";
 import { appendSessionLog } from "../../logging";
 import type { MemoryScope } from "../../storage/sqlite";
 
@@ -407,6 +407,18 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           log("info", "Ollama reranking done", { selectedCount: scored.length, ollamaDuration, rerankScores: allScores.map(s => ({ id: s.id.slice(0, 12), score: s.score.toFixed(4) })) });
         }
 
+        // Filter by min score threshold
+        const minScore = autoConfig.minInjectionScore ?? 0.05;
+        if (rerankResults.length > 0) {
+          const scoreMap = new Map(rerankResults.map(r => [r.id, r.score]));
+          const beforeCount = scored.length;
+          scored = scored.filter(c => (scoreMap.get(c.id) ?? 0) >= minScore);
+          if (scored.length === 0) {
+            log("info", "No candidates passed min score threshold, skipping injection", { minScore, before: beforeCount });
+            if (relevantSkills.length === 0 && relevantPlaybooks.length === 0) return;
+          }
+        }
+
         const maxNodes = autoConfig.maxInjectNodes ?? 5;
         const maxMemoryNodes = Math.max(0, maxNodes - relevantSkills.length - relevantPlaybooks.length);
         scored = scored.slice(0, maxMemoryNodes);
@@ -438,6 +450,9 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           log("warn", "Failed to log injection metrics", { error: String(metricsErr) });
         }
 
+        // Build score map from rerank results (if available)
+        const scoreMap = new Map(rerankResults.map(r => [r.id, r.score]));
+
         // Track injected nodes for this session
         for (const n of scored) {
           state.injectedNodeIds.add(n.id);
@@ -446,13 +461,11 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           state.injectedNodeIds.add(s.id);
         }
 
-        const AUTO_RETRIEVE_TOKENS = 150;
-        const memoriesJson = scored.map(n => formatNodeForInjection(n, AUTO_RETRIEVE_TOKENS));
-
         let fullBlock = "";
 
-        if (memoriesJson.length > 0) {
-          fullBlock += `### Retrieved Context:\nUse the following memories to inform your response. Do not repeat or summarize them.\n\n${JSON.stringify(memoriesJson, null, 2)}\n---`;
+        if (scored.length > 0) {
+          const memoryLines = scored.map(n => formatNodeAsLine(n, scoreMap.get(n.id)));
+          fullBlock += `### Memories (relevance scores 0-1):\n${memoryLines.join("\n")}\n---`;
         }
 
         if (relevantSkills.length > 0) {

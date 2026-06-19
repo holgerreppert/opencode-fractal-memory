@@ -24,28 +24,39 @@ export function cleanContent(content: string): string {
     .trim();
 }
 
-export function formatNodeForInjection(node: MemoryNode, maxTokensPerNode: number): Record<string, unknown> {
+export function formatNodeForInjection(node: MemoryNode, maxTokensPerNode: number, score?: number): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    label: node.label ?? node.id,
+  };
+  if (score !== undefined) item.score = score;
+
   if (node.label?.startsWith("middle-term:") || node.metadata?.customType === "middle-term") {
     try {
       const parsed = JSON.parse(node.content);
-      return {
-        label: node.label ?? node.id,
-        type: "middle-term",
-        sessionId: parsed.sessionId,
-        timestamp: parsed.timestamp,
-        workingCacheCount: parsed.workingCache?.length || 0,
-        recentNodesCount: parsed.recentNodes?.length || 0,
-        contextTokens: parsed.contextTokens,
-      };
+      item.type = "middle-term";
+      item.sessionId = parsed.sessionId;
+      item.timestamp = parsed.timestamp;
+      item.workingCacheCount = parsed.workingCache?.length || 0;
+      item.recentNodesCount = parsed.recentNodes?.length || 0;
+      item.contextTokens = parsed.contextTokens;
+      return item;
     } catch {
-      // Not valid JSON, fall through
     }
   }
 
   const cleaned = cleanContent(node.content);
   const truncated = truncateContent(cleaned, maxTokensPerNode);
-  return {
-    label: node.label ?? node.id,
-    content: truncated,
-  };
+  item.content = truncated;
+  return item;
+}
+
+export function formatNodeAsLine(node: MemoryNode, score?: number, maxChars = 200): string {
+  const label = node.label ?? node.id.slice(0, 12);
+  const type = node.type ?? "";
+  const summary = node.summary
+    ? node.summary.slice(0, maxChars)
+    : cleanContent(node.content).slice(0, maxChars);
+  const scoreStr = score !== undefined ? ` [score:${score.toFixed(2)}]` : "";
+  const typeStr = type ? ` [type:${type}]` : "";
+  return `- ${label}${typeStr}${scoreStr}: ${summary}`;
 }

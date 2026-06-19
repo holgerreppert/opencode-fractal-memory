@@ -24,6 +24,7 @@ export interface MemConfig {
     maxInjectPlaybooks: number;
     minQueryLength: number;
     injectionCooldownMs: number;
+    minInjectionScore: number;
   };
   ollama?: {
     enabled: boolean;
@@ -81,6 +82,7 @@ const AutoRetrieveSchema = z.object({
   maxInjectPlaybooks: z.number().positive().int().default(3),
   minQueryLength: z.number().int().default(10),
   injectionCooldownMs: z.number().int().default(30000),
+  minInjectionScore: z.number().min(0).max(1).default(0.05),
 });
 
 const OllamaSchema = z.object({
@@ -164,6 +166,7 @@ const DEFAULT_CONFIG: MemConfig = {
     maxInjectPlaybooks: 3,
     minQueryLength: 10,
     injectionCooldownMs: 30000,
+    minInjectionScore: 0.05,
   },
   ollama: {
     enabled: false,
