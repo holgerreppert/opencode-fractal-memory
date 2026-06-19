@@ -83,3 +83,30 @@ Then restart OpenCode.
 - Migration version in definitions.ts must increment; never modify existing migrations
 - Management app config fields: id=kebab-case in HTML, load/save in app.js with same pattern
 - Strategy name in compress-output.ts must be a short string (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic)
+
+## Critical Memory Nodes
+
+Use `memory_drilldown(label="<label>")` to retrieve full context for these key nodes:
+
+| Label | Type | Why it matters |
+|---|---|---|
+| `knowledge:management-app-architecture` | knowledge | Full breakdown of management app structure, API, tab system |
+| `auto-retrieve-status` | summary | Current state of auto-retrieve pipeline, scores, config |
+| `implementation-plan` | howto | Full architectural improvement plan (all phases) |
+| `architectural-review-plan` | howto | Architecture scoring, bottlenecks, recommendations |
+| `bug:three-bugs-2026-06-15` | fix | Three bugs fixed + their root causes |
+| `rule:mandatory:memory` | rule | Memory tool usage rules (search→get→set chain, etc.) |
+| `rule:mandatory:agent-pull` | rule | Agent-pull model — no auto-injection |
+| `enhancements-llm-compress-auto-distill-predictive-rating` | note | Three enhancements implementation details |
+| `ollama-memory-feature` | note | Ollama-based local memory system |
+| `middle_term_context_implementation_complete` | implementation | Middle-term context capture implementation |
+| `memory-injection-improvements-findings-2026-04-19` | research | Context injection improvement research |
+| `memory-efficiency-research-findings` | research | Memory efficiency optimization findings |
+| `procedural-memory-implementation` | summary | Procedural memory implementation details |
+| `injection-scoring-improved` | note | Improved injection scoring with relevance-budget selector |
+| `auto-retrieve-fix-complete` | note | Auto-retrieve fix details |
+| `file:src/plugin/hooks.ts` | file | Hook wiring — compression, file summary, rules, lifecycle |
+| `file:src/hooks/compress-output.ts` | file | Compression implementation (7 strategies + generic) |
+| `file:src/management/routes.ts` | file | All API route handlers |
+| `file:management/public/app.js` | file | Management app JS (loadSettings, saveConfig, loadCompressStats) |
+| `file:management/public/index.html` | file | Management app HTML (tabs, settings panels, compress panel) |
