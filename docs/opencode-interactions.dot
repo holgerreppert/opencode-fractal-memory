@@ -1,0 +1,324 @@
+digraph OpenCodeMemoryPlugin {
+  rankdir=TB;
+  splines=polyline;
+  compound=true;
+  newrank=true;
+  fontname="monospace";
+  fontsize=10;
+  labelloc=t;
+  label="OpenCode ↔ Fractal Memory Plugin — Complete Interaction Map";
+  labeljust=l;
+  pad=0.5;
+  overlap=false;
+
+  node [shape=box, style="rounded,filled", fillcolor="#1a1a2e", fontcolor=white, fontname="monospace", fontsize=9];
+  edge [fontname="monospace", fontsize=8];
+
+  // ===================================================================
+  // Actors
+  // ===================================================================
+  subgraph cluster_actors {
+    label="Actors";
+    style="dashed";
+    color="#444444";
+    fontcolor="#888888";
+    fontsize=10;
+
+    actor_opencode [label="OpenCode Runtime", fillcolor="#16213e", shape=box3d];
+    actor_agent    [label="Agent (LLM)", fillcolor="#0f3460", shape=box3d];
+    actor_browser  [label="Browser\n(Management UI)", fillcolor="#1a1a2e", shape=note];
+    actor_ollama   [label="Ollama", fillcolor="#2d1b69", shape=cylinder];
+    actor_onnx     [label="ONNX Models\n(Embedding +\nCross-Encoder)", fillcolor="#1b4332", shape=cylinder];
+    actor_fs       [label="Filesystem", fillcolor="#3d3d3d", shape=folder];
+  }
+
+  // ===================================================================
+  // Plugin Internal Components
+  // ===================================================================
+  subgraph cluster_plugin {
+    label="Fractal Memory Plugin";
+    style="dashed";
+    color="#0f3460";
+    fontcolor="#4a9eff";
+    fontsize=10;
+
+    plugin_init    [label="Plugin Init\nMemoryPlugin(ctx)", fillcolor="#1a3a5c", shape=component];
+    plugin_dispose [label="Plugin Dispose", fillcolor="#3d1a1a", shape=component];
+
+    subgraph cluster_hooks {
+      label="Lifecycle Hooks";
+      style="filled";
+      color="#1a3a5c";
+      fontsize=9;
+
+      hook_system  [label="system.transform\nInject rule nodes", fillcolor="#1e5631"];
+      hook_messages [label="messages.transform\nAuto-retrieve\nPending injections", fillcolor="#1e5631"];
+      hook_before  [label="tool.execute.before\nFile summary cache", fillcolor="#1e5631"];
+      hook_after   [label="tool.execute.after\nFile summaries\nWorking cache\nPredictive rating\nMemory tracking\nAuto-edges", fillcolor="#1e5631"];
+      hook_compact [label="session.compacting\nMiddle-term capture\nStored context archive", fillcolor="#1e5631"];
+      hook_autocont [label="compaction.autocontinue", fillcolor="#1e5631"];
+    }
+
+    subgraph cluster_events {
+      label="Session Event Handlers";
+      style="filled";
+      color="#3d2b1a";
+      fontsize=9;
+
+      ev_created  [label="session.created\nStart mgmt server\nCreate metrics", fillcolor="#5c3a1a"];
+      ev_idle     [label="session.idle\nAuto-distill\nConsolidation\nScore decay", fillcolor="#5c3a1a"];
+      ev_deleted  [label="session.deleted\nDecrement count\nStop mgmt if zero", fillcolor="#5c3a1a"];
+      ev_compacted [label="session.compacted\nCleanup captures\nScore decay\nConsolidation", fillcolor="#5c3a1a"];
+    }
+
+    subgraph cluster_tools {
+      label="Agent Tools (41 registered)";
+      style="filled";
+      color="#2d1b3d";
+      fontsize=9;
+
+      tools_core     [label="Core (7): list, set, get,\nfetch, replace, delete, verify", fillcolor="#3d1b3d"];
+      tools_search   [label="Search (4): search,\ndrilldown, drilldown_query,\ndetect_topics", fillcolor="#3d1b3d"];
+      tools_compress [label="Compression (4): compress,\nextract_patterns, summarize,\nllm_compress", fillcolor="#3d1b3d"];
+      tools_stats    [label="Stats (6): stats, dashboard,\ninjection_stats, injection_feedback,\ntool_stats, session_stats,\ntotal_tokens, check_context", fillcolor="#3d1b3d"];
+      tools_inject   [label="Injection (3): inject,\ninjection_debug", fillcolor="#3d1b3d"];
+      tools_reflect  [label="Reflect (2): reflect, distill", fillcolor="#3d1b3d"];
+      tools_misc     [label="Misc (12): prune,\ngenerate_embeddings, help,\nversion, auto_test,\nplaybook_execute, skill_load,\ntemporal_edges, recall_context,\nmiddle_term, cache_status,\nmemory_rate", fillcolor="#3d1b3d"];
+      tools_journal  [label="Journal (3): write, read,\nsearch", fillcolor="#3d1b3d"];
+    }
+
+    subgraph cluster_services {
+      label="Internal Services";
+      style="filled";
+      color="#1a2e3d";
+      fontsize=9;
+
+      svc_storage   [label="SQLite Store\nglobal + project DBs\nAuto-edges\nTemporal edges\nSession tracking\nInjection metrics", fillcolor="#1a3d3d"];
+      svc_cache     [label="Working Memory Cache\n(LRU, configurable TTL,\nmax 8 entries per session)", fillcolor="#1a3d3d"];
+      svc_config    [label="Config Loader\n~/.config/opencode/\nopencode-mem.json", fillcolor="#1a3d3d"];
+      svc_autoedges [label="Auto-Edge Engine\nNEXT + REFERENCES\ntemporal edges", fillcolor="#1a3d3d"];
+      svc_pending   [label="Pending Injection\nQueue (SQLite)", fillcolor="#1a3d3d"];
+    }
+
+    subgraph cluster_mgmt {
+      label="Management HTTP Server";
+      style="filled";
+      color="#2d1b1b";
+      fontsize=9;
+
+      mgmt_server [label="HTTP Server\nport 8787 (default)\nStatic + REST API", fillcolor="#4a1a1a"];
+    }
+  }
+
+  // ===================================================================
+  // PHASE 1: Initialization (startup, once)
+  // ===================================================================
+  actor_opencode -> plugin_init [label="1. Call MemoryPlugin(ctx)\n{directory, client, serverUrl}", color="#4a9eff", fontcolor="#4a9eff"];
+
+  plugin_init -> svc_storage [label="2. initStorage(directory)\nCreate + migrate SQLite DBs", color="#4a9eff", fontcolor="#4a9eff"];
+  svc_storage -> actor_fs [label="2a. Open/Create\n~/.config/opencode/memory.db\n+ project-specific.db", color="#666666"];
+
+  plugin_init -> svc_config [label="3. loadPluginConfig()\nParse opencode-mem.json", color="#4a9eff"];
+  svc_config -> actor_fs [label="3a. Read config file", color="#666666"];
+
+  plugin_init -> svc_storage [label="4. seedRuleNodes()\nInsert 33 seed nodes\n(if not exist via getNodeByLabel)", color="#4a9eff"];
+  plugin_init -> svc_storage [label="5. backfillData()\nRebuild wiki-links\nRebuild binary embeddings\nRebuild BM25 index\nRebuild HNSW index", color="#4a9eff"];
+  plugin_init -> svc_cache [label="6. setCacheConfig(cacheSize,\ncacheTTLHours)", color="#4a9eff"];
+
+  plugin_init -> actor_onnx [label="7. ensureModels()\nDownload all-MiniLM-L6-v2\n+ ms-marco-MiniLM-L-6-v2\nONNX models if missing", color="#4a9eff", style=dashed];
+
+  plugin_init -> actor_fs [label="8. ensureAgentFiles()\nCopy agent markdown skills", color="#666666"];
+  plugin_init -> actor_fs [label="9. ensureCommandFiles()\nCopy *.md → ~/.config/opencode/commands/", color="#666666"];
+
+  plugin_init -> tools_journal [label="10. setupJournal()\nif journal.enabled", color="#4a9eff"];
+  plugin_init -> mgmt_server [label="11. startManagementIfEnabled()\nif management.enabled", color="#4a9eff"];
+  plugin_init -> hook_messages [label="12. createAutoRetrieveIfEnabled()\nif autoRetrieve.enabled", color="#4a9eff", style=dashed];
+
+  plugin_init -> actor_opencode [label="13. Return { handlers, tool, dispose }", color="#4a9eff"];
+
+  // ===================================================================
+  // PHASE 2: System Transform (every message, once per session)
+  // ===================================================================
+  actor_opencode -> hook_system [label="A. system.transform\n(once per session via lock)", color="#44ff44"];
+  hook_system -> svc_storage [label="A1. getNodeByLabel for:\nrule:mandatory:memory\nrule:mandatory:core\nrule:mandatory:agent-pull\nrule:mandatory:tools\nrule:standard\nrule:suggestion", color="#44ff44"];
+  hook_system -> actor_opencode [label="A2. Inject <system_reminder>\ntags into output.system[]", color="#44ff44"];
+
+  // ===================================================================
+  // PHASE 3: Messages Transform — Auto-Retrieve (every user message)
+  // ===================================================================
+  actor_opencode -> hook_messages [label="B. messages.transform\n(every user message)", color="#44ff44"];
+
+  hook_messages -> svc_pending [label="B1. getPendingInjections()\n→ process queue from\nmanagement UI inject button", color="#44ff44"];
+  hook_messages -> actor_agent [label="B1b. Prepend pending injection\nblock to last user message", color="#44ff44"];
+
+  hook_messages -> svc_cache [label="B2. Rate limit check\n(30s cooldown per session)\nQuery similarity check\n(cosine > 0.95 → skip)", color="#44ff44"];
+
+  hook_messages -> actor_onnx [label="B3. generateEmbedding(userText)\n→ 384-dim query embedding", color="#44ff44"];
+
+  hook_messages -> svc_storage [label="B4. searchByEmbedding(embedding,\ncandidateCount=30)\n→ raw candidates", color="#44ff44"];
+
+  hook_messages -> svc_storage [label="B5. detectRelevantSkills()\n(searchByEmbedding + scoring)\ndetectRelevantPlaybooks()\n(cached 5 min)", color="#44ff44"];
+
+  hook_messages -> svc_storage [label="B6. resolveRerankIntent()\ngetNodeByLabel(pref:rerank-intent)\n→ type boosts dict", color="#44ff44"];
+
+  hook_messages -> svc_storage [label="B7. scoreCandidates(candidates,\nquery, embedding, typeBoosts)\n→ ranked candidates", color="#44ff44"];
+
+  hook_messages -> actor_ollama [label="B8a. If ollama.enabled:\nrerankDocuments(query,\ncandidates, strategy)", color="#44ff44", style=dashed];
+  hook_messages -> actor_onnx [label="B8b. If strategy=cross-encoder:\nscorePairs() ONNX\n→ per-pair relevance", color="#44ff44", style=dashed];
+  hook_messages -> actor_ollama [label="B8c. If strategy=llm:\nchat(LLM judge prompt)\n→ binary relevance scores", color="#44ff44", style=dashed];
+
+  hook_messages -> svc_storage [label="B9. logInjectionMetrics()\nwith quality data:\npreRerankIds, postRerankIds,\nrerankScores, rerankStrategy,\nrerankDurationMs,\ninjectedNodeTypes dict,\nactiveTypeBoosts dict", color="#44ff44"];
+
+  hook_messages -> svc_cache [label="B10. Update session state:\ninjectedNodeIds set\nlastQuery + lastEmbedding\nlastInjectTime", color="#44ff44"];
+
+  hook_messages -> actor_agent [label="B11. Inject block into\nlast user message parts:\n•### Retrieved Context:\n  (memories JSON)\n•<!-- Relevant skills -->\n•<!-- Relevant playbooks -->", color="#44ff44"];
+
+  // ===================================================================
+  // PHASE 4: Tool Execute Before — File Summary Cache
+  // ===================================================================
+  actor_agent -> hook_before [label="C. tool.execute.before\n(only when tool=read)", color="#88ff88"];
+  hook_before -> svc_storage [label="C1. getNodeByLabel(project,\nfile-label)\n→ cached file summary", color="#88ff88"];
+  actor_fs -> hook_before [label="C2. stat(filePath).mtime\n→ stale check", color="#666666"];
+  hook_before -> actor_agent [label="C3. If cache HIT + fresh:\noutput = cached summary\nmetadata.cached = true\n→ skip actual read", color="#88ff88"];
+
+  // ===================================================================
+  // PHASE 5: Tool Execute After — File Summary + Predictive Rating
+  // ===================================================================
+  actor_agent -> hook_after [label="D. tool.execute.after\n(all tool calls)", color="#88ff88"];
+
+  hook_after -> svc_storage [label="D1. If memory_* tool:\nrecordMemoryToolCall(\nsessionId, toolName, args)", color="#88ff88"];
+
+  hook_after -> svc_cache [label="D2. If memory_fetch/get/drilldown/\nset/replace/search:\naddToWorkingCache()\n→ LRU session cache", color="#88ff88"];
+
+  hook_after -> svc_storage [label="D3. If predictiveRating.enabled\nand memory_* tool:\npredictiveRateToolCall()\n→ adjust usefulnessScore\n→ adjust timesHelpful", color="#88ff88"];
+
+  hook_after -> svc_storage [label="D4. If tool=read + cached=false\n+ autoFileSummarization:\ngenerateFileSummary()\n→ createNode/updateNode\n→ store in memory DB\n→ generate embedding", color="#88ff88"];
+  hook_after -> actor_onnx [label="D4b. generateEmbedding() for\nnew file summary", color="#88ff88", style=dashed];
+
+  hook_after -> svc_autoedges [label="D5. If node created:\nonNodeCreated()\n→ createTemporalEdge(NEXT)\n→ extractLabelRefs()\n→ createTemporalEdge(REFERENCES)", color="#88ff88"];
+
+  // ===================================================================
+  // PHASE 6: Session Lifecycle Events
+  // ===================================================================
+  actor_opencode -> ev_created [label="E. event: session.created", color="#ffa500"];
+  ev_created -> svc_storage [label="E1. createSessionMetrics(id)", color="#ffa500"];
+  ev_created -> mgmt_server [label="E2. ensureManagementServer()\n(start if not running)", color="#ffa500", style=dashed];
+
+  actor_opencode -> ev_idle [label="F. event: session.idle", color="#ffa500"];
+  ev_idle -> svc_storage [label="F1. updateSessionMetrics(\nendedAt, status=completed)", color="#ffa500"];
+
+  ev_idle -> svc_storage [label="F2. If autoDistill.enabled:\ndistillRules(store, config,\nsessionId, client)\n→ analyze failures\n→ create lesson nodes", color="#ffa500", style=dashed];
+
+  ev_idle -> svc_storage [label="F3. If autoConsolidate.enabled:\nrunConsolidation(store,\nconfig, sessionId)\n→ list episodic nodes\n→ cluster by embedding\n→ extract fact nodes", color="#ffa500", style=dashed];
+
+  ev_idle -> svc_storage [label="F4. If predictiveRating.enabled:\napplyScoreDecay(store, config)\n→ UPDATE usefulness_score\nby half-life formula", color="#ffa500", style=dashed];
+
+  actor_opencode -> ev_deleted [label="G. event: session.deleted", color="#ffa500"];
+
+  actor_opencode -> ev_compacted [label="H. event: session.compacted", color="#ffa500"];
+  ev_compacted -> svc_storage [label="H1. cleanupMiddleTermCaptures()\n→ delete old middle-term\nnodes (>30 days)", color="#ffa500"];
+
+  // ===================================================================
+  // PHASE 7: Session Compacting (before context prune)
+  // ===================================================================
+  actor_opencode -> hook_compact [label="I. session.compacting\n(before context prune)", color="#ff6600"];
+  hook_compact -> svc_cache [label="I1. getWorkingCache(sessionId)\n→ active entries list\n→ 8 DB fallback if empty", color="#ff6600"];
+  hook_compact -> svc_storage [label="I2. createNode(label=\"middle-term:\")\n→ full JSON snapshot of\nworking cache", color="#ff6600"];
+  hook_compact -> actor_onnx [label="I3. generateEmbedding(content)\nfor storedcontext node", color="#ff6600"];
+  hook_compact -> svc_storage [label="I4. createNode(label=\"storedcontext:\")\n→ conversation archive\n→ type=storedcontext\n→ for memory_recall_context", color="#ff6600"];
+  hook_compact -> actor_opencode [label="I5. Return summaries array\n→ injected into prompt", color="#ff6600"];
+
+  hook_autocont -> actor_opencode [label="I6. Return enabled: true", color="#ff6600"];
+
+  // ===================================================================
+  // PHASE 8: Background/Maintenance
+  // ===================================================================
+  svc_storage -> actor_onnx [label="J. scheduleBackgroundEmbeddings()\n1s after init:\nlistNodes → filter no embedding\n→ generateEmbedding() each\n→ updateNode(embedding)", color="#aa44ff", style=dashed];
+
+  // ===================================================================
+  // PHASE 9: Agent Tool Calls
+  // ===================================================================
+  actor_agent -> tools_core [label="memory_list / set / get /\nfetch / replace / delete /\nverify", color="#ff4444"];
+  tools_core -> svc_storage [label="Direct SQLite reads/writes", color="#ff4444"];
+
+  actor_agent -> tools_search [label="memory_search / drilldown /\ndrilldown_query /\ndetect_topics", color="#ff4444"];
+  tools_search -> svc_storage [label="Search (text, BM25,\nembedding) + score", color="#ff4444"];
+
+  actor_agent -> tools_compress [label="memory_compress /\nextract_patterns /\nsummarize / llm_compress", color="#ff4444"];
+  tools_compress -> svc_storage [label="Compression + pattern\ncreation in memory", color="#ff4444"];
+  tools_compress -> actor_ollama [label="If llm_compress:\nchat() for summary gen", color="#ff4444", style=dashed];
+
+  actor_agent -> tools_stats [label="memory_stats / dashboard /\ninjection_stats /\ninjection_feedback /\ntool_stats / session_stats /\ntotal_tokens / check_context", color="#ff4444"];
+  tools_stats -> svc_storage [label="Query metrics tables", color="#ff4444"];
+
+  actor_agent -> tools_inject [label="memory_inject /\ninjection_debug", color="#ff4444"];
+  tools_inject -> svc_storage [label="Write to pending_injections\n+ log metrics", color="#ff4444"];
+
+  actor_agent -> tools_reflect [label="memory_reflect / distill", color="#ff4444"];
+  tools_reflect -> svc_storage [label="Create lesson + rule nodes", color="#ff4444"];
+  tools_reflect -> actor_ollama [label="Optionally:\nchat() for LLM analysis", color="#ff4444", style=dashed];
+
+  actor_agent -> tools_misc [label="memory_rate / prune /\ngenerate_embeddings / help /\nversion / auto_test /\nplaybook_execute / skill_load /\ntemporal_edges /\nrecall_context / middle_term /\ncache_status", color="#ff4444"];
+  tools_misc -> svc_storage [label="Varied storage ops", color="#ff4444"];
+
+  actor_agent -> tools_journal [label="journal_write / read /\nsearch", color="#ff4444"];
+
+  // ===================================================================
+  // PHASE 10: Management HTTP API
+  // ===================================================================
+  actor_browser -> mgmt_server [label="L. HTTP port 8787\nGET / → index.html\nGET /app.js → app.js", color="#00ffff"];
+
+  mgmt_server -> svc_storage [label="GET /api/scopes → scope list", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/nodes → all nodes", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/links → wiki links", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/temporal-edges → graph", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/stats → aggregates", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET|PUT|POST /api/config → config", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/projects → list", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/version → version", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/injection-quality\n→ injection_metrics table", color="#00ffff"];
+
+  mgmt_server -> svc_storage [label="GET /api/search?mode=text\n→ label/content LIKE", color="#00ffff"];
+  mgmt_server -> svc_storage [label="GET /api/search?mode=bm25\n→ BM25 score query", color="#00ffff"];
+  mgmt_server -> actor_onnx [label="GET /api/search?mode=embedding\n→ generateEmbedding()\n→ cosine sim on all nodes", color="#00ffff"];
+
+  mgmt_server -> svc_pending [label="POST /api/inject\n→ INSERT pending_injections\n→ picked up next messages.transform", color="#00ffff"];
+
+  mgmt_server -> svc_storage [label="PUT|PATCH /api/nodes/:id\n→ UPDATE fields\n→ re-embed if content changed", color="#00ffff"];
+  mgmt_server -> svc_storage [label="DELETE /api/nodes/:id\n→ CASCADE delete node,\nlinks, edges, BM25 index", color="#00ffff"];
+
+  mgmt_server -> actor_fs [label="GET /api/backup-sources", color="#00ffff"];
+  mgmt_server -> actor_fs [label="GET /api/backups → list", color="#00ffff"];
+  mgmt_server -> actor_fs [label="POST /api/backup → create", color="#00ffff"];
+  mgmt_server -> actor_fs [label="POST /api/restore → restore", color="#00ffff"];
+  mgmt_server -> actor_fs [label="DELETE /api/backups/:name", color="#00ffff"];
+
+  mgmt_server -> actor_opencode [label="GET /api/shutdown → process.exit", color="#ff4444"];
+
+  // ===================================================================
+  // Dispose
+  // ===================================================================
+  actor_opencode -> plugin_dispose [label="Z. dispose() on plugin unload", color="#ff4444"];
+  plugin_dispose -> mgmt_server [label="Z1. stopManagementServer()", color="#ff4444"];
+  plugin_dispose -> svc_storage [label="Z2. store.close()", color="#ff4444"];
+
+  // ===================================================================
+  // Legend
+  // ===================================================================
+  subgraph cluster_legend {
+    label="Legend";
+    style="dashed";
+    color="#444444";
+    fontcolor="#888888";
+    fontsize=9;
+
+    l1 [label="Blue = Init/Setup", fillcolor="#1a3a5c", width=2, height=0.3];
+    l2 [label="Green = Per-Turn Hook", fillcolor="#1e5631", width=2, height=0.3];
+    l3 [label="Orange = Session Event", fillcolor="#5c3a1a", width=2, height=0.3];
+    l4 [label="Dark Orange = Compaction", fillcolor="#5c3a1a", width=2, height=0.3];
+    l5 [label="Purple = Background", fillcolor="#3d1b3d", width=2, height=0.3];
+    l6 [label="Red = Agent Tool Call", fillcolor="#3d1b1b", width=2, height=0.3];
+    l7 [label="Cyan = Management API", fillcolor="#1a3d3d", width=2, height=0.3];
+    l8 [label="Gray = Filesystem I/O", fillcolor="#3d3d3d", width=2, height=0.3];
+  }
+}
