@@ -17,6 +17,12 @@ export interface MemConfig {
   autoFileSummarization?: {
     enabled: boolean;
   };
+  commandCompression?: {
+    enabled: boolean;
+    maxLines: number;
+    excludeCommands: string[];
+    alwaysFullOnFailure: boolean;
+  };
   autoRetrieve?: {
     enabled: boolean;
     candidateCount: number;
@@ -142,6 +148,13 @@ const ManagementSchema = z.object({
   port: z.number().positive().int().optional(),
 });
 
+const CommandCompressionSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxLines: z.number().positive().int().default(50),
+  excludeCommands: z.array(z.string()).default([]),
+  alwaysFullOnFailure: z.boolean().default(true),
+});
+
 const SessionLogSchema = z.object({
   enabled: z.boolean().default(false),
 });
@@ -212,6 +225,12 @@ const DEFAULT_CONFIG: MemConfig = {
   sessionLog: {
     enabled: false,
   },
+  commandCompression: {
+    enabled: true,
+    maxLines: 50,
+    excludeCommands: ["curl", "wget"],
+    alwaysFullOnFailure: true,
+  },
 };
 
 const MemConfigSchema = z.object({
@@ -237,6 +256,7 @@ const MemConfigSchema = z.object({
   journal: JournalSchema.optional(),
   management: ManagementSchema.optional(),
   sessionLog: SessionLogSchema.optional(),
+  commandCompression: CommandCompressionSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {
