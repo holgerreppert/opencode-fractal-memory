@@ -599,6 +599,31 @@ class SqliteMemoryStore {
     await updateMemoryToolCall(db, sessionId, toolName);
   }
 
+  async recordCompressionStat(stat: {
+    sessionId?: string;
+    command: string;
+    strategy: string;
+    originalChars: number;
+    compressedChars: number;
+    durationMs?: number;
+  }): Promise<void> {
+    const db = await this.getGlobalDb();
+    db.run(
+      `INSERT INTO compression_stats (session_id, timestamp, command, strategy, original_chars, compressed_chars, savings_ratio, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        stat.sessionId ?? null,
+        Date.now(),
+        stat.command.slice(0, 100),
+        stat.strategy,
+        stat.originalChars,
+        stat.compressedChars,
+        stat.originalChars > 0 ? 1 - stat.compressedChars / stat.originalChars : 0,
+        stat.durationMs ?? null,
+      ]
+    );
+  }
+
   async finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void> {
     const db = await this.getGlobalDb();
     await finalizeInjection(db, sessionId, effectivenessScore, taskDescription);

@@ -297,16 +297,27 @@ export function createHookHandlers(
           const cmd = (input as any).args?.command ?? "";
           const raw = (output.output ?? "") as string;
           const failed = !success || !!output.metadata?.error;
+          const t0 = performance.now();
           const compressed = compressCommandOutput(cmd, raw, failed, compressConfig);
+          const durationMs = performance.now() - t0;
           if (compressed !== null) {
-            output.output = compressed;
+            output.output = compressed.output;
             output.metadata = {
               ...((output.metadata as Record<string, unknown>) ?? {}),
               compressed: true,
+              compressStrategy: compressed.strategy,
             };
             if (memConfig?.sessionLog?.enabled) {
-              appendSessionLog(`[${new Date().toISOString()}] COMPRESS | id=${sessionId} | cmd=${cmd.slice(0, 40)} | raw=${raw.length}c → ${compressed.length}c`);
+              appendSessionLog(`[${new Date().toISOString()}] COMPRESS | id=${sessionId} | cmd=${cmd.slice(0, 40)} | ${compressed.strategy} | raw=${raw.length}c → ${compressed.output.length}c`);
             }
+            store.recordCompressionStat({
+              sessionId,
+              command: cmd,
+              strategy: compressed.strategy,
+              originalChars: raw.length,
+              compressedChars: compressed.output.length,
+              durationMs,
+            }).catch(() => {});
           }
         } catch (err) {
           memLog("debug", "compress", "Compression failed, passing through", { error: String(err) });

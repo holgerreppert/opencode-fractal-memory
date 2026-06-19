@@ -919,13 +919,16 @@ function setupEventListeners() {
       const settingsPanel = document.getElementById("settings-panel");
       const backupPanel = document.getElementById("backup-panel");
       const qualityPanel = document.getElementById("quality-panel");
+      const compressPanel = document.getElementById("compress-panel");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
       if (backupPanel) backupPanel.classList.toggle("active", tab === "backup");
       if (qualityPanel) qualityPanel.classList.toggle("active", tab === "quality");
+      if (compressPanel) compressPanel.classList.toggle("active", tab === "compress");
       if (tab === "settings") loadSettings();
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
       if (tab === "quality") loadQuality();
+      if (tab === "compress") loadCompressStats();
     });
   });
 }
@@ -2062,6 +2065,107 @@ function renderQuality(summaryEl, chartsEl, metrics) {
 
   tableHtml += `</tbody></table></div></div>`;
   chartsEl.innerHTML = tableHtml;
+}
+
+async function loadCompressStats() {
+  const summaryEl = document.getElementById("compress-summary");
+  const chartsEl = document.getElementById("compress-charts");
+  if (!summaryEl || !chartsEl) return;
+
+  summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">Loading compression stats...</span></div>`;
+  chartsEl.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/compress-stats?days=30&limit=20");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderCompressStats(summaryEl, chartsEl, data);
+  } catch (e) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading compression data</span></div>`;
+    console.error("Compress stats load failed:", e);
+  }
+}
+
+function renderCompressStats(summaryEl, chartsEl, data) {
+  const total = data.total;
+
+  if (total.calls === 0) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">No compression data yet. Bash commands will be tracked automatically.</span></div>`;
+    return;
+  }
+
+  const savingsDisplay = total.savingsPercent > 0
+    ? `<span style="color:#4a4">-${total.savingsPercent}%</span>`
+    : `<span style="color:#888">0%</span>`;
+
+  summaryEl.innerHTML = `
+    <div class="stat-row"><span class="stat-label">Total Compressed Calls</span><span class="stat-value">${total.calls}</span></div>
+    <div class="stat-row"><span class="stat-label">Original Chars</span><span class="stat-value">${(total.originalChars / 1000).toFixed(0)}K</span></div>
+    <div class="stat-row"><span class="stat-label">Compressed Chars</span><span class="stat-value">${(total.compressedChars / 1000).toFixed(0)}K</span></div>
+    <div class="stat-row"><span class="stat-label">Token Savings</span><span class="stat-value">${savingsDisplay}</span></div>
+  `;
+
+  const strategies = data.byStrategy || [];
+  const byCommand = data.byCommand || [];
+  const recent = data.recent || [];
+
+  let html = "";
+
+  if (strategies.length > 0) {
+    html += `<div class="section"><h3>By Strategy</h3>`;
+    for (const s of strategies) {
+      const pct = s.raw > 0 ? Math.round((1 - s.comp / s.raw) * 100) : 0;
+      html += `<div class="stat-row"><span class="stat-label">${s.strategy}</span><span class="stat-value">${s.calls} calls, ${pct}% saved</span></div>`;
+    }
+    html += `</div>`;
+  }
+
+  if (byCommand.length > 0) {
+    html += `<div class="section"><h3>Top Commands</h3>`;
+    html += `<div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Command</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Calls</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Raw</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Compressed</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Saved</th>
+      </tr></thead><tbody>`;
+    for (const c of byCommand) {
+      const pct = c.raw > 0 ? Math.round((1 - c.comp / c.raw) * 100) : 0;
+      html += `<tr>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;color:#aaa;font-family:monospace;font-size:10px">${c.command.slice(0, 50)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right">${c.calls}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right">${(c.raw / 1000).toFixed(0)}K</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right">${(c.comp / 1000).toFixed(0)}K</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;color:${pct > 0 ? '#4a4' : '#888'}">${pct}%</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+  }
+
+  if (recent.length > 0) {
+    html += `<div class="section"><h3>Recent Compressions</h3>`;
+    html += `<div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Time</th>
+        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Command</th>
+        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Strategy</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Saved</th>
+      </tr></thead><tbody>`;
+    for (const r of recent) {
+      const time = new Date(r.timestamp).toLocaleTimeString();
+      const pct = Math.round(r.savingsRatio * 100);
+      html += `<tr>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;color:#888;font-size:10px">${time}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;font-family:monospace;font-size:10px;color:#aaa;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.command.slice(0, 60)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;color:#6af;font-size:10px">${r.strategy}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;color:${pct > 0 ? '#4a4' : '#888'}">${pct}%</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+  }
+
+  chartsEl.innerHTML = html;
 }
 
 // ==================== Start ====================

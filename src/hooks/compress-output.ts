@@ -253,7 +253,7 @@ export function compressCommandOutput(
   rawOutput: string,
   failed: boolean,
   config: CompressConfig
-): string | null {
+): { output: string; strategy: string } | null {
   if (!config.enabled) return null;
   if (config.alwaysFullOnFailure && failed) return null;
 
@@ -268,35 +268,48 @@ export function compressCommandOutput(
   const prefix = getCommandPrefix(cmd);
 
   let result: string | null = null;
+  let strategy = "";
 
   if (prefix.startsWith("ls") || prefix.startsWith("tree ")) {
     if (out.split("\n").length > 5) {
       result = compressLs(out);
+      strategy = "ls";
     }
   } else if (/^(npm test|bun test|pnpm test|yarn test|vitest|jest|pytest|go test|cargo test)/.test(prefix)) {
     result = compressTestOutput(out);
+    strategy = "test";
   } else if (prefix.startsWith("rg ") || prefix.startsWith("grep ")) {
     result = compressGrep(out);
+    strategy = "grep";
   } else if (prefix.startsWith("git status")) {
     result = compressGitStatus(out);
+    strategy = "git-status";
   } else if (prefix.startsWith("git log")) {
     result = compressGitLog(out);
+    strategy = "git-log";
   } else if (prefix.startsWith("git diff")) {
     result = compressGitDiff(out);
+    strategy = "git-diff";
   } else if (prefix.startsWith("git push") || prefix.startsWith("git pull") || prefix.startsWith("git commit") || prefix.startsWith("git add")) {
     const clean = out.trim();
     if (clean) result = clean.split("\n").slice(0, 3).join("\n");
+    strategy = "git-quick";
   } else if (prefix.startsWith("cat ") || prefix.startsWith("head ")) {
     result = compressGeneric(out, config.maxLines);
+    strategy = "truncate";
   } else if (prefix.startsWith("npm run build") || prefix.startsWith("bun run build")) {
     result = compressGeneric(out, config.maxLines);
+    strategy = "truncate";
   } else if (prefix.startsWith("docker")) {
     result = compressGeneric(out, config.maxLines);
+    strategy = "truncate";
   } else if (prefix.startsWith("find ")) {
     result = compressGeneric(out, config.maxLines);
+    strategy = "truncate";
   } else if (prefix.startsWith("tail ")) {
     if (out.split("\n").length > config.maxLines) {
       result = compressGeneric(out, config.maxLines);
+      strategy = "truncate";
     }
   }
 
@@ -307,7 +320,7 @@ export function compressCommandOutput(
       compressedChars: result.length,
       saving: `${Math.round((1 - result.length / Math.max(out.length, 1)) * 100)}%`,
     });
-    return result;
+    return { output: result, strategy };
   }
 
   const generic = compressGeneric(out, config.maxLines);
@@ -318,7 +331,7 @@ export function compressCommandOutput(
       compressedChars: generic.length,
       saving: `${Math.round((1 - generic.length / Math.max(out.length, 1)) * 100)}%`,
     });
-    return generic;
+    return { output: generic, strategy: "generic" };
   }
 
   return null;
