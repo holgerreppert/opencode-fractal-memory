@@ -1828,6 +1828,10 @@ async function loadSettings() {
     document.getElementById('llmCompression-enabled').value = String(config.llmCompression?.enabled ?? false);
     document.getElementById('llmCompression-maxSummaryTokens').value = config.llmCompression?.maxSummaryTokens ?? 500;
     document.getElementById('llmCompression-model').value = config.llmCompression?.model ?? '';
+    document.getElementById('commandCompression-enabled').value = String(config.commandCompression?.enabled ?? true);
+    document.getElementById('commandCompression-maxLines').value = config.commandCompression?.maxLines ?? 50;
+    document.getElementById('commandCompression-excludeCommands').value = (config.commandCompression?.excludeCommands ?? []).join(', ');
+    document.getElementById('commandCompression-alwaysFullOnFailure').value = String(config.commandCompression?.alwaysFullOnFailure ?? true);
     document.getElementById('autoDistill-enabled').value = String(config.autoDistill?.enabled ?? false);
     document.getElementById('autoDistill-minLessons').value = config.autoDistill?.minLessons ?? 3;
     document.getElementById('autoDistill-useLlm').value = String(config.autoDistill?.useLlm ?? false);
@@ -1886,6 +1890,12 @@ async function saveSettings() {
       enabled: document.getElementById('llmCompression-enabled').value === 'true',
       maxSummaryTokens: parseInt(document.getElementById('llmCompression-maxSummaryTokens').value) || 500,
       model: document.getElementById('llmCompression-model').value || undefined,
+    },
+    commandCompression: {
+      enabled: document.getElementById('commandCompression-enabled').value === 'true',
+      maxLines: parseInt(document.getElementById('commandCompression-maxLines').value) || 50,
+      excludeCommands: document.getElementById('commandCompression-excludeCommands').value.split(',').map((s: string) => s.trim()).filter(Boolean),
+      alwaysFullOnFailure: document.getElementById('commandCompression-alwaysFullOnFailure').value === 'true',
     },
     autoDistill: {
       enabled: document.getElementById('autoDistill-enabled').value === 'true',

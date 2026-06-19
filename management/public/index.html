@@ -516,6 +516,32 @@
       </div>
 
       <div class="section">
+        <h3>Command Compression</h3>
+        <div class="config-field">
+          <label>Enabled</label>
+          <select id="commandCompression-enabled">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Max Lines</label>
+          <input type="number" id="commandCompression-maxLines" min="10" max="500" step="10">
+        </div>
+        <div class="config-field">
+          <label>Exclude Commands</label>
+          <input type="text" id="commandCompression-excludeCommands" placeholder="curl, wget">
+        </div>
+        <div class="config-field">
+          <label>Full Output on Failure</label>
+          <select id="commandCompression-alwaysFullOnFailure">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
         <h3>Auto Distill</h3>
         <div class="config-field">
           <label>Enabled</label>
