@@ -86,7 +86,7 @@ const AutoRetrieveSchema = z.object({
 const OllamaSchema = z.object({
   enabled: z.boolean().default(false),
   baseUrl: z.string().default("http://localhost:11434"),
-  model: z.string().default("qwen2.5-coder:1.5b"),
+  model: z.string().default("qwen2.5-coder:latest"),
   mode: z.enum(["binary", "score"]).default("binary"),
   strategy: z.enum(["llm", "cross-encoder"]).default("llm"),
 });
@@ -168,7 +168,7 @@ const DEFAULT_CONFIG: MemConfig = {
   ollama: {
     enabled: false,
     baseUrl: "http://localhost:11434",
-    model: "qwen2.5-coder:1.5b",
+    model: "qwen2.5-coder:latest",
     mode: "binary",
     strategy: "llm",
   },

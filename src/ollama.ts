@@ -19,7 +19,7 @@ export async function chat(
   opts: OllamaOptions = {}
 ): Promise<string> {
   const baseUrl = opts.baseUrl ?? OLLAMA_BASE;
-  const model = opts.model ?? "qwen2.5-coder:1.5b";
+  const model = opts.model ?? "qwen2.5-coder:latest";
   
   const res = await fetch(`${baseUrl}/api/chat`, {
     method: "POST",
@@ -46,25 +46,31 @@ export interface RerankResult {
   score: number;
 }
 
+export interface RerankOutput {
+  results: RerankResult[];
+  allScores: { id: string; score: number }[];
+}
+
 async function rerankCrossEncoder(
   query: string,
   candidates: Array<{ id: string; label: string; content: string }>,
   opts: { topK: number }
-): Promise<RerankResult[]> {
-  return await scorePairs(
+): Promise<RerankOutput> {
+  const out = await scorePairs(
     query,
     candidates.map(c => ({ id: c.id, content: c.content })),
     opts.topK
   );
+  return { results: out.topResults, allScores: out.allScores };
 }
 
 export async function rerankDocuments(
   query: string,
   candidates: Array<{ id: string; label: string; content: string }>,
   opts: OllamaOptions & { topK?: number } = {}
-): Promise<RerankResult[]> {
+): Promise<RerankOutput> {
   const baseUrl = opts.baseUrl ?? OLLAMA_BASE;
-  const model = opts.model ?? "qwen2.5-coder:1.5b";
+  const model = opts.model ?? "qwen2.5-coder:latest";
   const topK = opts.topK ?? 5;
   const strategy: RerankStrategy = opts.strategy ?? "llm";
 
@@ -75,7 +81,8 @@ export async function rerankDocuments(
       return await rerankCrossEncoder(query, candidates, { topK });
     } catch (err) {
       memLog("error", "ollama", "Cross-encoder rerank error:", { error: err instanceof Error ? err.message : err });
-      return candidates.slice(0, topK).map(d => ({ id: d.id, score: 0 }));
+      const fallback = candidates.slice(0, topK).map(d => ({ id: d.id, score: 0 }));
+      return { results: fallback, allScores: fallback };
     }
   }
 
@@ -106,13 +113,15 @@ Response (EXACTLY ${candidates.length} scores as JSON array):`;
     const jsonMatch = response.match(/\[.*?\]/s);
     if (!jsonMatch) {
       memLog("error", "ollama", "[ollama] No JSON array found in response:", { response: response.slice(0, 200) });
-      return candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
+      const fallback = candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
+      return { results: fallback, allScores: fallback };
     }
 
     const scores = JSON.parse(jsonMatch[0]) as number[];
     if (!Array.isArray(scores) || scores.length === 0) {
       memLog("error", "ollama", "[ollama] No valid scores in response:", { response: response.slice(0, 100) });
-      return candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
+      const fallback = candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
+      return { results: fallback, allScores: fallback };
     }
 
     const normalizedScores = [...scores];
@@ -127,9 +136,11 @@ Response (EXACTLY ${candidates.length} scores as JSON array):`;
     }));
 
     results.sort((a, b) => b.score - a.score);
-    return results.slice(0, topK);
+    const sortedAllScores = results.map(r => ({ id: r.id, score: r.score }));
+    return { results: results.slice(0, topK), allScores: sortedAllScores };
   } catch (err) {
     memLog("error", "ollama", "Ollama rerank error:", { error: err instanceof Error ? err.message : err });
-    return candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
+    const fallback = candidates.slice(0, topK).map(d => ({ id: d.id, score: 1 }));
+    return { results: fallback, allScores: fallback };
   }
 }
