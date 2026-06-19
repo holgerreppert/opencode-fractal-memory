@@ -19,7 +19,7 @@ export { CompressionHelper, COMPRESSION_LEVELS };
 import { memLog } from "../logging";
 import { insertToolUsageLog, queryToolPatterns, queryFrequentSequences, deleteUsageLog, getToolCategory } from "./tool-usage";
 import { insertAgentToolCall, createSessionMetrics as createSessionMetricsRow, updateSessionMetrics, incrementSessionToolCall, getSessionStats as getSessionStatsForSession } from "./session-tracking";
-import { insertInjectionMetrics, getPendingInjections as getPendingInjectionRows, markInjectionProcessed, updateMemoryToolCall, finalizeInjection, insertInjectionFeedback, queryInjectionMetrics, querySessionMetrics } from "./injection-events";
+import { insertInjectionMetrics, getPendingInjections as getPendingInjectionRows, markInjectionProcessed, updateMemoryToolCall, finalizeInjection, insertInjectionFeedback, queryInjectionMetrics, querySessionMetrics, type InjectionQualityRow } from "./injection-events";
 import { runScoreDecay as runScoreDecayFn, calculateNodeConfidence as calculateNodeConfidenceFn } from "./scoring";
 import { ensureSeed as ensureSeedFn, resolveNode as resolveNodeFn, getNode as getNodeFn, verifyNode as verifyNodeFn } from "./lifecycle";
 import { searchByEmbedding as searchByEmbeddingFn, detectTopicBoundaries as detectTopicBoundariesFn, drilldownQuery as drilldownQueryFn, getDrilldownPath as getDrilldownPathFn } from "./search";
@@ -571,6 +571,13 @@ class SqliteMemoryStore {
       injectedTokens: number;
       injectionMode: string;
       queryText?: string;
+      preRerankIds?: string[];
+      postRerankIds?: string[];
+      rerankScores?: number[];
+      rerankStrategy?: string;
+      rerankDurationMs?: number;
+      injectedNodeTypes?: Record<string, number>;
+      activeTypeBoosts?: Record<string, number>;
     }
   ): Promise<void> {
     const db = await this.getGlobalDb();
@@ -608,15 +615,7 @@ class SqliteMemoryStore {
     await insertInjectionFeedback(db, sessionId, upvotes, downvotes, taskOutcome, neededNodes);
   }
 
-  async getInjectionMetrics(limit = 100): Promise<Array<{
-    sessionId: string;
-    timestamp: number;
-    injectedNodeCount: number;
-    injectedTokens: number;
-    injectionMode: string;
-    toolCalls: number;
-    effectivenessScore: number | null;
-  }>> {
+  async getInjectionMetrics(limit = 100): Promise<InjectionQualityRow[]> {
     const db = await this.getGlobalDb();
     return queryInjectionMetrics(db, limit);
   }

@@ -227,6 +227,11 @@
     .backup-status { font-size: 11px; color: #888; margin-top: 6px; text-align: center; min-height: 16px; }
     .backup-status.success { color: #4f4; }
     .backup-status.error { color: #f44; }
+
+    /* Quality Panel */
+    .quality-table th { font-weight: 500; white-space: nowrap; }
+    .quality-table td { white-space: nowrap; }
+    .quality-table tr:hover td { background: rgba(255,255,255,0.03); }
     .backup-status.loading::before {
       content: ''; display: inline-block; width: 12px; height: 12px;
       border: 2px solid rgba(100,150,255,0.3); border-top-color: #4a9eff;
@@ -290,6 +295,7 @@
       <button class="tab-btn active" data-tab="visualize">Visualize</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
       <button class="tab-btn" data-tab="backup">Backup</button>
+      <button class="tab-btn" data-tab="quality">Quality</button>
     </div>
 
     <!-- Visualize Panel -->
@@ -647,6 +653,21 @@
     </div>
 
     <!-- Backup Panel -->
+    <!-- Quality Panel -->
+    <div id="quality-panel" class="settings-panel">
+      <div class="section">
+        <h3>Injection Quality Metrics</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">
+          Tracks every auto-injection: what was retrieved, how the reranker scored it, and node type distribution.<br>
+          Refresh to see latest data from the current session.
+        </p>
+        <div id="quality-summary" style="margin-bottom:16px;">
+          <div class="stat-row"><span class="stat-label">Loading...</span></div>
+        </div>
+        <div id="quality-charts"></div>
+      </div>
+    </div>
+
     <div id="backup-panel" class="settings-panel">
       <div class="section">
         <h3>Create Backup</h3>

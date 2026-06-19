@@ -918,11 +918,14 @@ function setupEventListeners() {
       const visualizePanel = document.getElementById("visualize-panel");
       const settingsPanel = document.getElementById("settings-panel");
       const backupPanel = document.getElementById("backup-panel");
+      const qualityPanel = document.getElementById("quality-panel");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
       if (backupPanel) backupPanel.classList.toggle("active", tab === "backup");
+      if (qualityPanel) qualityPanel.classList.toggle("active", tab === "quality");
       if (tab === "settings") loadSettings();
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
+      if (tab === "quality") loadQuality();
     });
   });
 }
@@ -1941,6 +1944,114 @@ async function saveSettings() {
   } catch (e) {
     console.error('Failed to save config:', e);
   }
+}
+
+// ==================== Injection Quality ====================
+
+async function loadQuality() {
+  const summaryEl = document.getElementById("quality-summary");
+  const chartsEl = document.getElementById("quality-charts");
+  if (!summaryEl || !chartsEl) return;
+
+  summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">Loading quality metrics...</span></div>`;
+  chartsEl.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/injection-quality?limit=100");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const metrics = data.metrics || [];
+    renderQuality(summaryEl, chartsEl, metrics);
+  } catch (e) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading quality data</span></div>`;
+    console.error("Quality load failed:", e);
+  }
+}
+
+function renderQuality(summaryEl, chartsEl, metrics) {
+  if (metrics.length === 0) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">No injection data yet. Auto-retrieve must fire at least once.</span></div>`;
+    return;
+  }
+
+  // Summary stats
+  const totalInjections = metrics.length;
+  const withRerank = metrics.filter(m => m.rerankStrategy);
+  const strategies = [...new Set(withRerank.map(m => m.rerankStrategy).filter(Boolean))];
+  const withScores = metrics.filter(m => m.rerankScores && m.rerankScores.length > 0);
+  const allScores = withScores.flatMap(m => m.rerankScores);
+  const avgScore = allScores.length > 0 ? (allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(3) : "—";
+  const totalReranked = withRerank.reduce((sum, m) => sum + (m.preRerankIds?.length || m.injectedNodeCount), 0);
+  const totalSelected = metrics.reduce((sum, m) => sum + m.injectedNodeCount, 0);
+  const passRate = totalReranked > 0 ? ((totalSelected / totalReranked) * 100).toFixed(1) : "—";
+
+  // Strategy breakdown
+  const stratCounts = {};
+  for (const m of metrics) {
+    const s = m.rerankStrategy || "none";
+    stratCounts[s] = (stratCounts[s] || 0) + 1;
+  }
+  const stratHtml = Object.entries(stratCounts).map(([s, c]) =>
+    `<span class="stat-label">${s}: ${c} injections</span>`
+  ).join("<br>");
+
+  // Type distribution
+  const typeDist = {};
+  for (const m of metrics) {
+    if (m.injectedNodeTypes) {
+      for (const [type, count] of Object.entries(m.injectedNodeTypes)) {
+        typeDist[type] = (typeDist[type] || 0) + count;
+      }
+    }
+  }
+  const typeHtml = Object.entries(typeDist).sort((a, b) => b[1] - a[1]).map(([t, c]) =>
+    `<span class="stat-value">${t}: ${c}</span>`
+  ).join(" ");
+
+  summaryEl.innerHTML = `
+    <div class="stat-row"><span class="stat-label">Total Injections</span><span class="stat-value">${totalInjections}</span></div>
+    <div class="stat-row"><span class="stat-label">With Reranking</span><span class="stat-value">${withRerank.length} (${strategies.join(", ") || "none"})</span></div>
+    <div class="stat-row"><span class="stat-label">Pass Rate</span><span class="stat-value">${passRate}%</span></div>
+    <div class="stat-row"><span class="stat-label">Avg Score</span><span class="stat-value">${avgScore}</span></div>
+    <div class="stat-row"><span class="stat-label">Strategies</span><br>${stratHtml}</div>
+    <div class="stat-row"><span class="stat-label">Node Types</span><br>${typeHtml || "—"}</div>
+  `;
+
+  // Detailed table
+  let tableHtml = `<div class="section"><h3>Recent Injections</h3>
+    <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Time</th>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Strategy</th>
+      <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Count</th>
+      <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Scores</th>
+      <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Duration</th>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Types</th>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Query</th>
+    </tr></thead><tbody>`;
+
+  for (const m of metrics.slice(0, 50)) {
+    const time = new Date(m.timestamp).toLocaleTimeString();
+    const scores = m.rerankScores ? m.rerankScores.map(s => s.toFixed(2)).join(", ") : "—";
+    const duration = m.rerankDurationMs ? `${m.rerankDurationMs}ms` : "—";
+    const types = m.injectedNodeTypes ? Object.entries(m.injectedNodeTypes).map(([t, c]) => `${t}:${c}`).join(" ") : "—";
+    const query = m.queryText ? m.queryText.slice(0, 40) + (m.queryText.length > 40 ? "…" : "") : "—";
+    const strategy = m.rerankStrategy || "none";
+    const count = `${m.preRerankIds?.length || "?"} → ${m.injectedNodeCount}`;
+
+    tableHtml += `<tr>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;color:#aaa">${time}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;color:#6af">${strategy}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right">${count}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right;font-family:monospace;font-size:10px">${scores}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right">${duration}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;font-size:10px">${types}</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #222;color:#888;font-size:10px">${query}</td>
+    </tr>`;
+  }
+
+  tableHtml += `</tbody></table></div></div>`;
+  chartsEl.innerHTML = tableHtml;
 }
 
 // ==================== Start ====================

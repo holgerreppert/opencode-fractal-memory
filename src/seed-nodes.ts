@@ -82,9 +82,12 @@ tag: rule:mandatory
 - When choosing between approaches
 
 ### How to Search
-1. Call memory_search with keywords from your reasoning
-2. Check results - if >50% match, use memory_drilldown for details
-3. Reference memory in your response with file:line format
+1. Call memory_search with concise keywords — NOT the raw user message
+2. Strip system reminders, logs, and code noise from your query
+3. Extract the core intent: what do you actually need to know?
+4. Example: instead of "Install <system-reminder>...</system-reminder>", search for "plugin installation process"
+5. Check results - if >50% match, use memory_drilldown for details
+6. Reference memory in your response with file:line format
 
 ### Memory Categories (Episodic vs Semantic)
 Memory nodes have a \`category\` that determines retention:

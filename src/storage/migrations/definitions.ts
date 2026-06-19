@@ -451,4 +451,21 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* table may not exist yet */ }
     },
   },
+  {
+    version: 24,
+    name: "add-injection-quality-columns",
+    up: (db) => {
+      try {
+        const tableInfo = db.query("PRAGMA table_info(injection_metrics)").all() as { name: string }[];
+        const existing = new Set(tableInfo.map(c => c.name));
+        if (!existing.has("pre_rerank_ids")) db.run("ALTER TABLE injection_metrics ADD COLUMN pre_rerank_ids TEXT");
+        if (!existing.has("post_rerank_ids")) db.run("ALTER TABLE injection_metrics ADD COLUMN post_rerank_ids TEXT");
+        if (!existing.has("rerank_scores")) db.run("ALTER TABLE injection_metrics ADD COLUMN rerank_scores TEXT");
+        if (!existing.has("rerank_strategy")) db.run("ALTER TABLE injection_metrics ADD COLUMN rerank_strategy TEXT");
+        if (!existing.has("rerank_duration_ms")) db.run("ALTER TABLE injection_metrics ADD COLUMN rerank_duration_ms REAL");
+        if (!existing.has("injected_node_types")) db.run("ALTER TABLE injection_metrics ADD COLUMN injected_node_types TEXT");
+        if (!existing.has("active_type_boosts")) db.run("ALTER TABLE injection_metrics ADD COLUMN active_type_boosts TEXT");
+      } catch { /* table may not exist yet */ }
+    },
+  },
 ];

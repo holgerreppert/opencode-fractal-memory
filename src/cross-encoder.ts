@@ -66,11 +66,16 @@ export interface CrossEncoderResult {
   score: number;
 }
 
+export interface ScorePairsOutput {
+  topResults: CrossEncoderResult[];
+  allScores: { id: string; score: number }[];
+}
+
 export async function scorePairs(
   query: string,
   candidates: Array<{ id: string; content: string }>,
   topK: number
-): Promise<CrossEncoderResult[]> {
+): Promise<ScorePairsOutput> {
   memLog("debug", "cross-encoder", "Scoring pairs", { queryLength: query.length, candidateCount: candidates.length, topK });
 
   const _start = performance.now();
@@ -108,13 +113,19 @@ export async function scorePairs(
     }
 
     const data = logits.data as Float32Array;
-    const score = data.length >= 2 ? (data[1] ?? 0) : (data[0] ?? 0);
+    const logitNonRelevant = data.length >= 2 ? (data[0] ?? 0) : 0;
+    const logitRelevant = data.length >= 2 ? (data[1] ?? 0) : (data[0] ?? 0);
+    const maxLogit = Math.max(logitNonRelevant, logitRelevant);
+    const expRel = Math.exp(logitRelevant - maxLogit);
+    const expNon = Math.exp(logitNonRelevant - maxLogit);
+    const score = expRel / (expRel + expNon);
 
     results.push({ id: c.id, score });
   }
 
   results.sort((a, b) => b.score - a.score);
   const top = results.slice(0, topK);
+  const allScores = results.map(r => ({ id: r.id, score: r.score }));
   const totalTime = (performance.now() - _start).toFixed(1);
   memLog("info", "cross-encoder", "Scoring complete", {
     candidateCount: candidates.length,
@@ -123,5 +134,5 @@ export async function scorePairs(
     loadTimeMs: loadTime.toFixed(1),
     totalTimeMs: totalTime,
   });
-  return top;
+  return { topResults: top, allScores };
 }

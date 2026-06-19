@@ -64,14 +64,23 @@ export function MemoryInjectionStats(store: MemoryStore) {
       
       let metrics: Array<{
         sessionId: string;
-        timestamp?: number;
+        timestamp: number;
         injectedNodeCount: number;
         injectedTokens: number;
         injectionMode: string;
-        queryText?: string;
-        effectivenessScore?: number | null;
-        taskDescription?: string;
-        toolCalls?: number;
+        queryText: string | null;
+        preRerankIds: string[] | null;
+        postRerankIds: string[] | null;
+        rerankScores: number[] | null;
+        rerankStrategy: string | null;
+        rerankDurationMs: number | null;
+        injectedNodeTypes: Record<string, number> | null;
+        activeTypeBoosts: Record<string, number> | null;
+        toolCalls: number;
+        effectivenessScore: number | null;
+        injectionUpvotes: number;
+        injectionDownvotes: number;
+        taskOutcome: string | null;
       }>;
       if (args.session_id) {
         const sessionMetrics = await store.getSessionMetrics(args.session_id);
@@ -84,8 +93,19 @@ export function MemoryInjectionStats(store: MemoryStore) {
             injectedNodeCount: sessionMetrics.totalInjections,
             injectedTokens: 0,
             injectionMode: "session-summary",
+            queryText: null,
+            preRerankIds: null,
+            postRerankIds: null,
+            rerankScores: null,
+            rerankStrategy: null,
+            rerankDurationMs: null,
+            injectedNodeTypes: null,
+            activeTypeBoosts: null,
             toolCalls: sessionMetrics.totalToolCalls,
-            effectivenessScore: sessionMetrics.avgEffectiveness ?? undefined,
+            effectivenessScore: sessionMetrics.avgEffectiveness ?? null,
+            injectionUpvotes: 0,
+            injectionDownvotes: 0,
+            taskOutcome: null,
           }];
         }
       } else {

@@ -1,6 +1,6 @@
 import type { MemoryNode, MemoryStore } from "../../storage/sqlite";
 import { generateEmbedding } from "../../embeddings";
-import { rerankDocuments } from "../../ollama";
+import { rerankDocuments, chat } from "../../ollama";
 import type { MemConfig } from "../../config";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -18,6 +18,91 @@ const INJECTION_LOG_MAX_SIZE = 1024 * 1024;
 
 try { fs.mkdirSync(INJECTION_LOG_DIR, { recursive: true }); } catch {}
 
+const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+function cleanUserQuery(text: string): string {
+  let cleaned = text
+    .replace(SYSTEM_REMINDER_RE, "")
+    .replace(/<available_skills>[\s\S]*?<\/available_skills>/g, "")
+    .replace(/<available_playbooks>[\s\S]*?<\/available_playbooks>/g, "")
+    .replace(/^│.*$/gm, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\n{3,}/g, "\n")
+    .trim();
+
+  const firstLine = cleaned.split("\n")[0]?.trim() ?? "";
+  if (firstLine.length >= 5) return firstLine;
+  return cleaned.slice(0, 200);
+}
+
+const KEYWORD_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function generateSearchKeywords(
+  messages: Message[],
+  ollamaConfig: MemConfig["ollama"] | undefined,
+  cleanedUserText: string,
+  cache: { keywords: string; timestamp: number } | null | undefined,
+  log: (level: "debug" | "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => void,
+): Promise<{ keywords: string; usedLlm: boolean }> {
+  // Use cached keywords if fresh
+  if (cache && (Date.now() - cache.timestamp) < KEYWORD_CACHE_TTL_MS) {
+    return { keywords: cache.keywords, usedLlm: false };
+  }
+
+  // Build conversation context from last few messages
+  const contextLines: string[] = [];
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0 && count < 6; i--) {
+    const msg = messages[i];
+    if (!msg || msg.info?.synthetic) continue;
+    const role = msg.info?.role === "assistant" ? "Assistant" : "User";
+    const text = msg.parts
+      .filter(p => p.type === "text")
+      .map(p => (p.text ?? "").slice(0, 200))
+      .join(" ")
+      .trim();
+    if (!text) continue;
+    contextLines.unshift(`${role}: ${text}`);
+    count++;
+  }
+  const conversation = contextLines.join("\n");
+
+  // Try LLM keyword generation
+  if (ollamaConfig?.enabled) {
+    try {
+      const prompt = `You are a search query generator for a technical knowledge base.
+
+Given the recent conversation, generate 3-5 search keywords that would find relevant technical documentation, code patterns, bug fixes, past decisions, and architecture notes.
+
+Conversation:
+${conversation}
+
+Return ONLY comma-separated keywords. No explanation, no numbering.
+Example: memory injection, cross-encoder scores, auto-retrieve query, onnx model`;
+
+      const response = await chat([
+        { role: "user", content: prompt },
+      ], {
+        baseUrl: ollamaConfig.baseUrl,
+        model: ollamaConfig.model,
+        temperature: 0.0,
+      });
+
+      const keywords = response
+        .replace(/^["']|["']$/g, "")
+        .trim();
+      if (keywords.length >= 5) {
+        log("info", "LLM generated search keywords", { keywords });
+        return { keywords, usedLlm: true };
+      }
+    } catch (err) {
+      log("warn", "LLM keyword generation failed, falling back to user text", { error: String(err) });
+    }
+  }
+
+  return { keywords: cleanedUserText, usedLlm: false };
+}
+
 const SKILL_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface SessionState {
@@ -26,6 +111,7 @@ interface SessionState {
   lastQueryEmbedding: number[];
   lastInjectTime: number;
   skillsCache: { skills: MemoryNode[]; playbooks: PlaybookInfo[]; timestamp: number } | null;
+  keywordCache: { keywords: string; timestamp: number } | null;
 }
 
 export interface AutoRetrieveDeps {
@@ -51,34 +137,28 @@ interface Message {
 
 type MessagesHook = (input: unknown, output: { messages: Message[] }) => Promise<void>;
 
-function resolveRerankIntent(store: MemoryStore): Promise<Record<string, number>> {
+async function resolveRerankIntent(store: MemoryStore): Promise<Record<string, number>> {
   const scopes: MemoryScope[] = ["global", "project"];
-  const results = scopes.map(s => {
-    try {
-      return store.getNodeByLabel(s, "pref:rerank-intent");
-    } catch {
-      return null;
-    }
-  });
-  return Promise.all(results).then(nodes => {
-    const intentNode = nodes.find(n => n !== null);
-    if (!intentNode) return {};
-    const content = intentNode!.content;
-    const boostMatch = content.match(/boost:\s*(.+?)(?:\n|$)/);
-    if (!boostMatch) return {};
-    const boostEntries = boostMatch[1]!.split(",").map(s => s.trim()).filter(Boolean);
-    const boosts: Record<string, number> = {};
-    for (const entry of boostEntries) {
-      const [type, weightStr] = entry.split("=").map(s => s.trim());
-      if (type && weightStr) {
-        const weight = parseFloat(weightStr);
-        if (!isNaN(weight) && weight >= 0) {
-          boosts[type] = weight;
-        }
+  const results = await Promise.all(scopes.map(s =>
+    store.getNodeByLabel(s, "pref:rerank-intent").catch(() => null)
+  ));
+  const intentNode = results.find(n => n !== null);
+  if (!intentNode) return {};
+  const content = intentNode.content;
+  const boostMatch = content.match(/boost:\s*(.+?)(?:\n|$)/);
+  if (!boostMatch) return {};
+  const boostEntries = boostMatch[1]!.split(",").map(s => s.trim()).filter(Boolean);
+  const boosts: Record<string, number> = {};
+  for (const entry of boostEntries) {
+    const [type, weightStr] = entry.split("=").map(s => s.trim());
+    if (type && weightStr) {
+      const weight = parseFloat(weightStr);
+      if (!isNaN(weight) && weight >= 0) {
+        boosts[type] = weight;
       }
     }
-    return boosts;
-  });
+  }
+  return boosts;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -113,6 +193,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         lastQueryEmbedding: [],
         lastInjectTime: 0,
         skillsCache: null,
+        keywordCache: null,
       };
       sessionState.set(sessionId, state);
     }
@@ -203,7 +284,25 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           return;
         }
 
+        const cleanedText = cleanUserQuery(userText);
+        if (!cleanedText || cleanedText.length < 3) {
+          log("debug", "Cleaned query too short, skipping", { originalLength: userText.length });
+          return;
+        }
+
         const state = getSessionState(sessionId);
+
+        const { keywords: queryText, usedLlm } = await generateSearchKeywords(
+          output.messages,
+          ollamaConfig,
+          cleanedText,
+          state.keywordCache,
+          log,
+        );
+
+        if (usedLlm && queryText !== cleanedText) {
+          state.keywordCache = { keywords: queryText, timestamp: Date.now() };
+        }
 
         // Rate limit: skip if last injection was too recent
         const cooldown = autoConfig.injectionCooldownMs ?? 30000;
@@ -213,7 +312,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           return;
         }
 
-        const queryEmbedding = await generateEmbedding(userText);
+        const queryEmbedding = await generateEmbedding(queryText);
 
         // Query similarity check: if query is very similar to last, skip
         if (state.lastQuery && state.lastQueryEmbedding.length > 0) {
@@ -224,7 +323,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           }
         }
 
-        log("info", "Auto-retrieving for query", { query: userText.slice(0, 50) + "..." });
+        log("info", "Auto-retrieving for query", { raw: userText.slice(0, 30) + "...", cleaned: cleanedText, effective: queryText, llmGenerated: usedLlm });
 
         const maxPlaybooks = autoConfig.maxInjectPlaybooks ?? 3;
 
@@ -237,7 +336,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           log("debug", "Using cached skills/playbooks", { skills: relevantSkills.length, playbooks: relevantPlaybooks.length, cacheAge: ((Date.now() - state.skillsCache.timestamp) / 1000).toFixed(0) + "s" });
         } else {
           [relevantSkills, relevantPlaybooks] = await Promise.all([
-            detectRelevantSkills(store, userText, queryEmbedding, 3, log),
+            detectRelevantSkills(store, queryText, queryEmbedding, 3, log),
             detectRelevantPlaybooks(store, queryEmbedding, maxPlaybooks, log),
           ]);
           state.skillsCache = { skills: relevantSkills, playbooks: relevantPlaybooks, timestamp: Date.now() };
@@ -259,6 +358,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         const filtered = candidates.filter(c =>
           !c.label?.startsWith("rule:") &&
           c.type !== "skill" &&
+          c.type !== "storedcontext" &&
           (c.level ?? 0) === 0 &&
           c.category === "semantic" &&
           (c.scope === "global" || c.projectName === deps.store.projectName)
@@ -279,13 +379,17 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         if (Object.keys(typeBoosts).length > 0) {
           log("info", "Rerank intent boosts active", { typeBoosts });
         }
-        let scored = uniqueFiltered.length > 0 ? scoreCandidates(uniqueFiltered, userText, queryEmbedding, typeBoosts) : [];
+        let scored = uniqueFiltered.length > 0 ? scoreCandidates(uniqueFiltered, queryText, queryEmbedding, typeBoosts) : [];
+        const preRerankIds = scored.map(c => c.id);
+
+        let rerankResults: Array<{ id: string; score: number }> = [];
+        let ollamaDuration = 0;
 
         if (ollamaConfig?.enabled && scored.length > 0) {
           log("info", "Ollama reranking", { model: ollamaConfig.model, candidateCount: scored.length });
           const startTime = Date.now();
-          const results = await rerankDocuments(
-            userText,
+          const output = await rerankDocuments(
+            queryText,
             scored.map(c => ({ id: c.id, label: c.label ?? c.id, content: c.content })),
             {
               baseUrl: ollamaConfig.baseUrl,
@@ -294,16 +398,45 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
               strategy: ollamaConfig.strategy ?? "cross-encoder",
             }
           );
-          const ollamaDuration = Date.now() - startTime;
+          ollamaDuration = Date.now() - startTime;
+          rerankResults = output.results;
+          const allScores = output.allScores;
 
-          const selectedIds = new Set(results.map(r => r.id));
+          const selectedIds = new Set(rerankResults.map(r => r.id));
           scored = scored.filter(c => selectedIds.has(c.id));
-          log("info", "Ollama reranking done", { selectedCount: scored.length, ollamaDuration });
+          log("info", "Ollama reranking done", { selectedCount: scored.length, ollamaDuration, rerankScores: allScores.map(s => ({ id: s.id.slice(0, 12), score: s.score.toFixed(4) })) });
         }
 
         const maxNodes = autoConfig.maxInjectNodes ?? 5;
         const maxMemoryNodes = Math.max(0, maxNodes - relevantSkills.length - relevantPlaybooks.length);
         scored = scored.slice(0, maxMemoryNodes);
+
+        // Build node type distribution for metrics
+        const injectedNodeTypes: Record<string, number> = {};
+        for (const n of scored) {
+          const t = n.type ?? "unknown";
+          injectedNodeTypes[t] = (injectedNodeTypes[t] ?? 0) + 1;
+        }
+
+        // Log injection metrics with full quality data
+        try {
+          const estimatedTokens = scored.length * 150 + relevantSkills.length * 50 + Object.keys(typeBoosts).length > 0 ? 0 : 0;
+          await store.logInjectionMetrics(sessionId, {
+            injectedNodeCount: scored.length,
+            injectedTokens: estimatedTokens,
+            injectionMode: "auto",
+            queryText,
+            preRerankIds,
+            postRerankIds: scored.map(n => n.id),
+            rerankScores: rerankResults.length > 0 ? rerankResults.map(r => r.score) : undefined,
+            rerankStrategy: ollamaConfig?.enabled ? (ollamaConfig.strategy ?? "llm") : undefined,
+            rerankDurationMs: ollamaDuration > 0 ? ollamaDuration : undefined,
+            injectedNodeTypes,
+            activeTypeBoosts: Object.keys(typeBoosts).length > 0 ? typeBoosts : undefined,
+          });
+        } catch (metricsErr) {
+          log("warn", "Failed to log injection metrics", { error: String(metricsErr) });
+        }
 
         // Track injected nodes for this session
         for (const n of scored) {
@@ -336,22 +469,22 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
 
         if (!fullBlock) return;
 
-        const debugLine = `[${new Date().toISOString()}] Query: ${userText.slice(0, 100)}...\n${fullBlock}\n\n`;
+        const debugLine = `[${new Date().toISOString()}] Query: ${userText.slice(0, 60)}... | cleaned: ${queryText}\n${fullBlock}\n\n`;
         appendInjectionLog(debugLine);
 
         if (deps.config?.sessionLog?.enabled) {
-          appendSessionLog(`[${new Date().toISOString()}] AUTO RETRIEVE | id=${sessionId} | query="${userText.slice(0, 50)}" | nodes=${scored.length} skills=${relevantSkills.length} playbooks=${relevantPlaybooks.length} | duration=${Date.now() - state.lastInjectTime}ms`);
+          appendSessionLog(`[${new Date().toISOString()}] AUTO RETRIEVE | id=${sessionId} | cleaned="${queryText}" | nodes=${scored.length} skills=${relevantSkills.length} playbooks=${relevantPlaybooks.length} | duration=${Date.now() - state.lastInjectTime}ms`);
         }
 
         if (userMsg && userMsg.parts) {
           userMsg.parts.unshift({ type: "text", text: fullBlock + "\n\n" });
         }
 
-        state.lastQuery = userText;
+        state.lastQuery = queryText;
         state.lastQueryEmbedding = queryEmbedding;
         state.lastInjectTime = Date.now();
 
-        log("info", "Memory injected", { nodeCount: scored.length, skillCount: relevantSkills.length, playbookCount: relevantPlaybooks.length, queryLength: userText.length });
+        log("info", "Memory injected", { nodeCount: scored.length, skillCount: relevantSkills.length, playbookCount: relevantPlaybooks.length, queryLength: queryText.length });
       } catch (err) {
         log("error", "Auto-retrieve failed", { error: String(err) });
       }

@@ -9,6 +9,7 @@ import {
   getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup,
 } from "./helpers";
 import { VERSION } from "../version";
+import { queryInjectionMetrics } from "../storage/injection-events";
 
 function handleScopes(): Response {
   return jsonResponse(getAvailableScopes());
@@ -208,6 +209,19 @@ function handleShutdown(): Response {
   return jsonResponse({ ok: true, message: "shutting down" });
 }
 
+async function handleInjectionQuality(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
+  return withDb("global", async (db) => {
+    try {
+      const metrics = queryInjectionMetrics(db, Math.min(limit, 500));
+      return jsonResponse({ metrics });
+    } catch (e) {
+      return jsonResponse({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+}
+
 // ==================== Backup / Restore Handlers ====================
 
 function handleBackupSources(): Response {
@@ -284,6 +298,9 @@ export function registerRoutes(router: Router): void {
   router.put(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx));
   router.patch(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx));
   router.delete(/^\/api\/nodes\/(?<id>[^/]+)$/, (_, ctx) => handleNodeDelete(ctx));
+
+  // Injection quality route
+  router.get(/^\/api\/injection-quality$/, (req) => handleInjectionQuality(req));
 
   // Backup / Restore routes
   router.get(/^\/api\/backup-sources$/, () => handleBackupSources());

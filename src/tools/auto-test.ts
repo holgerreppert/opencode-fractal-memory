@@ -22,7 +22,7 @@ export function createMemoryAutoTest(store: MemoryStore) {
           { topK: 3, strategy: "cross-encoder" }
         );
         
-        const selected = candidates.filter((c) => results.some((r) => r.id === c.id));
+        const selected = candidates.filter((c) => results.results.some((r: { id: string }) => r.id === c.id));
         
         return `Pipeline test: query="${testQuery}", candidates=${candidates.length}, selected=${selected.length}\n\nSelected:\n${selected.map((n, i) => `${i+1}. ${n.label}: ${n.content.slice(0, 100)}`).join("\n")}`;
       } catch (err) {
