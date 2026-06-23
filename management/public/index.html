@@ -5,17 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fractal Memory Viewer</title>
   <style>
+    :root { --sidebar-width: 280px; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0a0a0f; color: #e0e0e0; font-family: 'Inter', -apple-system, sans-serif; overflow: hidden; }
     #canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
     canvas { display: block; }
 
     #sidebar {
-      position: fixed; top: 0; left: 0; width: 280px; height: 100vh;
+      position: fixed; top: 0; left: 0; width: var(--sidebar-width, 280px); height: 100vh;
       background: rgba(15, 15, 25, 0.95); border-right: 1px solid rgba(255,255,255,0.1);
       padding: 20px; overflow-y: auto; z-index: 100;
       backdrop-filter: blur(10px);
     }
+
+    #resize-handle {
+      position: fixed; top: 0; left: var(--sidebar-width, 280px); width: 4px; height: 100vh;
+      cursor: col-resize; z-index: 101; transition: background 0.2s;
+    }
+    #resize-handle:hover, #resize-handle.active { background: rgba(100, 150, 255, 0.4); }
     #sidebar h1 { font-size: 18px; margin-bottom: 4px; color: #fff; }
     #sidebar .subtitle { font-size: 12px; color: #888; margin-bottom: 20px; }
 
@@ -152,7 +159,7 @@
     }
 
     .toggle-sidebar {
-      position: fixed; top: 15px; left: 290px; z-index: 150;
+      position: fixed; top: 15px; left: calc(var(--sidebar-width, 280px) + 10px); z-index: 150;
       background: rgba(15, 15, 25, 0.9); border: 1px solid rgba(255,255,255,0.1);
       color: #ccc; padding: 6px 10px; border-radius: 6px; cursor: pointer;
       font-size: 12px;
@@ -171,7 +178,19 @@
     /* Settings Panel */
     .settings-panel { display: none; }
     .settings-panel.active { display: block; }
-    .config-field { margin-bottom: 12px; }
+    .config-category { margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden; }
+    .category-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 12px; cursor: pointer; user-select: none;
+      font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;
+      background: rgba(255,255,255,0.03); transition: background 0.2s;
+    }
+    .category-header:hover { background: rgba(255,255,255,0.08); }
+    .collapse-arrow { font-size: 10px; color: #666; transition: transform 0.2s; }
+    .config-category.collapsed .collapse-arrow { transform: rotate(-90deg); }
+    .config-category.collapsed .category-body { display: none; }
+    .category-body { padding: 8px 12px 12px; }
+    .config-field { margin-bottom: 10px; }
     .config-field label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
     .config-field input[type="text"], .config-field input[type="number"], .config-field select {
       width: 100%; padding: 6px 8px; border-radius: 4px;
@@ -180,7 +199,7 @@
     }
     .config-field input:focus, .config-field select:focus { border-color: rgba(100, 150, 255, 0.5); outline: none; }
     .save-btn {
-      width: 100%; padding: 8px; border-radius: 6px; border: none;
+      width: 100%; margin-top: 12px; padding: 8px; border-radius: 6px; border: none;
       background: rgba(100, 150, 255, 0.3); color: #fff; font-size: 13px; cursor: pointer;
     }
     .save-btn:hover { background: rgba(100, 150, 255, 0.5); }
@@ -287,6 +306,7 @@
   <div id="canvas-container"></div>
   <div id="loading">Loading memory nodes...</div>
 
+  <div id="resize-handle"></div>
   <div id="sidebar">
     <h1>Fractal Memory</h1>
     <div class="subtitle"><span id="version">3D Node Visualization</span></div>
@@ -367,312 +387,299 @@
 
     <!-- Settings Panel -->
     <div id="settings-panel" class="settings-panel">
-      <div class="section">
-        <h3>Per-Node TTL</h3>
-        <div class="config-field">
-          <label>Default TTL (days, 0 = no expiry)</label>
-          <input type="number" id="defaultTtlDays" min="0" max="3650">
+
+      <div class="config-category">
+        <h3 class="category-header">Memory &amp; Storage <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Default TTL (days, 0 = no expiry)</label>
+            <input type="number" id="defaultTtlDays" min="0" max="3650">
+          </div>
+          <div class="config-field">
+            <label>Cache Size (max nodes)</label>
+            <input type="number" id="cacheSize" min="1" max="64">
+          </div>
+          <div class="config-field">
+            <label>Cache TTL (hours)</label>
+            <input type="number" id="cacheTTLHours" min="1" max="72">
+          </div>
+          <div class="config-field">
+            <label>Middle-Term Capture</label>
+            <select id="enableMiddleTermCapture">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Auto File Summarization</label>
+            <select id="autoFileSummarization-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Summarize files to DB on read</p>
+          </div>
+          <div class="config-field">
+            <label>File Skeletonization</label>
+            <select id="fileSkeletonization-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Inline AST skeleton for large file reads</p>
+          </div>
+          <div class="config-field">
+            <label>Min Skeleton Lines</label>
+            <input type="number" id="fileSkeletonization-minLines" min="50" max="5000" step="10">
+          </div>
+          <div class="config-field">
+            <label>Skeleton Strategy</label>
+            <select id="fileSkeletonization-strategy">
+              <option value="ast+regex">AST + Regex</option>
+              <option value="regex">Regex only</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div class="section">
-        <h3>Injection</h3>
-        <div class="config-field">
-          <label>Max Injection Tokens</label>
-          <input type="number" id="maxInjectionTokens" min="500" max="32000">
-        </div>
-        <div class="config-field">
-          <label>Core Injection Tokens</label>
-          <input type="number" id="coreInjectionTokens" min="100" max="8000">
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Cache</h3>
-        <div class="config-field">
-          <label>Cache Size (max nodes)</label>
-          <input type="number" id="cacheSize" min="1" max="64">
-        </div>
-        <div class="config-field">
-          <label>Cache TTL (hours)</label>
-          <input type="number" id="cacheTTLHours" min="1" max="72">
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Auto-Retrieve</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="autoRetrieve-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Candidate Count</label>
-          <input type="number" id="autoRetrieve-candidateCount" min="5" max="100">
-        </div>
-        <div class="config-field">
-          <label>Max Inject Nodes</label>
-          <input type="number" id="autoRetrieve-maxInjectNodes" min="1" max="20">
-        </div>
-        <div class="config-field">
-          <label>Max Inject Playbooks</label>
-          <input type="number" id="autoRetrieve-maxInjectPlaybooks" min="0" max="10">
-        </div>
-        <div class="config-field">
-          <label>Min Query Length</label>
-          <input type="number" id="autoRetrieve-minQueryLength" min="1" max="100">
-        </div>
-        <div class="config-field">
-          <label>Injection Cooldown (ms)</label>
-          <input type="number" id="autoRetrieve-injectionCooldownMs" min="1000" max="120000" step="1000">
+      <div class="config-category">
+        <h3 class="category-header">Injection &amp; Retrieval <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Max Injection Tokens</label>
+            <input type="number" id="maxInjectionTokens" min="500" max="32000">
+          </div>
+          <div class="config-field">
+            <label>Core Injection Tokens</label>
+            <input type="number" id="coreInjectionTokens" min="100" max="8000">
+          </div>
+          <div class="config-field">
+            <label>Auto-Compress Threshold</label>
+            <input type="number" id="autoCompressThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>High Context Threshold</label>
+            <input type="number" id="highContextThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Critical Context Threshold</label>
+            <input type="number" id="criticalContextThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Auto-Retrieve Enabled</label>
+            <select id="autoRetrieve-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Candidate Count</label>
+            <input type="number" id="autoRetrieve-candidateCount" min="5" max="100">
+          </div>
+          <div class="config-field">
+            <label>Max Inject Nodes</label>
+            <input type="number" id="autoRetrieve-maxInjectNodes" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Max Inject Playbooks</label>
+            <input type="number" id="autoRetrieve-maxInjectPlaybooks" min="0" max="10">
+          </div>
+          <div class="config-field">
+            <label>Min Query Length</label>
+            <input type="number" id="autoRetrieve-minQueryLength" min="1" max="100">
+          </div>
+          <div class="config-field">
+            <label>Injection Cooldown (ms)</label>
+            <input type="number" id="autoRetrieve-injectionCooldownMs" min="1000" max="120000" step="1000">
+          </div>
         </div>
       </div>
 
-      <div class="section">
-        <h3>Thresholds</h3>
-        <div class="config-field">
-          <label>Auto-Compress Threshold</label>
-          <input type="number" id="autoCompressThreshold" min="0" max="1" step="0.05">
-        </div>
-        <div class="config-field">
-          <label>High Context Threshold</label>
-          <input type="number" id="highContextThreshold" min="0" max="1" step="0.05">
-        </div>
-        <div class="config-field">
-          <label>Critical Context Threshold</label>
-          <input type="number" id="criticalContextThreshold" min="0" max="1" step="0.05">
-        </div>
-        <div class="config-field">
-          <label>Enable Middle-Term Capture</label>
-          <select id="enableMiddleTermCapture">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Auto File Summarization</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="autoFileSummarization-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Ollama</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="ollama-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Model</label>
-          <input type="text" id="ollama-model" placeholder="qwen2.5-coder:1.5b">
-        </div>
-        <div class="config-field">
-          <label>Base URL</label>
-          <input type="text" id="ollama-baseUrl" placeholder="http://localhost:11434">
-        </div>
-        <div class="config-field">
-          <label>Mode</label>
-          <select id="ollama-mode">
-            <option value="binary">Binary (relevant/not)</option>
-            <option value="score">Score (0-1 rating)</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Rerank Strategy</label>
-          <select id="ollama-strategy">
-            <option value="llm">LLM Judge (qwen2.5-coder)</option>
-            <option value="cross-encoder">Cross-Encoder (local ONNX)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>LLM Compression</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="llmCompression-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Max Summary Tokens</label>
-          <input type="number" id="llmCompression-maxSummaryTokens" min="100" max="4000">
-        </div>
-        <div class="config-field">
-          <label>Model (optional)</label>
-          <input type="text" id="llmCompression-model" placeholder="default session model">
+      <div class="config-category">
+        <h3 class="category-header">AI &amp; Compression <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Ollama Enabled</label>
+            <select id="ollama-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Ollama Model</label>
+            <input type="text" id="ollama-model" placeholder="qwen2.5-coder:1.5b">
+          </div>
+          <div class="config-field">
+            <label>Ollama Base URL</label>
+            <input type="text" id="ollama-baseUrl" placeholder="http://localhost:11434">
+          </div>
+          <div class="config-field">
+            <label>Ollama Mode</label>
+            <select id="ollama-mode">
+              <option value="binary">Binary (relevant/not)</option>
+              <option value="score">Score (0-1 rating)</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Ollama Rerank Strategy</label>
+            <select id="ollama-strategy">
+              <option value="llm">LLM Judge (qwen2.5-coder)</option>
+              <option value="cross-encoder">Cross-Encoder (local ONNX)</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>LLM Compression Enabled</label>
+            <select id="llmCompression-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>LLM Max Summary Tokens</label>
+            <input type="number" id="llmCompression-maxSummaryTokens" min="100" max="4000">
+          </div>
+          <div class="config-field">
+            <label>LLM Model (optional)</label>
+            <input type="text" id="llmCompression-model" placeholder="default session model">
+          </div>
+          <div class="config-field">
+            <label>Command Compression Enabled</label>
+            <select id="commandCompression-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Command Max Lines</label>
+            <input type="number" id="commandCompression-maxLines" min="10" max="500" step="10">
+          </div>
+          <div class="config-field">
+            <label>Exclude Commands</label>
+            <input type="text" id="commandCompression-excludeCommands" placeholder="curl, wget">
+          </div>
+          <div class="config-field">
+            <label>Full Output on Failure</label>
+            <select id="commandCompression-alwaysFullOnFailure">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div class="section">
-        <h3>Command Compression</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="commandCompression-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Max Lines</label>
-          <input type="number" id="commandCompression-maxLines" min="10" max="500" step="10">
-        </div>
-        <div class="config-field">
-          <label>Exclude Commands</label>
-          <input type="text" id="commandCompression-excludeCommands" placeholder="curl, wget">
-        </div>
-        <div class="config-field">
-          <label>Full Output on Failure</label>
-          <select id="commandCompression-alwaysFullOnFailure">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Auto Distill</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="autoDistill-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Min Lessons</label>
-          <input type="number" id="autoDistill-minLessons" min="1" max="20">
-        </div>
-        <div class="config-field">
-          <label>Use LLM</label>
-          <select id="autoDistill-useLlm">
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Predictive Rating</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="predictiveRating-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Decay Days</label>
-          <input type="number" id="predictiveRating-decayDays" min="1" max="90">
-        </div>
-        <div class="config-field">
-          <label>Confidence Threshold</label>
-          <input type="number" id="predictiveRating-confidenceThreshold" min="0" max="1" step="0.05">
-        </div>
-        <div class="config-field">
-          <label>Positive Boost</label>
-          <input type="number" id="predictiveRating-positiveBoost" min="0" max="1" step="0.05">
-        </div>
-        <div class="config-field">
-          <label>Negative Penalty</label>
-          <input type="number" id="predictiveRating-negativePenalty" min="0" max="1" step="0.05">
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Auto Discover (Playbooks)</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="autoDiscover-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Min Sequence Length</label>
-          <input type="number" id="autoDiscover-minSequenceLength" min="2" max="10">
-        </div>
-        <div class="config-field">
-          <label>Min Repeat Count</label>
-          <input type="number" id="autoDiscover-minRepeatCount" min="1" max="10">
-        </div>
-        <div class="config-field">
-          <label>Max Inject Playbooks</label>
-          <input type="number" id="autoDiscover-maxInjectPlaybooks" min="0" max="10">
+      <div class="config-category">
+        <h3 class="category-header">Automation <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Auto Distill Enabled</label>
+            <select id="autoDistill-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Min Lessons</label>
+            <input type="number" id="autoDistill-minLessons" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Auto Distill Use LLM</label>
+            <select id="autoDistill-useLlm">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Predictive Rating Enabled</label>
+            <select id="predictiveRating-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Decay Days</label>
+            <input type="number" id="predictiveRating-decayDays" min="1" max="90">
+          </div>
+          <div class="config-field">
+            <label>Confidence Threshold</label>
+            <input type="number" id="predictiveRating-confidenceThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Positive Boost</label>
+            <input type="number" id="predictiveRating-positiveBoost" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Negative Penalty</label>
+            <input type="number" id="predictiveRating-negativePenalty" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Auto Discover (Playbooks) Enabled</label>
+            <select id="autoDiscover-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Min Sequence Length</label>
+            <input type="number" id="autoDiscover-minSequenceLength" min="2" max="10">
+          </div>
+          <div class="config-field">
+            <label>Min Repeat Count</label>
+            <input type="number" id="autoDiscover-minRepeatCount" min="1" max="10">
+          </div>
+          <div class="config-field">
+            <label>Playbook Max Inject</label>
+            <input type="number" id="autoDiscover-maxInjectPlaybooks" min="0" max="10">
+          </div>
+          <div class="config-field">
+            <label>Auto Consolidate Enabled</label>
+            <select id="autoConsolidate-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Similarity Threshold</label>
+            <input type="number" id="autoConsolidate-similarityThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Max Facts Per Cluster</label>
+            <input type="number" id="autoConsolidate-maxFactsPerCluster" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Min Cluster Size</label>
+            <input type="number" id="autoConsolidate-minClusterSize" min="2" max="10">
+          </div>
         </div>
       </div>
 
-      <div class="section">
-        <h3>Auto Consolidate</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="autoConsolidate-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
+      <div class="config-category">
+        <h3 class="category-header">System <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Journal Enabled</label>
+            <select id="journal-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Management Server Enabled</label>
+            <select id="management-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Management Port</label>
+            <input type="number" id="management-port" min="1024" max="65535">
+          </div>
+          <div class="config-field">
+            <label>Session Logging</label>
+            <select id="sessionLog-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Logs session events to ~/.config/opencode/logs/sessionlog.log</p>
+          </div>
         </div>
-        <div class="config-field">
-          <label>Similarity Threshold</label>
-          <input type="number" id="autoConsolidate-similarityThreshold" min="0" max="1" step="0.05">
-        </div>
-        <div class="config-field">
-          <label>Max Facts Per Cluster</label>
-          <input type="number" id="autoConsolidate-maxFactsPerCluster" min="1" max="20">
-        </div>
-        <div class="config-field">
-          <label>Min Cluster Size</label>
-          <input type="number" id="autoConsolidate-minClusterSize" min="2" max="10">
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Journal</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="journal-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Management Server</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="management-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <div class="config-field">
-          <label>Port</label>
-          <input type="number" id="management-port" min="1024" max="65535">
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Session Logging</h3>
-        <div class="config-field">
-          <label>Enabled</label>
-          <select id="sessionLog-enabled">
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
-          </select>
-        </div>
-        <p class="config-hint">Logs session events to ~/.config/opencode/logs/sessionlog.log</p>
       </div>
 
       <button class="save-btn" id="save-config">Save Settings</button>

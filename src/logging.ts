@@ -83,5 +83,43 @@ export function appendSessionLog(line: string): void {
   } catch {}
 }
 
+const COMPRESS_LOG_FILE = path.join(LOG_DIR, "compress.log");
+const COMPRESS_LOG_MAX_SIZE = 2 * 1024 * 1024;
+
+export function writeCompressLog(fields: Record<string, string | number>): void {
+  try {
+    try {
+      const stat = fs.statSync(COMPRESS_LOG_FILE);
+      if (stat.size > COMPRESS_LOG_MAX_SIZE) {
+        fs.renameSync(COMPRESS_LOG_FILE, COMPRESS_LOG_FILE + ".old");
+      }
+    } catch {}
+    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const session = currentSessionId ? `session=${currentSessionId.slice(0, 8)}` : "";
+    const parts = Object.entries(fields).map(([k, v]) => `${k}=${v}`);
+    const line = `[${ts}] | COMPRESS | ${session}${session ? " | " : ""}${parts.join(" | ")}`;
+    fs.appendFileSync(COMPRESS_LOG_FILE, line + "\n");
+  } catch {}
+}
+
+const FILE_SUM_LOG_FILE = path.join(LOG_DIR, "filesum.log");
+const FILE_SUM_LOG_MAX_SIZE = 2 * 1024 * 1024;
+
+export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE", fields: Record<string, string | number>): void {
+  try {
+    try {
+      const stat = fs.statSync(FILE_SUM_LOG_FILE);
+      if (stat.size > FILE_SUM_LOG_MAX_SIZE) {
+        fs.renameSync(FILE_SUM_LOG_FILE, FILE_SUM_LOG_FILE + ".old");
+      }
+    } catch {}
+    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const session = currentSessionId ? `session=${currentSessionId.slice(0, 8)}` : "";
+    const parts = Object.entries(fields).map(([k, v]) => `${k}=${v}`);
+    const line = `[${ts}] | ${component} | ${session}${session ? " | " : ""}${parts.join(" | ")}`;
+    fs.appendFileSync(FILE_SUM_LOG_FILE, line + "\n");
+  } catch {}
+}
+
 
 

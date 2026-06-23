@@ -23,6 +23,11 @@ export interface MemConfig {
     excludeCommands: string[];
     alwaysFullOnFailure: boolean;
   };
+  fileSkeletonization?: {
+    enabled: boolean;
+    minLines: number;
+    strategy: string;
+  };
   autoRetrieve?: {
     enabled: boolean;
     candidateCount: number;
@@ -155,6 +160,12 @@ const CommandCompressionSchema = z.object({
   alwaysFullOnFailure: z.boolean().default(true),
 });
 
+const FileSkeletonizationSchema = z.object({
+  enabled: z.boolean().default(true),
+  minLines: z.number().positive().int().default(200),
+  strategy: z.string().default("ast+regex"),
+});
+
 const SessionLogSchema = z.object({
   enabled: z.boolean().default(false),
 });
@@ -231,6 +242,11 @@ const DEFAULT_CONFIG: MemConfig = {
     excludeCommands: ["curl", "wget"],
     alwaysFullOnFailure: true,
   },
+  fileSkeletonization: {
+    enabled: true,
+    minLines: 200,
+    strategy: "ast+regex",
+  },
 };
 
 const MemConfigSchema = z.object({
@@ -257,6 +273,7 @@ const MemConfigSchema = z.object({
   management: ManagementSchema.optional(),
   sessionLog: SessionLogSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),
+  fileSkeletonization: FileSkeletonizationSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

@@ -1591,6 +1591,51 @@ function animate() {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-config').addEventListener('click', saveSettings);
 
+  // Collapsible settings categories
+  document.querySelectorAll('.category-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.parentElement.classList.toggle('collapsed');
+    });
+  });
+
+  // Resizable sidebar
+  const root = document.documentElement;
+  const sidebar = document.getElementById("sidebar");
+  const handle = document.getElementById("resize-handle");
+  const MIN_WIDTH = 180;
+  const MAX_WIDTH = 600;
+  let isResizing = false;
+
+  const savedWidth = localStorage.getItem("sidebar-width");
+  if (savedWidth) {
+    root.style.setProperty("--sidebar-width", savedWidth + "px");
+    sidebar.style.display = "block";
+  }
+
+  handle.addEventListener("mousedown", (e) => {
+    isResizing = true;
+    handle.classList.add("active");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isResizing) return;
+    const w = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, e.clientX));
+    root.style.setProperty("--sidebar-width", w + "px");
+    localStorage.setItem("sidebar-width", String(w));
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isResizing) {
+      isResizing = false;
+      handle.classList.remove("active");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
   // Backup / Restore event listeners
   document.getElementById("create-backup").addEventListener("click", handleCreateBackup);
   document.getElementById("confirm-yes").addEventListener("click", handleConfirmYes);
@@ -1831,6 +1876,9 @@ async function loadSettings() {
     document.getElementById('llmCompression-enabled').value = String(config.llmCompression?.enabled ?? false);
     document.getElementById('llmCompression-maxSummaryTokens').value = config.llmCompression?.maxSummaryTokens ?? 500;
     document.getElementById('llmCompression-model').value = config.llmCompression?.model ?? '';
+    document.getElementById('fileSkeletonization-enabled').value = String(config.fileSkeletonization?.enabled ?? true);
+    document.getElementById('fileSkeletonization-minLines').value = config.fileSkeletonization?.minLines ?? 200;
+    document.getElementById('fileSkeletonization-strategy').value = config.fileSkeletonization?.strategy ?? 'ast+regex';
     document.getElementById('commandCompression-enabled').value = String(config.commandCompression?.enabled ?? true);
     document.getElementById('commandCompression-maxLines').value = config.commandCompression?.maxLines ?? 50;
     document.getElementById('commandCompression-excludeCommands').value = (config.commandCompression?.excludeCommands ?? []).join(', ');
@@ -1894,10 +1942,15 @@ async function saveSettings() {
       maxSummaryTokens: parseInt(document.getElementById('llmCompression-maxSummaryTokens').value) || 500,
       model: document.getElementById('llmCompression-model').value || undefined,
     },
+    fileSkeletonization: {
+      enabled: document.getElementById('fileSkeletonization-enabled').value === 'true',
+      minLines: parseInt(document.getElementById('fileSkeletonization-minLines').value) || 200,
+      strategy: document.getElementById('fileSkeletonization-strategy').value || 'ast+regex',
+    },
     commandCompression: {
       enabled: document.getElementById('commandCompression-enabled').value === 'true',
       maxLines: parseInt(document.getElementById('commandCompression-maxLines').value) || 50,
-      excludeCommands: document.getElementById('commandCompression-excludeCommands').value.split(',').map((s: string) => s.trim()).filter(Boolean),
+      excludeCommands: document.getElementById('commandCompression-excludeCommands').value.split(',').map(s => s.trim()).filter(Boolean),
       alwaysFullOnFailure: document.getElementById('commandCompression-alwaysFullOnFailure').value === 'true',
     },
     autoDistill: {

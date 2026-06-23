@@ -44,14 +44,13 @@ export const MIME_TYPES: Record<string, string> = {
 };
 
 export function serveFile(filePath: string) {
-  try {
-    const ext = path.extname(filePath);
-    const mimeType = MIME_TYPES[ext] || "application/octet-stream";
-    const body = Bun.file(filePath);
-    return new Response(body, { headers: { "Content-Type": mimeType, "Cache-Control": "no-cache" } });
-  } catch {
+  if (!fs.existsSync(filePath)) {
     return new Response("Not found", { status: 404 });
   }
+  const ext = path.extname(filePath);
+  const mimeType = MIME_TYPES[ext] || "application/octet-stream";
+  const body = Bun.file(filePath);
+  return new Response(body, { headers: { "Content-Type": mimeType, "Cache-Control": "no-cache" } });
 }
 
 export function jsonResponse(data: unknown, status = 200) {
