@@ -1,8 +1,10 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../config";
 import { writeCompressLog } from "../../logging";
-import { compressCommandOutput } from "../../hooks/compress-output";
+import { compressCommandOutput, addContentDedup, type CompressConfig } from "../../hooks/compress-output";
 import type { HookHandler } from "./types";
+
+const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
 
 export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
   return {
@@ -21,35 +23,38 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       const durationMs = performance.now() - t0;
 
       try {
-        if (compressed !== null) {
-          const originalLines = raw.split("\n").length;
-          const compressedLines = compressed.output.split("\n").length;
-          const reductionPct = raw.length > 0 ? Math.round((1 - compressed.output.length / raw.length) * 100) : 0;
-          const banner = `[Compressed via ${compressed.strategy} — ${raw.length}→${compressed.output.length} chars]\n`;
-          out.output = banner + compressed.output;
+        const deduped = addContentDedup(DEDUP_CACHE, cmd, raw, compressed);
+
+        if (deduped) {
+          const strategyLabel = deduped.dedup ? "dedup" : (compressed?.strategy ?? "generic");
+          const banner = deduped.dedup
+            ? `[Dedup — ${raw.length}→${deduped.output.length} chars (same output seen before)]\n`
+            : `[Compressed via ${strategyLabel} — ${raw.length}→${deduped.output.length} chars]\n`;
+          out.output = banner + deduped.output;
           out.metadata = {
             ...((out.metadata as Record<string, unknown>) ?? {}),
             compressed: true,
-            compressStrategy: compressed.strategy,
+            compressStrategy: strategyLabel,
+            deduped: deduped.dedup,
           };
           writeCompressLog({
-            action: "applied",
-            strategy: compressed.strategy,
+            action: deduped.dedup ? "dedup" : "applied",
+            strategy: strategyLabel,
             cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
             original_chars: raw.length,
-            compressed_chars: compressed.output.length,
-            original_lines: originalLines,
-            compressed_lines: compressedLines,
-            reduction_pct: reductionPct,
+            compressed_chars: deduped.output.length,
+            original_lines: raw.split("\n").length,
+            compressed_lines: deduped.output.split("\n").length,
+            reduction_pct: raw.length > 0 ? Math.round((1 - deduped.output.length / raw.length) * 100) : 0,
             duration_ms: Math.round(durationMs),
             failed: failed ? 1 : 0,
           });
           store.recordCompressionStat({
             sessionId: input.sessionID ?? "unknown",
             command: cmd,
-            strategy: compressed.strategy,
+            strategy: strategyLabel,
             originalChars: raw.length,
-            compressedChars: compressed.output.length,
+            compressedChars: deduped.output.length,
             durationMs,
           }).catch(() => {});
         } else {
@@ -59,7 +64,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             original_chars: raw.length,
             failed: failed ? 1 : 0,
             duration_ms: Math.round(durationMs),
-            reason: failed ? "always-full-on-failure" : "no-strategy-matched",
+            reason: compressed === null ? "no-strategy-matched" : "classification-skipped-signal",
           });
         }
       } catch (err) {
