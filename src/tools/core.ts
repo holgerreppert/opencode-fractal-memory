@@ -221,7 +221,7 @@ ${node.content}${node.summary ? "\n\nSummary:\n" + node.summary : ""}`;
 
 export function MemoryFetch(store: MemoryStore) {
   const t = tool({
-    description: "Fetch a specific memory node by exact label.",
+    description: "Fetch a specific memory node by exact label. File summaries are stored with label prefix 'file:' — use memory_search('file:<filename>') to find them.",
     args: {
       label: tool.schema.string(),
       scope: tool.schema.enum(["global", "project"]).optional(),

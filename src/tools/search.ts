@@ -54,7 +54,7 @@ export function MemoryDrilldown(store: MemoryStore) {
 
 export function MemorySearch(store: MemoryStore) {
   const t = tool({
-    description: "Search memory for relevant context.",
+    description: "Search memory for relevant context. Results may be re-ordered by relevance to your current reasoning via auto-retrieve reranking.",
     args: {
       query: tool.schema.string().describe("Search query text"),
       limit: tool.schema.number().int().positive().optional().describe("Maximum results to return (default 10)"),

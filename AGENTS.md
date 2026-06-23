@@ -62,7 +62,17 @@ Then restart OpenCode.
 | `src/hooks/skeletonize.ts` | Tree-sitter AST skeleton extraction (32 languages) + regex fallback |
 | `src/hooks/auto-retrieve/index.ts` | Multi-reasoning reranking pipeline (agent-pull model) |
 | `src/hooks/auto-retrieve/scoring.ts` | Fallback scoring (metadata + keyword overlap, no embeddings) |
-| `src/plugin/hooks.ts` | Hook wiring (compression, skeletonization, file summary, rules, lifecycle) |
+| `src/plugin/hooks.ts` | **Thin orchestration** — calls 8 extracted handlers |
+| `src/plugin/hooks/types.ts` | HookHandler interface for the pipeline pattern |
+| `src/plugin/hooks/recording.ts` | Memory tool call recording + predictive rating |
+| `src/plugin/hooks/working-cache.ts` | Populate working cache from memory tool results |
+| `src/plugin/hooks/compression.ts` | Command output compression + feature banner |
+| `src/plugin/hooks/skeletonization.ts` | File read skeletonization + feature banner |
+| `src/plugin/hooks/file-summary.ts` | Auto-file-summarization (before + after hooks) |
+| `src/plugin/hooks/seed-rules.ts` | Rule node loading + system transform injection |
+| `src/plugin/hooks/compaction.ts` | Middle-term capture + stored context archiving |
+| `src/plugin/hooks/events.ts` | Session lifecycle event handling |
+| `src/seed-nodes.ts` | Seed nodes including `rule:feature:*` visibility rules |
 | `src/storage/sqlite.ts` | SqliteMemoryStore class |
 | `src/management/routes.ts` | API routes (config, nodes, compression, injection quality, backup) |
 | `management/public/index.html` | Management app UI |
@@ -136,3 +146,16 @@ Use `memory_drilldown(label="<label>")` to retrieve full context for these key n
 | `ollama-memory-feature` | note | Ollama-based local memory system |
 | `bug:three-bugs-2026-06-15` | fix | Three bugs fixed + their root causes |
 | `rule:mandatory:agent-pull` | rule | Agent-pull model — no auto-injection |
+| `rule:feature:command-compression` | rule | Compression feature details — 7 strategies, banners |
+| `rule:feature:file-skeletonization` | rule | Skeletonization feature details — tree-sitter, banners |
+| `rule:feature:file-summarization` | rule | File summary feature details — auto-store on read |
+| `rule:feature:auto-retrieve` | rule | Auto-retrieve reranking feature details |
+| `file:src/plugin/hooks.ts` | file | Thin orchestration — calls 8 extracted handlers |
+| `file:src/plugin/hooks/compression.ts` | file | Compression handler with feature banner |
+| `file:src/plugin/hooks/skeletonization.ts` | file | Skeletonization handler with feature banner |
+| `file:src/plugin/hooks/file-summary.ts` | file | Before/after hooks for auto-file-summarization |
+| `file:src/plugin/hooks/seed-rules.ts` | file | Rule loading + rule:feature injection |
+| `file:src/plugin/hooks/working-cache.ts` | file | Working cache population from tool results |
+| `file:src/plugin/hooks/recording.ts` | file | Memory tool call recording + predictive rating |
+| `file:src/plugin/hooks/compaction.ts` | file | Middle-term capture + stored context |
+| `file:src/plugin/hooks/events.ts` | file | Session lifecycle event handling |
