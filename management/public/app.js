@@ -1903,6 +1903,10 @@ async function loadSettings() {
     document.getElementById('management-enabled').value = String(config.management?.enabled ?? false);
     document.getElementById('management-port').value = config.management?.port ?? 8787;
     document.getElementById('sessionLog-enabled').value = String(config.sessionLog?.enabled ?? false);
+    document.getElementById('reReadElimination-enabled').value = String(config.reReadElimination?.enabled ?? true);
+    document.getElementById('reReadElimination-maxCacheSize').value = config.reReadElimination?.maxCacheSize ?? 100;
+    document.getElementById('outputOffloading-enabled').value = String(config.outputOffloading?.enabled ?? true);
+    document.getElementById('outputOffloading-thresholdChars').value = config.outputOffloading?.thresholdChars ?? 8000;
   } catch (e) {
     console.error('Failed to load config:', e);
   }
@@ -1986,6 +1990,14 @@ async function saveSettings() {
     },
     sessionLog: {
       enabled: document.getElementById('sessionLog-enabled').value === 'true',
+    },
+    reReadElimination: {
+      enabled: document.getElementById('reReadElimination-enabled').value === 'true',
+      maxCacheSize: parseInt(document.getElementById('reReadElimination-maxCacheSize').value) || 100,
+    },
+    outputOffloading: {
+      enabled: document.getElementById('outputOffloading-enabled').value === 'true',
+      thresholdChars: parseInt(document.getElementById('outputOffloading-thresholdChars').value) || 8000,
     },
   };
   try {

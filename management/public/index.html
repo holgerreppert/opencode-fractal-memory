@@ -562,6 +562,30 @@
               <option value="false">Disabled</option>
             </select>
           </div>
+          <div class="config-field">
+            <label>Re-Read Elimination</label>
+            <select id="reReadElimination-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Skip re-reading files unchanged since last read</p>
+          </div>
+          <div class="config-field">
+            <label>Re-Read Cache Size</label>
+            <input type="number" id="reReadElimination-maxCacheSize" min="10" max="500">
+          </div>
+          <div class="config-field">
+            <label>Output Offloading</label>
+            <select id="outputOffloading-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Offload large compressed output to scratch files</p>
+          </div>
+          <div class="config-field">
+            <label>Offload Threshold (chars)</label>
+            <input type="number" id="outputOffloading-thresholdChars" min="1000" max="100000" step="500">
+          </div>
         </div>
       </div>
 

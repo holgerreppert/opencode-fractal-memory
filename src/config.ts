@@ -84,6 +84,14 @@ export interface MemConfig {
   sessionLog?: {
     enabled: boolean;
   };
+  reReadElimination?: {
+    enabled: boolean;
+    maxCacheSize: number;
+  };
+  outputOffloading?: {
+    enabled: boolean;
+    thresholdChars: number;
+  };
 }
 
 const AutoRetrieveSchema = z.object({
@@ -170,6 +178,16 @@ const SessionLogSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+const ReReadEliminationSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxCacheSize: z.number().positive().int().default(100),
+});
+
+const OutputOffloadingSchema = z.object({
+  enabled: z.boolean().default(true),
+  thresholdChars: z.number().positive().int().default(8000),
+});
+
 const DEFAULT_CONFIG: MemConfig = {
   maxInjectionTokens: 8000,
   coreInjectionTokens: 2000,
@@ -236,6 +254,14 @@ const DEFAULT_CONFIG: MemConfig = {
   sessionLog: {
     enabled: false,
   },
+  reReadElimination: {
+    enabled: true,
+    maxCacheSize: 100,
+  },
+  outputOffloading: {
+    enabled: true,
+    thresholdChars: 8000,
+  },
   commandCompression: {
     enabled: true,
     maxLines: 50,
@@ -272,6 +298,8 @@ const MemConfigSchema = z.object({
   journal: JournalSchema.optional(),
   management: ManagementSchema.optional(),
   sessionLog: SessionLogSchema.optional(),
+  reReadElimination: ReReadEliminationSchema.optional(),
+  outputOffloading: OutputOffloadingSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),
   fileSkeletonization: FileSkeletonizationSchema.optional(),
 }).default(DEFAULT_CONFIG);

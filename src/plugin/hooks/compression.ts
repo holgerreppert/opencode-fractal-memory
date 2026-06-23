@@ -1,3 +1,7 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../config";
 import { writeCompressLog } from "../../logging";
@@ -5,8 +9,42 @@ import { compressCommandOutput, addContentDedup, type CompressConfig } from "../
 import type { HookHandler } from "./types";
 
 const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
+const SCRATCH_DIR = path.join(os.homedir(), ".config", "opencode", "scratch");
+
+function ensureScratchDir(): void {
+  try { fs.mkdirSync(SCRATCH_DIR, { recursive: true }); } catch { /* best-effort */ }
+}
+
+function offloadOutput(output: string): string | null {
+  ensureScratchDir();
+  const hash = createHash("sha256").update(output).digest("hex").slice(0, 16);
+  const outPath = path.join(SCRATCH_DIR, `${hash}.out`);
+  try {
+    if (!fs.existsSync(outPath)) {
+      fs.writeFileSync(outPath, output, "utf-8");
+    }
+    const lines = output.split("\n").length;
+    return `[Output offloaded: ${output.length} chars, ${lines} lines — use \`cat ${outPath}\` to see full]\n`;
+  } catch {
+    return null;
+  }
+}
+
+function purgeOldScratch(): void {
+  try {
+    const cutoff = Date.now() - 86400000;
+    for (const f of fs.readdirSync(SCRATCH_DIR)) {
+      const fp = path.join(SCRATCH_DIR, f);
+      const stat = fs.statSync(fp);
+      if (stat.mtimeMs < cutoff) {
+        fs.unlinkSync(fp);
+      }
+    }
+  } catch { /* best-effort */ }
+}
 
 export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
+  purgeOldScratch();
   return {
     "tool.after": async (_input: unknown, output: unknown) => {
       const input = _input as { tool?: string; args?: { command?: string }; sessionID?: string };
@@ -27,10 +65,24 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
 
         if (deduped) {
           const strategyLabel = deduped.dedup ? "dedup" : (compressed?.strategy ?? "generic");
-          const banner = deduped.dedup
+          let banner = deduped.dedup
             ? `[Dedup — ${raw.length}→${deduped.output.length} chars (same output seen before)]\n`
             : `[Compressed via ${strategyLabel} — ${raw.length}→${deduped.output.length} chars]\n`;
-          out.output = banner + deduped.output;
+          let finalOutput = deduped.output;
+
+          const offloadConfig = config.outputOffloading;
+          if (offloadConfig?.enabled && !deduped.dedup) {
+            const threshold = offloadConfig.thresholdChars ?? 8000;
+            if (finalOutput.length > threshold) {
+              const refBanner = offloadOutput(finalOutput);
+              if (refBanner) {
+                banner = `[Compressed via ${strategyLabel} — ${raw.length}→${finalOutput.length} chars, offloaded]\n`;
+                finalOutput = refBanner;
+              }
+            }
+          }
+
+          out.output = banner + finalOutput;
           out.metadata = {
             ...((out.metadata as Record<string, unknown>) ?? {}),
             compressed: true,

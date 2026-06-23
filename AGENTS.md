@@ -27,6 +27,32 @@ Built-in, zero-dependency compression in `tool.execute.after` for bash commands.
 
 Stats recorded to `compression_stats` table. View at management app → Compress tab.
 
+### Output Offloading (`outputOffloading`)
+
+When compressed output still exceeds 8K chars (configurable), the full compressed content is written to `~/.config/opencode/scratch/<hash>.out` and replaced with a reference banner. Old scratch files are purged after 24h. Config:
+
+```json
+{
+  "outputOffloading": {
+    "enabled": true,
+    "thresholdChars": 8000
+  }
+}
+```
+
+## Re-Read Elimination (`reReadElimination`)
+
+In `tool.execute.before` for `read` commands. When a file was previously read and its mtime hasn't changed, the cached content is served with `[File unchanged since turn N]` banner, eliminating redundant disk reads and token usage. Config:
+
+```json
+{
+  "reReadElimination": {
+    "enabled": true,
+    "maxCacheSize": 100
+  }
+}
+```
+
 ## Development Install (critical — cache or it won't work)
 
 OpenCode loads from plugin cache, NOT from node_modules. Both steps required:
