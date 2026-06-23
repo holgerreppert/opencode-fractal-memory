@@ -52,7 +52,7 @@ export function createSkeletonizationHandler(config: MemConfig): HookHandler {
         const strategy = skeleton.startsWith("# Skeleton (regex)") ? "regex" : "ast+regex";
         const skeletonLines = skeleton.split("\n").length;
         const reductionPct = Math.round((1 - skeleton.length / raw.length) * 100);
-        const banner = `[Skeletonized via ${strategy} — original: ${lines} lines, now: ${skeletonLines} lines. Full content via offset read.]\n`;
+        const banner = `[Skeletonized via ${strategy} — ${lines}→${skeletonLines} lines. Full content via offset read.]\n`;
         out.output = banner + skeleton;
         out.metadata = {
           ...((out.metadata as Record<string, unknown>) ?? {}),

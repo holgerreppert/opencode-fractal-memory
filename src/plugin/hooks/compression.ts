@@ -25,7 +25,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
           const originalLines = raw.split("\n").length;
           const compressedLines = compressed.output.split("\n").length;
           const reductionPct = raw.length > 0 ? Math.round((1 - compressed.output.length / raw.length) * 100) : 0;
-          const banner = `[Compressed via ${compressed.strategy} — original: ${raw.length} chars (${originalLines} lines), now: ${compressed.output.length} chars (${compressedLines} lines)]\n`;
+          const banner = `[Compressed via ${compressed.strategy} — ${raw.length}→${compressed.output.length} chars]\n`;
           out.output = banner + compressed.output;
           out.metadata = {
             ...((out.metadata as Record<string, unknown>) ?? {}),

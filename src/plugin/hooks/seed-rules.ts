@@ -51,10 +51,9 @@ export function createSeedRulesHandler(
         }
 
         for (const [label, cached] of ruleCache) {
-          if (cached.type === "mandatory" || cached.type === "standard") {
+          const allowed = ["mandatory", "standard", "suggestion", "info"];
+          if (allowed.includes(cached.type)) {
             reminders.push(`<system_reminder type="${cached.type}">\n${cached.content}\n</system_reminder>`);
-          } else if (cached.type === "info") {
-            reminders.push(`<!-- ${label}: ${cached.content.replace(/\n/g, " ").slice(0, 300)} -->`);
           }
         }
 
@@ -73,10 +72,12 @@ export function createSeedRulesHandler(
       sessionInjectionLock.delete(sessionId);
 
       if (config?.sessionLog?.enabled) {
-        const mandatory = [...ruleCache.values()].filter(r => r.type === "mandatory").length;
-        const standard = [...ruleCache.values()].filter(r => r.type === "standard").length;
-        const info = [...ruleCache.values()].filter(r => r.type === "info").length;
-        appendSessionLog(`[${new Date().toISOString()}] SYSTEM TRANSFORM | id=${sessionId} | rules=${ruleCache.size} | mandatory=${mandatory} standard=${standard} info=${info}`);
+        const counts: Record<string, number> = {};
+        for (const cached of ruleCache.values()) {
+          counts[cached.type] = (counts[cached.type] ?? 0) + 1;
+        }
+        const parts = Object.entries(counts).map(([t, c]) => `${t}=${c}`).join(" ");
+        appendSessionLog(`[${new Date().toISOString()}] SYSTEM TRANSFORM | id=${sessionId} | rules=${ruleCache.size} | ${parts}`);
       }
     },
   };

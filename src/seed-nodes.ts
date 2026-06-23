@@ -1366,41 +1366,29 @@ As of npm v12 (July 2026), \`--ignore-scripts\` is the default — \`postinstall
     label: "rule:feature:command-compression",
     tag: "rule:feature",
     type: "rule",
-    summary: "Injected as info reminder. Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first output line shows the strategy and savings.",
-    content: `## Command Compression Feature
-tag: rule:feature
-
-Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first line shows the compression strategy and savings. Original output is preserved on non-zero exit. View stats at management app → Compress tab.`,
+    summary: "Bash tool output may be compressed. First line shows [Compressed via <strategy>]. Full output on non-zero exit. Use ! to bypass.",
+    content: `Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first line shows [Compressed via <strategy> — original: N chars, now: M chars]. Full output is preserved on non-zero exit (tee mode). View stats at management app → Compress tab.`,
   },
   {
     label: "rule:feature:file-skeletonization",
     tag: "rule:feature",
     type: "rule",
-    summary: "Injected as info reminder. Large file reads (>200 lines) may return a skeleton: imports + function/class signatures with line numbers. First line shows the strategy and reduction.",
-    content: `## File Skeletonization Feature
-tag: rule:feature
-
-Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows the strategy (ast+regex or regex) and reduction. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
+    summary: "Large file reads may return skeleton (imports + signatures with line numbers). Use Read with offset for full content.",
+    content: `Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows [Skeletonized via <strategy> — original: N lines, now: M lines]. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
   },
   {
     label: "rule:feature:file-summarization",
     tag: "rule:feature",
     type: "rule",
-    summary: "Injected as info reminder. File content summaries are stored as memory nodes (label: file:*). Generated on first read, updated when file changes.",
-    content: `## File Summarization Feature
-tag: rule:feature
-
-File content summaries are stored as memory nodes with label prefix 'file:'. Generated on first read, updated when the file changes. Use memory_search with 'file:<filename>' to find them.`,
+    summary: "File summaries stored as memory nodes with label prefix 'file:' on first read. Use memory_search('file:<filename>') to find them.",
+    content: `File content summaries are stored as memory nodes with label prefix 'file:'. Generated on first read, updated when the file changes. Use memory_search with 'file:<filename>' to find them.`,
   },
   {
     label: "rule:feature:auto-retrieve",
     tag: "rule:feature",
     type: "rule",
-    summary: "Injected as info reminder. Memory search results are reranked by an LLM or fallback scorer based on your current reasoning context. Higher relevance = better match.",
-    content: `## Auto-Retrieve Feature
-tag: rule:feature
-
-Memory search results may be reordered by an LLM judge or fallback scorer based on your current reasoning context. Results show a '## Reranked Memory Results' header with relevance percentages per node. Higher relevance = better match for your current task.`,
+    summary: "Memory search results may be reranked by LLM or fallback scorer. Higher relevance = better match for current task.",
+    content: `Memory search results may be reranked by an LLM judge or fallback scorer based on your current reasoning context. Results show a '## Reranked Memory Results' header with relevance percentages. Higher relevance = better match for your current task.`,
   },
 ];
 
