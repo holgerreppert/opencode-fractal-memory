@@ -725,15 +725,13 @@ MIT
 ## Changelog
 
 ### v0.6.33 (current)
-- **Command compression** — zero-dependency compression of bash tool output (7 strategies + generic fallback). Stats tracked in `compression_stats` table. Config via `commandCompression` section.
-- **File skeletonization** — inline AST skeleton extraction for large file reads via tree-sitter WASM (32 languages) + regex fallback. Config via `fileSkeletonization` section.
-- **Auto-retrieve refactored to agent-pull** — removed LLM keyword generation, embedding search, and auto-injection. `messages.transform` reranks agent's `memory_search` results via Ollama judge or fallback scoring.
-- **Fallback scoring** (`scoring.ts`) — pure-JS metadata + keyword overlap when Ollama is disabled. `parseCandidates()` returns full metadata for scoring.
-- **Dedicated log files** — `filesum.log` (file summarization/skeletonization events) and `compress.log` (compression stats), auto-rotated at 2 MB via `writeFileSumLog()` and `writeCompressLog()`.
-- **Management UI improvements** — settings panel regrouped into 5 collapsible categories (clickable headers), resizable sidebar (180-600px, persisted), fileSkeletonization config fields added, favicon 404 fix.
-- **Bug fixes:** compression never fired (placed after `!fileSummarization?.enabled` early return — moved before it); app.js SyntaxError (`(s: string)` was TypeScript in JS file); favicon 500 (`serveFile()` now checks `fs.existsSync`).
-- **Code cleanup** — deleted dead files (`content.ts`, `detection.ts`, `formatting.ts`). knip + madge analysis: 4 dead files confirmed, zero circular deps across 120 files.
-- **New dependency:** `@kreuzberg/tree-sitter-language-pack-wasm` (32 WASM grammars).
+- **Re-read elimination** — caches file reads by path with mtime comparison. When a file is unchanged, serves `[File unchanged since turn N]` banner with cached content. Config via `reReadElimination` section.
+- **Output offloading** — when compressed output exceeds configurable threshold (default 8K chars), writes full content to `~/.config/opencode/scratch/<hash>.out` and replaces with reference banner. 24h scratch file purge. Config via `outputOffloading` section.
+- **Structural shape detection** — auto-classifies output shape (JSON/CSV/stack-trace/tree/table) before generic fallback, applies tailored compressors (e.g., JSON → `Object(N keys)`, stack-trace → error + unique frames). Only applied when ≥20% smaller than raw output.
+- **Fuzzy dedup** — trigram Jaccard similarity (default threshold 0.85) catches near-duplicate outputs after exact SHA-256 misses. Config via `commandCompression.fuzzyDedup*` fields.
+- **Adaptive pressure** — tracks estimated context token usage, tightens `maxLines` (50→35→20→5) at 70/85/95% thresholds with warning banners. Config via `adaptivePressure` section.
+- **Dedicated logging** — all compression events (shape detection, fuzzy dedup, offloading, adaptive pressure) log to `compress.log` via `writeCompressLog()`. Re-read elimination logs to `filesum.log` (RE-READ component).
+- **Management UI** — config fields for re-read elimination, output offloading, fuzzy dedup, shape detection, and adaptive pressure in the AI & Compression panel.
 
 ### v0.6.32 (2026-06-19)
 - **Cross-encoder reranker** — in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) replaces the unavailable Ollama `/api/rerank` endpoint. Configurable via `ollama.strategy: "cross-encoder"` (vs `"llm"` default). Management app UI dropdown to switch strategies. Model auto-downloads with `ensureModels()`.

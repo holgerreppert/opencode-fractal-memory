@@ -118,7 +118,7 @@ OpenCode loads from plugin cache, NOT from node_modules. Both steps required:
 bun run build         # compile TS
 npm pack              # create .tgz
 cd ~/.config/opencode
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.32.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.33.tgz
 cp -r node_modules/opencode-fractal-memory/dist \
   node_modules/opencode-fractal-memory/management \
   node_modules/opencode-fractal-memory/package.json \

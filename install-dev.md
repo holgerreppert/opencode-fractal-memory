@@ -33,7 +33,7 @@ npm pack
 # Install into OpenCode
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.32.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.33.tgz
 
 # Also copy to OpenCode's plugin cache (required — npm install doesn't populate this)
 cp -r node_modules/opencode-fractal-memory/dist \
@@ -60,7 +60,7 @@ npm pack
 # 2. Reinstall in OpenCode
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.32.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.33.tgz
 
 # 3. Copy to plugin cache (npm install does NOT populate this automatically)
 cp -r node_modules/opencode-fractal-memory/dist \
