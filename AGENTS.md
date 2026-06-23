@@ -27,6 +27,63 @@ Built-in, zero-dependency compression in `tool.execute.after` for bash commands.
 
 Stats recorded to `compression_stats` table. View at management app → Compress tab.
 
+All compression events (including shape detection, fuzzy dedup, offloading, and adaptive pressure) log to `~/.config/opencode/logs/compress.log` via `writeCompressLog()`.
+
+### Structural Shape Detection
+
+Before falling through to generic truncation, the output is classified by its structural shape:
+
+| Shape | Strategy | Compressor |
+|---|---|---|
+| JSON | `shape-json` | `Object(N keys)` / `Array(N)` summary |
+| CSV/TSV | `shape-csv` | Row/column count + header + first 3 rows |
+| Stack trace | `shape-stack` | Error lines + unique frame count + first 15 frames |
+| Tree | `shape-tree` | Depth + dir/file counts |
+| Table | `shape-table` | Row count + first 5 rows |
+
+Only applied when the shaped output is ≥20% smaller than the raw output. Falls through to generic otherwise. Logged as `shape-json`, `shape-csv`, etc.
+
+### Fuzzy Dedup (`commandCompression.fuzzyDedup*`)
+
+After exact SHA-256 dedup fails, computes trigram Jaccard similarity against the most recent N cached outputs (default 50). If similarity ≥ threshold (default 0.85), serves `§fuzzy:<hash>§` ref instead of the near-duplicate output. Config:
+
+```json
+{
+  "commandCompression": {
+    "fuzzyDedupEnabled": true,
+    "fuzzyDedupThreshold": 0.85,
+    "fuzzyDedupMax": 50
+  }
+}
+```
+
+Logged as `fuzzy-dedup` with similarity percentage.
+
+### Adaptive Pressure (`adaptivePressure`)
+
+Tracks estimated context token usage across the session. At configurable thresholds, issues warnings to the agent and tightens compression:
+
+| Phase | Threshold | maxLines | Behavior |
+|---|---|---|---|
+| Normal | <70% | 50 | Standard compression |
+| Warn | ≥70% | 35 | Injects `[Context at ~70% — compression may become aggressive]` |
+| Aggressive | ≥85% | 20 | Injects warning, skips generic on low-ROI commands |
+| Critical | ≥95% | 5 | Injects `[Context critically full — consider compacting]` |
+
+Config:
+```json
+{
+  "adaptivePressure": {
+    "enabled": false,
+    "warnThreshold": 0.7,
+    "aggressiveThreshold": 0.85,
+    "criticalThreshold": 0.95
+  }
+}
+```
+
+Phase transitions logged to compress.log as `pressure-warn`, `pressure-aggressive`, `pressure-critical`.
+
 ### Output Offloading (`outputOffloading`)
 
 When compressed output still exceeds 8K chars (configurable), the full compressed content is written to `~/.config/opencode/scratch/<hash>.out` and replaced with a reference banner. Old scratch files are purged after 24h. Config:
@@ -42,7 +99,7 @@ When compressed output still exceeds 8K chars (configurable), the full compresse
 
 ## Re-Read Elimination (`reReadElimination`)
 
-In `tool.execute.before` for `read` commands. When a file was previously read and its mtime hasn't changed, the cached content is served with `[File unchanged since turn N]` banner, eliminating redundant disk reads and token usage. Config:
+In `tool.execute.before` for `read` commands. When a file was previously read and its mtime hasn't changed, the cached content is served with `[File unchanged since turn N]` banner, eliminating redundant disk reads and token usage. Logged to filesum.log with component `RE-READ`. Config:
 
 ```json
 {

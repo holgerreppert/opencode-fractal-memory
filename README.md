@@ -43,9 +43,12 @@ if you find bugs or if you just want to suggest improvements
 - **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
 - **Consolidation** — extracts semantic facts from episodic node clusters on session idle
 - **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Stats tracked in `compression_stats` table. View via management app Compress tab
-- **Output offloading** — when compressed output exceeds threshold (default 8K chars), the full output is written to `~/.config/opencode/scratch/` and replaced with a short reference banner, saving context tokens while preserving access via `cat`
+- **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count). Falls through to generic if shape is unknown
+- **Fuzzy dedup** — after exact SHA-256 dedup fails, computes trigram Jaccard similarity against recent outputs (threshold 0.85) to catch near-duplicates (timestamps, whitespace diffs). Logged as `fuzzy-dedup` in compress.log
+- **Adaptive pressure** — tracks estimated context token usage; issues warnings and tightens `maxLines` (50→35→20→5) at configurable thresholds (70/85/95%). Logged to compress.log per phase transition
+- **Output offloading** — when compressed output exceeds threshold (default 8K chars), writes to `~/.config/opencode/scratch/<hash>.out` and replaces with a short reference banner. Logged with offload_path and offload_bytes
 - **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
-- **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely
+- **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely. Logged to filesum.log (RE-READ component)
 - **Dedicated log files** — separate `filesum.log` for file summarization/skeletonization events and `compress.log` for command compression events, auto-rotating
 - **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
