@@ -81,11 +81,47 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
           if (offloadConfig?.enabled && !deduped.dedup) {
             const threshold = offloadConfig.thresholdChars ?? 8000;
             if (finalOutput.length > threshold) {
+              const offloadPath = path.join(SCRATCH_DIR, `${createHash("sha256").update(finalOutput).digest("hex").slice(0, 16)}.out`);
               const refBanner = offloadOutput(finalOutput);
               if (refBanner) {
                 banner = `[Compressed via ${strategyLabel} — ${raw.length}→${finalOutput.length} chars, offloaded]\n`;
                 finalOutput = refBanner;
+                writeCompressLog({
+                  action: "offloaded",
+                  strategy: strategyLabel,
+                  cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+                  original_chars: raw.length,
+                  compressed_chars: finalOutput.length,
+                  original_lines: raw.split("\n").length,
+                  compressed_lines: 1,
+                  reduction_pct: Math.round((1 - finalOutput.length / raw.length) * 100),
+                  duration_ms: Math.round(durationMs),
+                  failed: failed ? 1 : 0,
+                  offload_path: offloadPath,
+                  offload_bytes: finalOutput.length,
+                });
+              } else {
+                writeCompressLog({
+                  action: "offload-failed",
+                  strategy: strategyLabel,
+                  cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+                  original_chars: raw.length,
+                  compressed_chars: finalOutput.length,
+                  duration_ms: Math.round(durationMs),
+                  failed: failed ? 1 : 0,
+                });
               }
+            } else {
+              writeCompressLog({
+                action: "offload-skipped-under-threshold",
+                strategy: strategyLabel,
+                cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+                original_chars: raw.length,
+                compressed_chars: finalOutput.length,
+                offload_threshold: threshold,
+                duration_ms: Math.round(durationMs),
+                failed: failed ? 1 : 0,
+              });
             }
           }
 

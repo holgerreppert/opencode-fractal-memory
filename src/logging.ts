@@ -105,7 +105,7 @@ export function writeCompressLog(fields: Record<string, string | number>): void 
 const FILE_SUM_LOG_FILE = path.join(LOG_DIR, "filesum.log");
 const FILE_SUM_LOG_MAX_SIZE = 2 * 1024 * 1024;
 
-export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE", fields: Record<string, string | number>): void {
+export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE" | "RE-READ", fields: Record<string, string | number>): void {
   try {
     try {
       const stat = fs.statSync(FILE_SUM_LOG_FILE);
