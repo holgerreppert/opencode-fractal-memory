@@ -1883,6 +1883,14 @@ async function loadSettings() {
     document.getElementById('commandCompression-maxLines').value = config.commandCompression?.maxLines ?? 50;
     document.getElementById('commandCompression-excludeCommands').value = (config.commandCompression?.excludeCommands ?? []).join(', ');
     document.getElementById('commandCompression-alwaysFullOnFailure').value = String(config.commandCompression?.alwaysFullOnFailure ?? true);
+    document.getElementById('commandCompression-fuzzyDedupEnabled').value = String(config.commandCompression?.fuzzyDedupEnabled ?? true);
+    document.getElementById('commandCompression-fuzzyDedupThreshold').value = config.commandCompression?.fuzzyDedupThreshold ?? 0.85;
+    document.getElementById('commandCompression-fuzzyDedupMax').value = config.commandCompression?.fuzzyDedupMax ?? 50;
+    document.getElementById('commandCompression-structuralShapeDetection').value = String(config.commandCompression?.structuralShapeDetection ?? true);
+    document.getElementById('adaptivePressure-enabled').value = String(config.adaptivePressure?.enabled ?? false);
+    document.getElementById('adaptivePressure-warnThreshold').value = config.adaptivePressure?.warnThreshold ?? 0.7;
+    document.getElementById('adaptivePressure-aggressiveThreshold').value = config.adaptivePressure?.aggressiveThreshold ?? 0.85;
+    document.getElementById('adaptivePressure-criticalThreshold').value = config.adaptivePressure?.criticalThreshold ?? 0.95;
     document.getElementById('autoDistill-enabled').value = String(config.autoDistill?.enabled ?? false);
     document.getElementById('autoDistill-minLessons').value = config.autoDistill?.minLessons ?? 3;
     document.getElementById('autoDistill-useLlm').value = String(config.autoDistill?.useLlm ?? false);
@@ -1956,6 +1964,16 @@ async function saveSettings() {
       maxLines: parseInt(document.getElementById('commandCompression-maxLines').value) || 50,
       excludeCommands: document.getElementById('commandCompression-excludeCommands').value.split(',').map(s => s.trim()).filter(Boolean),
       alwaysFullOnFailure: document.getElementById('commandCompression-alwaysFullOnFailure').value === 'true',
+      fuzzyDedupEnabled: document.getElementById('commandCompression-fuzzyDedupEnabled').value === 'true',
+      fuzzyDedupThreshold: parseFloat(document.getElementById('commandCompression-fuzzyDedupThreshold').value) || 0.85,
+      fuzzyDedupMax: parseInt(document.getElementById('commandCompression-fuzzyDedupMax').value) || 50,
+      structuralShapeDetection: document.getElementById('commandCompression-structuralShapeDetection').value === 'true',
+    },
+    adaptivePressure: {
+      enabled: document.getElementById('adaptivePressure-enabled').value === 'true',
+      warnThreshold: parseFloat(document.getElementById('adaptivePressure-warnThreshold').value) || 0.7,
+      aggressiveThreshold: parseFloat(document.getElementById('adaptivePressure-aggressiveThreshold').value) || 0.85,
+      criticalThreshold: parseFloat(document.getElementById('adaptivePressure-criticalThreshold').value) || 0.95,
     },
     autoDistill: {
       enabled: document.getElementById('autoDistill-enabled').value === 'true',

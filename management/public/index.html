@@ -563,6 +563,50 @@
             </select>
           </div>
           <div class="config-field">
+            <label>Fuzzy Dedup</label>
+            <select id="commandCompression-fuzzyDedupEnabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Trigram Jaccard near-duplicate detection</p>
+          </div>
+          <div class="config-field">
+            <label>Fuzzy Dedup Threshold</label>
+            <input type="number" id="commandCompression-fuzzyDedupThreshold" min="0.5" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Fuzzy Dedup Max Comparisons</label>
+            <input type="number" id="commandCompression-fuzzyDedupMax" min="5" max="200">
+          </div>
+          <div class="config-field">
+            <label>Shape Detection</label>
+            <select id="commandCompression-structuralShapeDetection">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Auto-detect JSON/CSV/stack-trace/tree output</p>
+          </div>
+          <div class="config-field">
+            <label>Adaptive Pressure</label>
+            <select id="adaptivePressure-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Tighten compression as context fills up</p>
+          </div>
+          <div class="config-field">
+            <label>AP Warn Threshold</label>
+            <input type="number" id="adaptivePressure-warnThreshold" min="0.1" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>AP Aggressive Threshold</label>
+            <input type="number" id="adaptivePressure-aggressiveThreshold" min="0.1" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>AP Critical Threshold</label>
+            <input type="number" id="adaptivePressure-criticalThreshold" min="0.1" max="1" step="0.05">
+          </div>
+          <div class="config-field">
             <label>Re-Read Elimination</label>
             <select id="reReadElimination-enabled">
               <option value="true">Enabled</option>

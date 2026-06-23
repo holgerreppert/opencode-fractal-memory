@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../config";
 import { writeCompressLog } from "../../logging";
-import { compressCommandOutput, addContentDedup, type CompressConfig } from "../../hooks/compress-output";
+import { compressCommandOutput, addContentDedup, type CompressConfig, type FuzzyDedupConfig } from "../../hooks/compress-output";
 import type { HookHandler } from "./types";
 
 const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
@@ -61,10 +61,17 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       const durationMs = performance.now() - t0;
 
       try {
-        const deduped = addContentDedup(DEDUP_CACHE, cmd, raw, compressed);
+        const fuzzyConfig: FuzzyDedupConfig = {
+          enabled: compressConfig?.fuzzyDedupEnabled ?? true,
+          similarityThreshold: compressConfig?.fuzzyDedupThreshold ?? 0.85,
+          maxComparisons: compressConfig?.fuzzyDedupMax ?? 50,
+        };
+        const deduped = addContentDedup(DEDUP_CACHE, cmd, raw, compressed, fuzzyConfig);
 
         if (deduped) {
-          const strategyLabel = deduped.dedup ? "dedup" : (compressed?.strategy ?? "generic");
+          const strategyLabel = deduped.dedup
+            ? (compressed === null ? "fuzzy-dedup" : "dedup")
+            : (compressed?.strategy ?? "generic");
           let banner = deduped.dedup
             ? `[Dedup — ${raw.length}→${deduped.output.length} chars (same output seen before)]\n`
             : `[Compressed via ${strategyLabel} — ${raw.length}→${deduped.output.length} chars]\n`;

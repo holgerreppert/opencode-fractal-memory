@@ -17,11 +17,21 @@ export interface MemConfig {
   autoFileSummarization?: {
     enabled: boolean;
   };
+  adaptivePressure?: {
+    enabled: boolean;
+    warnThreshold: number;
+    aggressiveThreshold: number;
+    criticalThreshold: number;
+  };
   commandCompression?: {
     enabled: boolean;
     maxLines: number;
     excludeCommands: string[];
     alwaysFullOnFailure: boolean;
+    fuzzyDedupEnabled: boolean;
+    fuzzyDedupThreshold: number;
+    fuzzyDedupMax: number;
+    structuralShapeDetection: boolean;
   };
   fileSkeletonization?: {
     enabled: boolean;
@@ -166,6 +176,10 @@ const CommandCompressionSchema = z.object({
   maxLines: z.number().positive().int().default(50),
   excludeCommands: z.array(z.string()).default([]),
   alwaysFullOnFailure: z.boolean().default(true),
+  fuzzyDedupEnabled: z.boolean().default(true),
+  fuzzyDedupThreshold: z.number().min(0).max(1).default(0.85),
+  fuzzyDedupMax: z.number().positive().int().default(50),
+  structuralShapeDetection: z.boolean().default(true),
 });
 
 const FileSkeletonizationSchema = z.object({
@@ -176,6 +190,13 @@ const FileSkeletonizationSchema = z.object({
 
 const SessionLogSchema = z.object({
   enabled: z.boolean().default(false),
+});
+
+const AdaptivePressureSchema = z.object({
+  enabled: z.boolean().default(false),
+  warnThreshold: z.number().min(0).max(1).default(0.7),
+  aggressiveThreshold: z.number().min(0).max(1).default(0.85),
+  criticalThreshold: z.number().min(0).max(1).default(0.95),
 });
 
 const ReReadEliminationSchema = z.object({
@@ -254,6 +275,12 @@ const DEFAULT_CONFIG: MemConfig = {
   sessionLog: {
     enabled: false,
   },
+  adaptivePressure: {
+    enabled: false,
+    warnThreshold: 0.7,
+    aggressiveThreshold: 0.85,
+    criticalThreshold: 0.95,
+  },
   reReadElimination: {
     enabled: true,
     maxCacheSize: 100,
@@ -267,6 +294,10 @@ const DEFAULT_CONFIG: MemConfig = {
     maxLines: 50,
     excludeCommands: ["curl", "wget"],
     alwaysFullOnFailure: true,
+    fuzzyDedupEnabled: true,
+    fuzzyDedupThreshold: 0.85,
+    fuzzyDedupMax: 50,
+    structuralShapeDetection: true,
   },
   fileSkeletonization: {
     enabled: true,
@@ -298,6 +329,7 @@ const MemConfigSchema = z.object({
   journal: JournalSchema.optional(),
   management: ManagementSchema.optional(),
   sessionLog: SessionLogSchema.optional(),
+  adaptivePressure: AdaptivePressureSchema.optional(),
   reReadElimination: ReReadEliminationSchema.optional(),
   outputOffloading: OutputOffloadingSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),

@@ -7,6 +7,7 @@ import { createCompressionHandler } from "./hooks/compression";
 import { createSkeletonizationHandler } from "./hooks/skeletonization";
 import { createFileSummaryHandler } from "./hooks/file-summary";
 import { createReReadEliminationHandler } from "./hooks/re-read-elimination";
+import { createAdaptivePressureHandler } from "./hooks/adaptive-pressure";
 import { createSeedRulesHandler } from "./hooks/seed-rules";
 import { createCompactionHandler } from "./hooks/compaction";
 import { createEventHandler } from "./hooks/events";
@@ -29,6 +30,7 @@ export function createHookHandlers(
     createSkeletonizationHandler(memConfig),
     createFileSummaryHandler(store, memConfig),
     createReReadEliminationHandler(memConfig),
+    createAdaptivePressureHandler(memConfig),
     createSeedRulesHandler(store, memConfig, ruleCache, ruleCacheDirty, sessionInjectionLock),
     createCompactionHandler(store, memConfig, client),
     createEventHandler(store, memConfig, client, managementServer),
