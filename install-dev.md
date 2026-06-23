@@ -33,7 +33,7 @@ npm pack
 # Install into OpenCode
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.31.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.32.tgz
 
 # Also copy to OpenCode's plugin cache (required — npm install doesn't populate this)
 cp -r node_modules/opencode-fractal-memory/dist \
@@ -60,7 +60,7 @@ npm pack
 # 2. Reinstall in OpenCode
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.31.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.32.tgz
 
 # 3. Copy to plugin cache (npm install does NOT populate this automatically)
 cp -r node_modules/opencode-fractal-memory/dist \
@@ -113,5 +113,8 @@ npm install --ignore-scripts opencode-fractal-memory
 - Main log: `~/.local/share/opencode/log/`
 - Plugin log: `~/.config/opencode/logs/memory-plugin.log`
 - MCP server log: `~/.config/opencode/logs/mcp-server.log`
+- File summarization log: `~/.config/opencode/logs/filesum.log`
+- Command compression log: `~/.config/opencode/logs/compress.log`
+- Session log: `~/.config/opencode/logs/sessionlog.log`
 - Database: `~/.config/opencode/memory.db` (unified — global + project nodes)
 - Models cache: `~/.config/opencode/models/Xenova/all-MiniLM-L6-v2/`

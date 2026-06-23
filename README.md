@@ -34,18 +34,21 @@ if you find bugs or if you just want to suggest improvements
 - **Multi-hop temporal expansion** — temporally adjacent nodes (NEXT / DURING_SESSION edges) expanded up to 3 hops with 0.7^depth score decay, configurable via `temporal_hops` arg
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
 - **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels + LLM-powered summaries)
-- **Auto-retrieve** — context-aware injection of relevant memories, skills, and playbooks into the prompt with dedup, rate limiting, and cross-project isolation
-- **Ollama / cross-encoder reranking** — dual-strategy reranking: LLM judge (via Ollama) or in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) for better relevance, configurable via management app or config
+- **Auto-retrieve (agent-pull model)** — reranks agent's `memory_search` results via Ollama LLM judge, in-process ONNX cross-encoder, or pure-JS fallback scoring (keyword overlap + metadata). No auto-injection — the agent pulls what it needs
+- **Ollama / cross-encoder reranking** — dual-strategy reranking: LLM judge (via Ollama) or in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) for better relevance, plus a zero-dep fallback scorer when neither is available
 - **Rerank intent system** — agents can signal what type of information to prioritize (facts, concepts, rules, etc.) via `pref:rerank-intent` preference node; scoring boosts matching node types
 - **LLM compression** — uses LLM to generate richer summaries instead of regex extraction
 - **Auto-distill** — automatically extracts actionable rules from lesson nodes into `### Auto-Learned` section
 - **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
 - **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
 - **Consolidation** — extracts semantic facts from episodic node clusters on session idle
+- **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Stats tracked in `compression_stats` table. View via management app Compress tab
+- **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
+- **Dedicated log files** — separate `filesum.log` for file summarization/skeletonization events and `compress.log` for command compression events, auto-rotating
 - **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
 - **Playbooks** — reusable workflow templates (sticky memory nodes) proposed by the agent
-- **Management server** — local web UI (port 8787) for browsing, searching, editing, backup/restore, and 3D visualization with temporal edge rendering
+- **Management server** — local web UI (port 8787) for browsing, searching, editing, backup/restore, and 3D visualization with temporal edge rendering. Settings panel organized into 5 collapsible categories, resizable sidebar with persisted width
 - **Multi-graph retrieval** — temporal edges (NEXT, DURING_SESSION, CAUSAL, REFERENCES, RELATED_TO) expanded during search with confidence-weighted hop decay
 - **Auto-edge creation** — `memory_set` auto-creates NEXT edges (session chaining) and REFERENCES edges (from `label:xxx` patterns) during active sessions
 - **Synthetic evaluation** — 79-node/175-QA benchmark dataset for reproducible retrieval quality metrics (HitRate, Recall, Precision, MRR)
@@ -177,7 +180,21 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
   "highContextThreshold": 0.6,
   "criticalContextThreshold": 0.8,
   "defaultTtlDays": 0,
-  "enableMiddleTermCapture": true
+  "enableMiddleTermCapture": true,
+  "fileSkeletonization": {
+    "enabled": true,
+    "minLines": 200,
+    "strategy": "ast+regex"
+  },
+  "commandCompression": {
+    "enabled": true,
+    "maxLines": 50,
+    "excludeCommands": ["curl", "wget"],
+    "alwaysFullOnFailure": true
+  },
+  "sessionLog": {
+    "enabled": false
+  }
 }
 ```
 
@@ -228,6 +245,14 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `management.port` | int | `8787` | Port for the management server |
 | `journal.enabled` | bool | `false` | Enable append-only searchable journal entries |
 | `autoFileSummarization.enabled` | bool | `false` | Auto-summarize files on read |
+| `fileSkeletonization.enabled` | bool | `true` | Inline AST skeleton for large file reads |
+| `fileSkeletonization.minLines` | int | `200` | Min file lines to trigger skeletonization |
+| `fileSkeletonization.strategy` | enum | `"ast+regex"` | `"ast+regex"` (tree-sitter + regex fallback) or `"regex"` only |
+| `commandCompression.enabled` | bool | `true` | Compress bash tool output |
+| `commandCompression.maxLines` | int | `50` | Max lines for generic truncation |
+| `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
+| `commandCompression.alwaysFullOnFailure` | bool | `true` | Preserve full output on non-zero exit |
+| `sessionLog.enabled` | bool | `false` | Log session events to separate file |
 
 ## Advanced Features
 
@@ -350,6 +375,57 @@ Automatically adjusts node usefulness scores over time. Frequently accessed node
   }
 }
 ```
+
+### Command Compression
+
+Built-in, zero-dependency compression for bash tool output. 7 strategies automatically detect the command type:
+
+| Strategy | Matches | Output |
+|---|---|---|
+| `ls` | `ls`, `tree` | Tree with dir/file counts |
+| `test` | `npm test`, `bun test`, `pytest`, etc. | Pass/fail summary + failure details |
+| `grep` | `grep`, `rg` | Grouped by file with match counts |
+| `git-status` | `git status` | Branch + staged/unstaged counts |
+| `git-log` | `git log` | One-line per commit |
+| `git-diff` | `git diff` | N files changed, +M -L |
+| `git-quick` | `git push/pull/commit/add` | First 3 lines only |
+| `truncate` | `cat`, `head`, `build`, `docker`, `find`, `tail` | Dedup + maxLines (default 50) |
+| `generic` | (fallback) | Dedup + truncate at maxLines |
+
+Stats tracked in the `compression_stats` table. View at management app → **Compress** tab. Full output preserved on non-zero exit (tee mode).
+
+```json
+{
+  "commandCompression": {
+    "enabled": true,
+    "maxLines": 50,
+    "excludeCommands": ["curl", "wget"],
+    "alwaysFullOnFailure": true
+  }
+}
+```
+
+Configure via `~/.config/opencode/opencode-mem.json` or the management app Settings → AI & Compression.
+
+### File Skeletonization
+
+When reading large source files (>200 lines), the plugin can inline a skeleton: imports, function/class/interface/trait/enum signatures with line numbers, and nested members. This replaces verbose full-file content with just the structure.
+
+Uses **tree-sitter WASM** (`@kreuzberg/tree-sitter-language-pack-wasm`, 32 languages) for deterministic AST extraction — no AI, no external binary. Falls back to regex for unsupported languages.
+
+Offset/limit reads always pass through untouched. Skeleton is only applied when it reduces file size by at least 50%.
+
+```json
+{
+  "fileSkeletonization": {
+    "enabled": true,
+    "minLines": 200,
+    "strategy": "ast+regex"
+  }
+}
+```
+
+Configure via `~/.config/opencode/opencode-mem.json` or the management app Settings → Memory & Storage.
 
 ## Commands
 
@@ -562,6 +638,9 @@ All plugin logs are consolidated under `~/.config/opencode/logs/`:
 | MCP server | `logs/mcp-server.log` | MCP tool calls, resources, errors |
 | Injection debug | `logs/memory-injection.log` | Full auto-retrieve injection payloads (rotated at 1 MB) |
 | Context dump | `logs/context-dump.log` | Full context snapshots for debugging |
+| File summarization | `logs/filesum.log` | Auto-file-summarization cache hit/miss/stale and skeletonization apply/skip/error (auto-rotated at 2 MB) |
+| Command compression | `logs/compress.log` | Compression events per command: strategy, original/compressed sizes, reduction pct, duration (auto-rotated at 2 MB) |
+| Session log | `logs/sessionlog.log` | Session lifecycle events (enabled via `sessionLog.enabled`) |
 | OpenCode | `~/.local/share/opencode/log/` | Application lifecycle, tool calls |
 
 ## Development
@@ -639,6 +718,17 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
+
+### v0.6.33 (current)
+- **Command compression** — zero-dependency compression of bash tool output (7 strategies + generic fallback). Stats tracked in `compression_stats` table. Config via `commandCompression` section.
+- **File skeletonization** — inline AST skeleton extraction for large file reads via tree-sitter WASM (32 languages) + regex fallback. Config via `fileSkeletonization` section.
+- **Auto-retrieve refactored to agent-pull** — removed LLM keyword generation, embedding search, and auto-injection. `messages.transform` reranks agent's `memory_search` results via Ollama judge or fallback scoring.
+- **Fallback scoring** (`scoring.ts`) — pure-JS metadata + keyword overlap when Ollama is disabled. `parseCandidates()` returns full metadata for scoring.
+- **Dedicated log files** — `filesum.log` (file summarization/skeletonization events) and `compress.log` (compression stats), auto-rotated at 2 MB via `writeFileSumLog()` and `writeCompressLog()`.
+- **Management UI improvements** — settings panel regrouped into 5 collapsible categories (clickable headers), resizable sidebar (180-600px, persisted), fileSkeletonization config fields added, favicon 404 fix.
+- **Bug fixes:** compression never fired (placed after `!fileSummarization?.enabled` early return — moved before it); app.js SyntaxError (`(s: string)` was TypeScript in JS file); favicon 500 (`serveFile()` now checks `fs.existsSync`).
+- **Code cleanup** — deleted dead files (`content.ts`, `detection.ts`, `formatting.ts`). knip + madge analysis: 4 dead files confirmed, zero circular deps across 120 files.
+- **New dependency:** `@kreuzberg/tree-sitter-language-pack-wasm` (32 WASM grammars).
 
 ### v0.6.32 (2026-06-19)
 - **Cross-encoder reranker** — in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) replaces the unavailable Ollama `/api/rerank` endpoint. Configurable via `ollama.strategy: "cross-encoder"` (vs `"llm"` default). Management app UI dropdown to switch strategies. Model auto-downloads with `ensureModels()`.

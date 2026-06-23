@@ -8,6 +8,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 - **Hooks**: `tool.execute.before` (file summarization), `tool.execute.after` (memory + compression), `experimental.chat.system.transform` (rule injection), `event` (lifecycle)
 - **Management app**: Served on `http://localhost:8787`, spawned as subprocess. HTML at `management/public/`, API routes at `src/management/routes.ts`
 - **Config**: `~/.config/opencode/opencode-mem.json`, validated with Zod schema (src/config.ts)
+- **Logging**: Dedicated per-feature log files at `~/.config/opencode/logs/` — `memory-plugin.log`, `filesum.log`, `compress.log`, `sessionlog.log` (see `src/logging.ts`)
 
 ## Command Output Compression (`commandCompression`)
 
@@ -19,6 +20,8 @@ Built-in, zero-dependency compression in `tool.execute.after` for bash commands.
 - `git status` → branch + staged/unstaged counts
 - `git log` → one-line per commit
 - `git diff` → N files changed, +M -L
+- `git-quick` (push/pull/commit/add) → first 3 lines only
+- `truncate` (cat, head, build, docker, find, tail) → dedup + truncate at maxLines
 - Generic fallback → dedup + truncate at maxLines (default 50)
 - Full output preserved on non-zero exit ("tee mode")
 
@@ -53,15 +56,19 @@ Then restart OpenCode.
 ## Key Files
 
 | File | Purpose |
-|---|---|
+|---|---|---|
 | `src/config.ts` | MemConfig interface + Zod schema + defaults |
 | `src/hooks/compress-output.ts` | 7 compression strategies + generic fallback |
-| `src/plugin/hooks.ts` | Hook wiring (compression, file summary, rules, lifecycle) |
+| `src/hooks/skeletonize.ts` | Tree-sitter AST skeleton extraction (32 languages) + regex fallback |
+| `src/hooks/auto-retrieve/index.ts` | Multi-reasoning reranking pipeline (agent-pull model) |
+| `src/hooks/auto-retrieve/scoring.ts` | Fallback scoring (metadata + keyword overlap, no embeddings) |
+| `src/plugin/hooks.ts` | Hook wiring (compression, skeletonization, file summary, rules, lifecycle) |
 | `src/storage/sqlite.ts` | SqliteMemoryStore class |
 | `src/management/routes.ts` | API routes (config, nodes, compression, injection quality, backup) |
 | `management/public/index.html` | Management app UI |
 | `management/public/app.js` | Management app JS (loadSettings, saveConfig, loadCompressStats) |
 | `src/storage/migrations/definitions.ts` | DB migrations (v25 = compression_stats) |
+| `src/logging.ts` | Per-feature logging (`writeMemLog`, `writeFileSumLog`, `writeCompressLog`) |
 | `install-dev.md` | Full install guide |
 
 ## Config default for commandCompression
@@ -77,12 +84,27 @@ Then restart OpenCode.
 }
 ```
 
+## Config default for fileSkeletonization
+
+```json
+{
+  "fileSkeletonization": {
+    "enabled": true,
+    "minLines": 200,
+    "strategy": "ast+regex"
+  }
+}
+```
+
 ## Rules
 
 - Always cp to BOTH node_modules AND cache when installing
 - Migration version in definitions.ts must increment; never modify existing migrations
 - Management app config fields: id=kebab-case in HTML, load/save in app.js with same pattern
 - Strategy name in compress-output.ts must be a short string (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic)
+- Skeletonize strategy name in skeletonize.ts must be one of: ast-only, regex-only, ast+regex
+- Management app config fields for fileSkeletonization follow same kebab-case pattern (file-skeletonization-enabled, file-skeletonization-min-lines, file-skeletonization-strategy)
+- When adding new log files, add write function to src/logging.ts, register in the section map, and create the file path constant
 
 ## Critical Memory Nodes
 
@@ -110,3 +132,7 @@ Use `memory_drilldown(label="<label>")` to retrieve full context for these key n
 | `file:src/management/routes.ts` | file | All API route handlers |
 | `file:management/public/app.js` | file | Management app JS (loadSettings, saveConfig, loadCompressStats) |
 | `file:management/public/index.html` | file | Management app HTML (tabs, settings panels, compress panel) |
+| `enhancements-llm-compress-auto-distill-predictive-rating` | note | Three enhancements implementation details |
+| `ollama-memory-feature` | note | Ollama-based local memory system |
+| `bug:three-bugs-2026-06-15` | fix | Three bugs fixed + their root causes |
+| `rule:mandatory:agent-pull` | rule | Agent-pull model — no auto-injection |
