@@ -45,11 +45,13 @@ if you find bugs or if you just want to suggest improvements
 - **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Stats tracked in `compression_stats` table. View via management app Compress tab
 - **Context dashboard** — new management app tab showing memory node count/tokens by level, active rules, compression stats, recent injection history, and estimated total context usage with overhead breakdown
 - **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count). Falls through to generic if shape is unknown
+- **SmartFilter** — noise-stripping preprocessor in shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines before shape classification. Logged as `shape-json`, `shape-csv`, etc. with noise counts
 - **Fuzzy dedup** — after exact SHA-256 dedup fails, computes trigram Jaccard similarity against recent outputs (threshold 0.85) to catch near-duplicates (timestamps, whitespace diffs). Logged as `fuzzy-dedup` in compress.log
 - **Adaptive pressure** — tracks estimated context token usage; issues warnings and tightens `maxLines` (50→35→20→5) at configurable thresholds (70/85/95%). Logged to compress.log per phase transition
 - **Output offloading** — when compressed output exceeds threshold (default 8K chars), writes to `~/.config/opencode/scratch/<hash>.out` and replaces with a short reference banner. Logged with offload_path and offload_bytes
 - **Output token control** — injects `<system_reminder type="suggestion">` rules into the system prompt that constrain the agent's response length (sentence limit, char limit, bullet-only, or custom prompt). Mode: adaptive (tightens at context pressure thresholds), always-on, or off. 24 configurable fields. Logged to compress.log
-- **Relevance trimming** — TF-IDF scores each output line against command query terms; drops sub-threshold lines (default 0.15). Config via `commandCompression.relevanceTrimming*` fields. Opt-in (default false)
+- **Relevance trimming** — signal-word scoring: error terms (fail, error, fatal, exception) get +5 boost, keyword density weighted by position. Drops sub-threshold lines (default 0.15). Replaces legacy TF-IDF. Config via `commandCompression.relevanceTrimming*` fields. Opt-in (default false)
+- **Relevant generic truncation** — relevance-weighted line selection instead of blind top-N truncation. Scores each line by signal-word density and keeps the highest-scoring lines up to maxLines when generic fallback fires. Falls back to blind truncation if relevance scoring fails
 - **Delta compression** — when the same command runs again and output is ≥50% similar, emits only the diff lines (prefix/suffix) instead of the full compressed output. Config via `commandCompression.deltaCompression*` fields. Logged as `delta` in compress.log
 - **Before/after compression statistics** — each compression event stores original_lines, compressed_lines, cmd_preview, and full content previews (up to 2K chars) in the DB. Management UI shows side-by-side before/after detail with expandable row modal
 - **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
@@ -263,7 +265,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
 | `commandCompression.alwaysFullOnFailure` | bool | `true` | Preserve full output on non-zero exit |
 | `sessionLog.enabled` | bool | `false` | Log session events to separate file |
-| `commandCompression.relevanceTrimmingEnabled` | bool | `false` | TF-IDF relevance trimming of command output |
+| `commandCompression.relevanceTrimmingEnabled` | bool | `false` | Signal-word relevance trimming of command output |
 | `commandCompression.relevanceTrimmingThreshold` | float | `0.15` | Min TF-IDF score to keep a line |
 | `commandCompression.relevanceTrimmingMinKeep` | int | `5` | Min lines to keep regardless |
 | `commandCompression.relevanceTrimmingAlwaysKeepTop` | int | `3` | Always keep top N lines |
@@ -766,7 +768,12 @@ MIT
 
 ## Changelog
 
-### v0.6.34 (current)
+### v0.6.35 (current)
+- **SmartFilter** — noise-stripping preprocessor for shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines. Logged with noise counts per shape event
+- **Signal-word relevance scoring** — replaces legacy TF-IDF with error-term boosted (+5 for fail/error/fatal/exception) and keyword-density-weighted per-line scoring for relevance trimming
+- **Relevant generic truncation** — relevance-weighted line selection replaces blind top-N in generic fallback. Scores lines by signal-word density, keeps highest-scoring up to maxLines
+
+### v0.6.34
 - **Relevance trimming** — TF-IDF scores each output line against command query terms; drops sub-threshold lines (threshold 0.15, minKeep 5, alwaysKeepTop 3). Config via `commandCompression.relevanceTrimming*` fields. Opt-in (default false). Logged to compress.log.
 - **Delta compression** — per-command output cache (max 50). When new output is ≥50% similar (Jaccard) to cached output, emits a diff (prefix/suffix) instead of re-compressing. Config via `commandCompression.deltaCompression*` fields. Enabled by default.
 - **Context dashboard** — new management app tab (`/api/context-dashboard`) showing memory tokens by level/type, active rules, compression savings, recent injection history, and estimated total context. Summary cards, by-level/by-type tables, injection history table.
