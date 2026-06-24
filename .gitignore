@@ -15,3 +15,5 @@ tests/dbs/locomo-seeded/memory.db-wal
 tests/dbs/locomo-seeded/memory.db
 tests/dbs/synthetic-seeded/
 global\nproject\n
+hnsw-index.json
+global\nproject
