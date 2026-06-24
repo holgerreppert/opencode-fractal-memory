@@ -11,6 +11,7 @@ import { createAdaptivePressureHandler } from "./hooks/adaptive-pressure";
 import { createSeedRulesHandler } from "./hooks/seed-rules";
 import { createCompactionHandler } from "./hooks/compaction";
 import { createEventHandler } from "./hooks/events";
+import { createOutputTokenControlHandler } from "./hooks/output-token-control";
 import type { HookHandler } from "./hooks/types";
 
 export function createHookHandlers(
@@ -34,6 +35,7 @@ export function createHookHandlers(
     createSeedRulesHandler(store, memConfig, ruleCache, ruleCacheDirty, sessionInjectionLock),
     createCompactionHandler(store, memConfig, client),
     createEventHandler(store, memConfig, client, managementServer),
+    createOutputTokenControlHandler(memConfig),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {

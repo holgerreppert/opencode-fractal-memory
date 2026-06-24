@@ -917,16 +917,19 @@ function setupEventListeners() {
       const tab = btn.dataset.tab;
       const visualizePanel = document.getElementById("visualize-panel");
       const settingsPanel = document.getElementById("settings-panel");
+      const contextPanel = document.getElementById("context-panel");
       const backupPanel = document.getElementById("backup-panel");
       const qualityPanel = document.getElementById("quality-panel");
       const compressPanel = document.getElementById("compress-panel");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
+      if (contextPanel) contextPanel.classList.toggle("active", tab === "context");
       if (backupPanel) backupPanel.classList.toggle("active", tab === "backup");
       if (qualityPanel) qualityPanel.classList.toggle("active", tab === "quality");
       if (compressPanel) compressPanel.classList.toggle("active", tab === "compress");
       if (tab === "settings") loadSettings();
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
+      if (tab === "context") loadContextDashboard();
       if (tab === "quality") loadQuality();
       if (tab === "compress") loadCompressStats();
     });
@@ -1887,6 +1890,13 @@ async function loadSettings() {
     document.getElementById('commandCompression-fuzzyDedupThreshold').value = config.commandCompression?.fuzzyDedupThreshold ?? 0.85;
     document.getElementById('commandCompression-fuzzyDedupMax').value = config.commandCompression?.fuzzyDedupMax ?? 50;
     document.getElementById('commandCompression-structuralShapeDetection').value = String(config.commandCompression?.structuralShapeDetection ?? true);
+    document.getElementById('commandCompression-relevanceTrimmingEnabled').value = String(config.commandCompression?.relevanceTrimmingEnabled ?? false);
+    document.getElementById('commandCompression-relevanceTrimmingThreshold').value = config.commandCompression?.relevanceTrimmingThreshold ?? 0.15;
+    document.getElementById('commandCompression-relevanceTrimmingMinKeep').value = config.commandCompression?.relevanceTrimmingMinKeep ?? 5;
+    document.getElementById('commandCompression-relevanceTrimmingAlwaysKeepTop').value = config.commandCompression?.relevanceTrimmingAlwaysKeepTop ?? 3;
+    document.getElementById('commandCompression-deltaCompressionEnabled').value = String(config.commandCompression?.deltaCompressionEnabled ?? true);
+    document.getElementById('commandCompression-deltaMaxCacheSize').value = config.commandCompression?.deltaMaxCacheSize ?? 50;
+    document.getElementById('commandCompression-deltaMinSimilarity').value = config.commandCompression?.deltaMinSimilarity ?? 0.5;
     document.getElementById('adaptivePressure-enabled').value = String(config.adaptivePressure?.enabled ?? false);
     document.getElementById('adaptivePressure-warnThreshold').value = config.adaptivePressure?.warnThreshold ?? 0.7;
     document.getElementById('adaptivePressure-aggressiveThreshold').value = config.adaptivePressure?.aggressiveThreshold ?? 0.85;
@@ -1915,6 +1925,29 @@ async function loadSettings() {
     document.getElementById('reReadElimination-maxCacheSize').value = config.reReadElimination?.maxCacheSize ?? 100;
     document.getElementById('outputOffloading-enabled').value = String(config.outputOffloading?.enabled ?? true);
     document.getElementById('outputOffloading-thresholdChars').value = config.outputOffloading?.thresholdChars ?? 8000;
+    const otc = config.outputTokenControl || {};
+    document.getElementById('outputTokenControl-enabled').value = String(otc.enabled ?? false);
+    document.getElementById('outputTokenControl-mode').value = otc.mode ?? 'adaptive';
+    document.getElementById('outputTokenControl-strategy').value = otc.strategy ?? 'concise';
+    document.getElementById('outputTokenControl-maxSentences').value = otc.maxSentences ?? 5;
+    document.getElementById('outputTokenControl-maxChars').value = otc.maxChars ?? 0;
+    document.getElementById('outputTokenControl-customPrompt').value = otc.customPrompt ?? '';
+    document.getElementById('outputTokenControl-warnThreshold').value = otc.warnThreshold ?? 0.7;
+    document.getElementById('outputTokenControl-aggressiveThreshold').value = otc.aggressiveThreshold ?? 0.85;
+    document.getElementById('outputTokenControl-criticalThreshold').value = otc.criticalThreshold ?? 0.95;
+    document.getElementById('outputTokenControl-normalSentences').value = otc.normalSentences ?? 5;
+    document.getElementById('outputTokenControl-warnSentences').value = otc.warnSentences ?? 3;
+    document.getElementById('outputTokenControl-aggressiveSentences').value = otc.aggressiveSentences ?? 1;
+    document.getElementById('outputTokenControl-criticalSentences').value = otc.criticalSentences ?? 1;
+    document.getElementById('outputTokenControl-normalStrategy').value = otc.normalStrategy ?? 'concise';
+    document.getElementById('outputTokenControl-warnStrategy').value = otc.warnStrategy ?? 'sentence_limit';
+    document.getElementById('outputTokenControl-aggressiveStrategy').value = otc.aggressiveStrategy ?? 'sentence_limit';
+    document.getElementById('outputTokenControl-criticalStrategy').value = otc.criticalStrategy ?? 'char_limit';
+    document.getElementById('outputTokenControl-normalPrompt').value = otc.normalPrompt ?? '';
+    document.getElementById('outputTokenControl-warnPrompt').value = otc.warnPrompt ?? '';
+    document.getElementById('outputTokenControl-aggressivePrompt').value = otc.aggressivePrompt ?? '';
+    document.getElementById('outputTokenControl-criticalPrompt').value = otc.criticalPrompt ?? '';
+    document.getElementById('outputTokenControl-excludePatterns').value = (otc.excludePatterns || []).join('\n');
   } catch (e) {
     console.error('Failed to load config:', e);
   }
@@ -1968,6 +2001,13 @@ async function saveSettings() {
       fuzzyDedupThreshold: parseFloat(document.getElementById('commandCompression-fuzzyDedupThreshold').value) || 0.85,
       fuzzyDedupMax: parseInt(document.getElementById('commandCompression-fuzzyDedupMax').value) || 50,
       structuralShapeDetection: document.getElementById('commandCompression-structuralShapeDetection').value === 'true',
+      relevanceTrimmingEnabled: document.getElementById('commandCompression-relevanceTrimmingEnabled').value === 'true',
+      relevanceTrimmingThreshold: parseFloat(document.getElementById('commandCompression-relevanceTrimmingThreshold').value) || 0.15,
+      relevanceTrimmingMinKeep: parseInt(document.getElementById('commandCompression-relevanceTrimmingMinKeep').value) || 5,
+      relevanceTrimmingAlwaysKeepTop: parseInt(document.getElementById('commandCompression-relevanceTrimmingAlwaysKeepTop').value) || 3,
+      deltaCompressionEnabled: document.getElementById('commandCompression-deltaCompressionEnabled').value === 'true',
+      deltaMaxCacheSize: parseInt(document.getElementById('commandCompression-deltaMaxCacheSize').value) || 50,
+      deltaMinSimilarity: parseFloat(document.getElementById('commandCompression-deltaMinSimilarity').value) || 0.5,
     },
     adaptivePressure: {
       enabled: document.getElementById('adaptivePressure-enabled').value === 'true',
@@ -2017,6 +2057,30 @@ async function saveSettings() {
       enabled: document.getElementById('outputOffloading-enabled').value === 'true',
       thresholdChars: parseInt(document.getElementById('outputOffloading-thresholdChars').value) || 8000,
     },
+    outputTokenControl: {
+      enabled: document.getElementById('outputTokenControl-enabled').value === 'true',
+      mode: document.getElementById('outputTokenControl-mode').value,
+      strategy: document.getElementById('outputTokenControl-strategy').value,
+      maxSentences: parseInt(document.getElementById('outputTokenControl-maxSentences').value) || 5,
+      maxChars: parseInt(document.getElementById('outputTokenControl-maxChars').value) || 0,
+      customPrompt: document.getElementById('outputTokenControl-customPrompt').value,
+      warnThreshold: parseFloat(document.getElementById('outputTokenControl-warnThreshold').value) || 0.7,
+      aggressiveThreshold: parseFloat(document.getElementById('outputTokenControl-aggressiveThreshold').value) || 0.85,
+      criticalThreshold: parseFloat(document.getElementById('outputTokenControl-criticalThreshold').value) || 0.95,
+      normalSentences: parseInt(document.getElementById('outputTokenControl-normalSentences').value) || 5,
+      warnSentences: parseInt(document.getElementById('outputTokenControl-warnSentences').value) || 3,
+      aggressiveSentences: parseInt(document.getElementById('outputTokenControl-aggressiveSentences').value) || 1,
+      criticalSentences: parseInt(document.getElementById('outputTokenControl-criticalSentences').value) || 1,
+      normalStrategy: document.getElementById('outputTokenControl-normalStrategy').value,
+      warnStrategy: document.getElementById('outputTokenControl-warnStrategy').value,
+      aggressiveStrategy: document.getElementById('outputTokenControl-aggressiveStrategy').value,
+      criticalStrategy: document.getElementById('outputTokenControl-criticalStrategy').value,
+      normalPrompt: document.getElementById('outputTokenControl-normalPrompt').value,
+      warnPrompt: document.getElementById('outputTokenControl-warnPrompt').value,
+      aggressivePrompt: document.getElementById('outputTokenControl-aggressivePrompt').value,
+      criticalPrompt: document.getElementById('outputTokenControl-criticalPrompt').value,
+      excludePatterns: document.getElementById('outputTokenControl-excludePatterns').value.split('\n').filter(Boolean),
+    },
   };
   try {
     const res = await fetch('/api/config', {
@@ -2039,6 +2103,115 @@ async function saveSettings() {
     }
   } catch (e) {
     console.error('Failed to save config:', e);
+  }
+}
+
+// ==================== Context Dashboard ====================
+
+async function loadContextDashboard() {
+  const summaryEl = document.getElementById("context-summary");
+  const breakdownEl = document.getElementById("context-breakdown");
+  const tablesEl = document.getElementById("context-tables");
+  if (!summaryEl || !breakdownEl || !tablesEl) return;
+
+  summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">Loading context data...</span></div>`;
+  breakdownEl.innerHTML = "";
+  tablesEl.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/context-dashboard");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const mem = data.memory;
+    const comp = data.compression;
+    const inj = data.injections;
+    const overhead = data.overhead;
+
+    const estimatedConversationTokens = comp.totalCalls > 0
+      ? Math.round(comp.originalChars / 4)
+      : 0;
+
+    const totalView = mem.totalTokens + overhead.systemPromptTokens + overhead.toolDefTokens + estimatedConversationTokens;
+
+    summaryEl.innerHTML = `
+      <div class="stat-row"><span class="stat-label">Memory Nodes</span><span class="stat-value">${mem.totalNodes}</span></div>
+      <div class="stat-row"><span class="stat-label">Memory Tokens</span><span class="stat-value">${mem.totalTokens.toLocaleString()}</span></div>
+      <div class="stat-row"><span class="stat-label">Active Rules</span><span class="stat-value">${mem.rules}</span></div>
+      <div class="stat-row"><span class="stat-label">Compression Calls</span><span class="stat-value">${comp.totalCalls}</span></div>
+      <div class="stat-row"><span class="stat-label">Compression Saved</span><span class="stat-value">${comp.savingsPercent}%</span></div>
+      <div class="stat-row"><span class="stat-label">Recent Injections</span><span class="stat-value">${inj.length}</span></div>
+      <div class="stat-row"><span class="stat-label">Est. Conversation Tokens</span><span class="stat-value">${estimatedConversationTokens.toLocaleString()}</span></div>
+      <div class="stat-row" style="border-top:1px solid #333;padding-top:8px;margin-top:8px;">
+        <span class="stat-label"><strong>Est. Total in Context</strong></span>
+        <span class="stat-value"><strong>${totalView.toLocaleString()} tokens</strong></span>
+      </div>
+      <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">System prompts</span><span class="stat-value" style="font-size:11px;">~${overhead.systemPromptTokens.toLocaleString()}</span></div>
+      <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">Tool definitions</span><span class="stat-value" style="font-size:11px;">~${overhead.toolDefTokens.toLocaleString()}</span></div>
+      <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">Run <code>memory_total_tokens</code> for live conversation data</span></div>
+    `;
+
+    // Breakdown by level
+    if (mem.byLevel && mem.byLevel.length > 0) {
+      let levelHtml = `<div class="section"><h3>Memory by Level</h3>
+        <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Level</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Nodes</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Tokens</th>
+        </tr></thead><tbody>`;
+      for (const l of mem.byLevel) {
+        const pct = totalView > 0 ? ((l.tokens / totalView) * 100).toFixed(1) : "0";
+        levelHtml += `<tr><td style="padding:4px 8px;border-bottom:1px solid #222">L${l.level}</td>
+          <td style="text-align:right;padding:4px 8px;border-bottom:1px solid #222">${l.count}</td>
+          <td style="text-align:right;padding:4px 8px;border-bottom:1px solid #222">${l.tokens.toLocaleString()} (${pct}%)</td></tr>`;
+      }
+      levelHtml += `</tbody></table></div></div>`;
+      breakdownEl.innerHTML = levelHtml;
+    }
+
+    // Injection history
+    if (inj.length > 0) {
+      let injHtml = `<div class="section"><h3>Recent Injections</h3>
+        <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Session</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Nodes</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Tokens</th>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Mode</th>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Strategy</th>
+        </tr></thead><tbody>`;
+      for (const i of inj) {
+        injHtml += `<tr><td style="padding:4px 8px;border-bottom:1px solid #222">${i.sessionId.slice(0, 8)}</td>
+          <td style="text-align:right;padding:4px 8px;border-bottom:1px solid #222">${i.nodeCount}</td>
+          <td style="text-align:right;padding:4px 8px;border-bottom:1px solid #222">${i.tokens.toLocaleString()}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #222">${i.mode}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #222">${i.strategy || "—"}</td></tr>`;
+      }
+      injHtml += `</tbody></table></div></div>`;
+      tablesEl.innerHTML = injHtml;
+    }
+
+    // Memory by type
+    if (mem.byType && mem.byType.length > 0) {
+      let typeHtml = `<div class="section"><h3>Memory by Type</h3>
+        <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Type</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Nodes</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Tokens</th>
+        </tr></thead><tbody>`;
+      for (const t of mem.byType) {
+        typeHtml += `<tr><td style="padding:4px 8px;border-bottom:1px solid #222">${t.type}</td>
+          <td style="text-align:right;padding:4px 8px;border-bottom:1px solid #222">${t.count}</td>
+          <td style="text-align:right;padding:4px 8px;border-bottom:1px solid #222">${t.tokens.toLocaleString()}</td></tr>`;
+      }
+      typeHtml += `</tbody></table></div></div>`;
+      tablesEl.innerHTML += typeHtml;
+    }
+  } catch (e) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading context data</span></div>`;
+    console.error("Context dashboard load failed:", e);
   }
 }
 
@@ -2181,11 +2354,15 @@ function renderCompressStats(summaryEl, chartsEl, data) {
     ? `<span style="color:#4a4">-${total.savingsPercent}%</span>`
     : `<span style="color:#888">0%</span>`;
 
+  const avgCharsSaved = total.calls > 0
+    ? Math.round((total.originalChars - total.compressedChars) / total.calls)
+    : 0;
+
   summaryEl.innerHTML = `
     <div class="stat-row"><span class="stat-label">Total Compressed Calls</span><span class="stat-value">${total.calls}</span></div>
     <div class="stat-row"><span class="stat-label">Original Chars</span><span class="stat-value">${(total.originalChars / 1000).toFixed(0)}K</span></div>
     <div class="stat-row"><span class="stat-label">Compressed Chars</span><span class="stat-value">${(total.compressedChars / 1000).toFixed(0)}K</span></div>
-    <div class="stat-row"><span class="stat-label">Token Savings</span><span class="stat-value">${savingsDisplay}</span></div>
+    <div class="stat-row"><span class="stat-label">Chars Saved</span><span class="stat-value">${savingsDisplay} (avg ${avgCharsSaved.toLocaleString()}/call)</span></div>
   `;
 
   const strategies = data.byStrategy || [];
@@ -2194,15 +2371,31 @@ function renderCompressStats(summaryEl, chartsEl, data) {
 
   let html = "";
 
+  // --- By Strategy ---
   if (strategies.length > 0) {
     html += `<div class="section"><h3>By Strategy</h3>`;
+    html += `<div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Strategy</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Calls</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Raw (K)</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Comp (K)</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Saved</th>
+      </tr></thead><tbody>`;
     for (const s of strategies) {
       const pct = s.raw > 0 ? Math.round((1 - s.comp / s.raw) * 100) : 0;
-      html += `<div class="stat-row"><span class="stat-label">${s.strategy}</span><span class="stat-value">${s.calls} calls, ${pct}% saved</span></div>`;
+      html += `<tr>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;color:#6af;font-size:10px">${s.strategy}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right">${s.calls}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right">${(s.raw / 1000).toFixed(0)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right">${(s.comp / 1000).toFixed(0)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;color:${pct > 0 ? '#4a4' : '#888'}">${pct}%</td>
+      </tr>`;
     }
-    html += `</div>`;
+    html += `</tbody></table></div></div>`;
   }
 
+  // --- Top Commands ---
   if (byCommand.length > 0) {
     html += `<div class="section"><h3>Top Commands</h3>`;
     html += `<div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
@@ -2226,29 +2419,130 @@ function renderCompressStats(summaryEl, chartsEl, data) {
     html += `</tbody></table></div></div>`;
   }
 
+  // --- Recent Compressions (Before & After Detail) ---
   if (recent.length > 0) {
     html += `<div class="section"><h3>Recent Compressions</h3>`;
-    html += `<div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+    html += `<p style="color:#888;font-size:10px;margin-bottom:8px;">Click any row for before/after detail. Hover for tooltip.</p>`;
+    html += `<div style="overflow-x:auto"><table class="quality-table compress-detail-table" style="width:100%;border-collapse:collapse;font-size:11px;cursor:pointer;">
       <thead><tr>
         <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Time</th>
-        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Command</th>
-        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Strategy</th>
+        <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #333;color:#888">Strat</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Before</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">After</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Δ Lines</th>
         <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Saved</th>
+        <th style="text-align:right;padding:4px 8px;border-bottom:1px solid #333;color:#888">Duration</th>
       </tr></thead><tbody>`;
-    for (const r of recent) {
+    for (let i = 0; i < recent.length; i++) {
+      const r = recent[i];
       const time = new Date(r.timestamp).toLocaleTimeString();
       const pct = Math.round(r.savingsRatio * 100);
-      html += `<tr>
-        <td style="padding:2px 8px;border-bottom:1px solid #222;color:#888;font-size:10px">${time}</td>
-        <td style="padding:2px 8px;border-bottom:1px solid #222;font-family:monospace;font-size:10px;color:#aaa;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.command.slice(0, 60)}</td>
-        <td style="padding:2px 8px;border-bottom:1px solid #222;color:#6af;font-size:10px">${r.strategy}</td>
-        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;color:${pct > 0 ? '#4a4' : '#888'}">${pct}%</td>
+      const beforeK = (r.originalChars / 1000).toFixed(1);
+      const afterK = (r.compressedChars / 1000).toFixed(1);
+      const linesDelta = (r.originalLines ?? 0) - (r.compressedLines ?? 0);
+      const duration = r.durationMs ? `${r.durationMs}ms` : "—";
+      const savingsColor = pct > 50 ? '#4a4' : pct > 20 ? '#aa4' : '#888';
+      html += `<tr class="compress-row" data-idx="${i}" style="border-bottom:1px solid #222;">
+        <td style="padding:2px 8px;color:#888;font-size:10px">${time}</td>
+        <td style="padding:2px 8px;color:#6af;font-size:10px;white-space:nowrap">${r.strategy}</td>
+        <td style="padding:2px 8px;text-align:right;font-family:monospace;font-size:10px;color:#f88">${beforeK}K</td>
+        <td style="padding:2px 8px;text-align:right;font-family:monospace;font-size:10px;color:#4a4">${afterK}K</td>
+        <td style="padding:2px 8px;text-align:right;font-size:10px;color:${linesDelta > 0 ? '#4a4' : '#888'}">${linesDelta > 0 ? '-' + linesDelta : '0'}</td>
+        <td style="padding:2px 8px;text-align:right;font-size:10px;color:${savingsColor}">${pct}%</td>
+        <td style="padding:2px 8px;text-align:right;font-size:10px;color:#888">${duration}</td>
       </tr>`;
     }
     html += `</tbody></table></div></div>`;
   }
 
   chartsEl.innerHTML = html;
+
+  // Wire click-to-detail on compress rows
+  document.querySelectorAll(".compress-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = parseInt(row.dataset.idx, 10);
+      if (!isNaN(idx) && recent[idx]) {
+        showCompressDetail(recent[idx]);
+      }
+    });
+  });
+}
+
+function showCompressDetail(event) {
+  const overlay = document.getElementById("compress-detail-overlay");
+  const modal = document.getElementById("compress-detail-modal");
+  if (!overlay || !modal) return;
+
+  const pct = Math.round(event.savingsRatio * 100);
+  const time = new Date(event.timestamp).toLocaleString();
+  const savingsColor = pct > 50 ? '#4a4' : pct > 20 ? '#aa4' : '#888';
+
+  const originalPreview = event.originalPreview || "(no preview stored — upgrade to schema v27)";
+  const compressedPreview = event.compressedPreview || "(no preview stored — upgrade to schema v27)";
+
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:14px;color:#fff">Compression Detail</h3>
+      <button id="close-detail-btn" style="background:none;border:1px solid #444;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <div style="color:#888;font-size:10px;margin-bottom:2px;">Command</div>
+      <div style="font-family:monospace;font-size:11px;color:#ddd;background:#0a0a0a;padding:6px 8px;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">${event.command}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;text-align:center;">
+        <div style="color:#f88;font-size:18px;font-weight:bold;font-family:monospace;">${(event.originalChars / 1000).toFixed(1)}K</div>
+        <div style="color:#888;font-size:10px;margin-top:2px;">chars before</div>
+        <div style="color:#888;font-size:10px;">${event.originalLines ?? '?'} lines</div>
+      </div>
+      <div style="background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;text-align:center;">
+        <div style="color:#4a4;font-size:18px;font-weight:bold;font-family:monospace;">${(event.compressedChars / 1000).toFixed(1)}K</div>
+        <div style="color:#888;font-size:10px;margin-top:2px;">chars after</div>
+        <div style="color:#888;font-size:10px;">${event.compressedLines ?? '?'} lines</div>
+      </div>
+      <div style="background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;text-align:center;">
+        <div style="color:${savingsColor};font-size:18px;font-weight:bold;font-family:monospace;">${pct}%</div>
+        <div style="color:#888;font-size:10px;margin-top:2px;">savings</div>
+        <div style="color:#888;font-size:10px;">${event.durationMs ? event.durationMs + 'ms' : '—'}</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <div style="color:#888;font-size:10px;">Strategy</div>
+        <div style="color:#6af;font-size:10px;">${event.strategy}</div>
+        <div style="color:#888;font-size:10px;margin-left:16px;">Lines: ${event.originalLines ?? '?'} → ${event.compressedLines ?? '?'}</div>
+        <div style="color:#4a4;font-size:10px;margin-left:16px;">Saved ${(event.originalChars - event.compressedChars).toLocaleString()} chars</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px solid #333;padding-top:12px;">
+      <div>
+        <div style="color:#f88;font-size:11px;font-weight:bold;margin-bottom:4px;">⬅ Before (raw output)</div>
+        <pre style="background:#0a0a0a;border:1px solid #222;border-radius:4px;padding:8px;font-size:10px;color:#ccc;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;">${escHtml(originalPreview)}</pre>
+      </div>
+      <div>
+        <div style="color:#4a4;font-size:11px;font-weight:bold;margin-bottom:4px;">➡ After (compressed)</div>
+        <pre style="background:#0a0a0a;border:1px solid #222;border-radius:4px;padding:8px;font-size:10px;color:#ccc;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;">${escHtml(compressedPreview)}</pre>
+      </div>
+    </div>
+  `;
+
+  overlay.style.display = "flex";
+
+  document.getElementById("close-detail-btn").addEventListener("click", () => {
+    overlay.style.display = "none";
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.style.display = "none";
+  });
+}
+
+function escHtml(s) {
+  if (!s) return "";
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ==================== Start ====================

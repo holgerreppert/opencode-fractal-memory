@@ -489,4 +489,25 @@ export const MIGRATIONS: Migration[] = [
       db.run(`CREATE INDEX IF NOT EXISTS idx_compress_cmd ON compression_stats(command)`);
     },
   },
+  {
+    version: 26,
+    name: "add-compression-lines",
+    up: (db) => {
+      const tableInfo = db.query("PRAGMA table_info(compression_stats)").all() as { name: string }[];
+      const existing = new Set(tableInfo.map(c => c.name));
+      if (!existing.has("original_lines")) db.run("ALTER TABLE compression_stats ADD COLUMN original_lines INT");
+      if (!existing.has("compressed_lines")) db.run("ALTER TABLE compression_stats ADD COLUMN compressed_lines INT");
+      if (!existing.has("cmd_preview")) db.run("ALTER TABLE compression_stats ADD COLUMN cmd_preview TEXT");
+    },
+  },
+  {
+    version: 27,
+    name: "add-compression-previews",
+    up: (db) => {
+      const tableInfo = db.query("PRAGMA table_info(compression_stats)").all() as { name: string }[];
+      const existing = new Set(tableInfo.map(c => c.name));
+      if (!existing.has("original_preview")) db.run("ALTER TABLE compression_stats ADD COLUMN original_preview TEXT");
+      if (!existing.has("compressed_preview")) db.run("ALTER TABLE compression_stats ADD COLUMN compressed_preview TEXT");
+    },
+  },
 ];

@@ -158,6 +158,11 @@ export type MemoryStore = {
     strategy: string;
     originalChars: number;
     compressedChars: number;
+    originalLines?: number;
+    compressedLines?: number;
+    cmdPreview?: string;
+    originalPreview?: string;
+    compressedPreview?: string;
     durationMs?: number;
   }): Promise<void>;
   finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void>;

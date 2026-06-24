@@ -293,7 +293,7 @@ async function handleCompressionStats(req: Request): Promise<Response> {
       "SELECT command, COUNT(*) as calls, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats WHERE timestamp >= ? GROUP BY command ORDER BY calls DESC LIMIT ?"
     ).all(since, limit) as any[];
     const recent = db.query(
-      "SELECT timestamp, command, strategy, original_chars, compressed_chars, savings_ratio FROM compression_stats WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 20"
+      "SELECT timestamp, command, strategy, original_chars, compressed_chars, original_lines, compressed_lines, cmd_preview, original_preview, compressed_preview, savings_ratio, duration_ms FROM compression_stats WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 20"
     ).all(since) as any[];
 
     return jsonResponse({
@@ -311,8 +311,87 @@ async function handleCompressionStats(req: Request): Promise<Response> {
         strategy: r.strategy,
         originalChars: r.original_chars,
         compressedChars: r.compressed_chars,
+        originalLines: r.original_lines ?? null,
+        compressedLines: r.compressed_lines ?? null,
+        cmdPreview: r.cmd_preview ?? null,
+        originalPreview: r.original_preview ?? null,
+        compressedPreview: r.compressed_preview ?? null,
+        durationMs: r.duration_ms ?? null,
         savingsRatio: r.savings_ratio,
       })),
+    });
+  });
+}
+
+async function handleContextDashboard(_req: Request): Promise<Response> {
+  return withDb("global", (db) => {
+    const nodesByLevel = db.query(
+      "SELECT level, COUNT(*) as count, SUM(LENGTH(content)) as total_chars FROM memory_nodes WHERE scope = 'global' GROUP BY level ORDER BY level"
+    ).all() as { level: number; count: number; total_chars: number | null }[];
+
+    const nodesByType = db.query(
+      "SELECT type, COUNT(*) as count, SUM(LENGTH(content)) as total_chars FROM memory_nodes WHERE scope = 'global' GROUP BY type ORDER BY count DESC"
+    ).all() as { type: string; count: number; total_chars: number | null }[];
+
+    const ruleCount = (db.query(
+      "SELECT COUNT(*) as count FROM memory_nodes WHERE label LIKE 'rule:%'"
+    ).get() as { count: number })?.count ?? 0;
+
+    const totalNodes = (db.query(
+      "SELECT COUNT(*) as count FROM memory_nodes WHERE scope = 'global'"
+    ).get() as { count: number })?.count ?? 0;
+
+    const totalChars = (db.query(
+      "SELECT SUM(LENGTH(content)) as total FROM memory_nodes WHERE scope = 'global'"
+    ).get() as { total: number | null })?.total ?? 0;
+
+    const compressTotal = db.query(
+      "SELECT COUNT(*) as calls, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats"
+    ).get() as { calls: number; raw: number | null; comp: number | null } | undefined;
+
+    const recentInjections = queryInjectionMetrics(db, 5);
+
+    const totalMemoryTokens = nodesByLevel.reduce((s, r) => s + ((r.total_chars ?? 0) / 4), 0);
+
+    const compressedSavings = compressTotal && compressTotal.raw
+      ? Math.round((1 - (compressTotal.comp ?? 0) / (compressTotal.raw ?? 1)) * 100)
+      : 0;
+
+    return jsonResponse({
+      memory: {
+        totalNodes,
+        totalTokens: Math.round(totalMemoryTokens),
+        totalChars,
+        byLevel: nodesByLevel.map(r => ({
+          level: r.level,
+          count: r.count,
+          tokens: Math.round((r.total_chars ?? 0) / 4),
+        })),
+        byType: nodesByType.map(r => ({
+          type: r.type,
+          count: r.count,
+          tokens: Math.round((r.total_chars ?? 0) / 4),
+        })),
+        rules: ruleCount,
+      },
+      compression: {
+        totalCalls: compressTotal?.calls ?? 0,
+        originalChars: compressTotal?.raw ?? 0,
+        compressedChars: compressTotal?.comp ?? 0,
+        savingsPercent: compressedSavings,
+      },
+      injections: recentInjections.map(m => ({
+        sessionId: m.sessionId,
+        timestamp: m.timestamp,
+        nodeCount: m.injectedNodeCount,
+        tokens: m.injectedTokens,
+        mode: m.injectionMode,
+        strategy: m.rerankStrategy,
+      })),
+      overhead: {
+        systemPromptTokens: 3000,
+        toolDefTokens: 4000,
+      },
     });
   });
 }
@@ -344,6 +423,9 @@ export function registerRoutes(router: Router): void {
 
   // Injection quality route
   router.get(/^\/api\/injection-quality$/, (req) => handleInjectionQuality(req));
+
+  // Context dashboard
+  router.get(/^\/api\/context-dashboard$/, (req) => handleContextDashboard(req));
 
   // Backup / Restore routes
   router.get(/^\/api\/backup-sources$/, () => handleBackupSources());

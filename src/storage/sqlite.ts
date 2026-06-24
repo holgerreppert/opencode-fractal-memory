@@ -605,12 +605,17 @@ class SqliteMemoryStore {
     strategy: string;
     originalChars: number;
     compressedChars: number;
+    originalLines?: number;
+    compressedLines?: number;
+    cmdPreview?: string;
+    originalPreview?: string;
+    compressedPreview?: string;
     durationMs?: number;
   }): Promise<void> {
     const db = await this.getGlobalDb();
     db.run(
-      `INSERT INTO compression_stats (session_id, timestamp, command, strategy, original_chars, compressed_chars, savings_ratio, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO compression_stats (session_id, timestamp, command, strategy, original_chars, compressed_chars, original_lines, compressed_lines, cmd_preview, original_preview, compressed_preview, savings_ratio, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         stat.sessionId ?? null,
         Date.now(),
@@ -618,6 +623,11 @@ class SqliteMemoryStore {
         stat.strategy,
         stat.originalChars,
         stat.compressedChars,
+        stat.originalLines ?? null,
+        stat.compressedLines ?? null,
+        stat.cmdPreview ?? null,
+        stat.originalPreview ?? null,
+        stat.compressedPreview ?? null,
         stat.originalChars > 0 ? 1 - stat.compressedChars / stat.originalChars : 0,
         stat.durationMs ?? null,
       ]

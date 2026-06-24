@@ -5,14 +5,33 @@ import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../config";
 import { writeCompressLog } from "../../logging";
-import { compressCommandOutput, addContentDedup, type CompressConfig, type FuzzyDedupConfig } from "../../hooks/compress-output";
+import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type CompressConfig, type FuzzyDedupConfig } from "../../hooks/compress-output";
 import type { HookHandler } from "./types";
 
 const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
+const DELTA_CACHE = new Map<string, { raw: string; strategy: string }>();
 const SCRATCH_DIR = path.join(os.homedir(), ".config", "opencode", "scratch");
 
 function ensureScratchDir(): void {
   try { fs.mkdirSync(SCRATCH_DIR, { recursive: true }); } catch { /* best-effort */ }
+}
+
+function contentSnippet(text: string, maxChars = 120): string {
+  if (!text) return "";
+  const lines = text.split("\n");
+  let snippet = "";
+  for (let i = 0; i < Math.min(lines.length, 3); i++) {
+    const trimmed = lines[i]!.trim();
+    if (trimmed) snippet += (snippet ? "↵" : "") + trimmed.slice(0, Math.min(trimmed.length, 80));
+    if (trimmed.length > 80) snippet += "…";
+    if (snippet.length >= maxChars) break;
+  }
+  return snippet.slice(0, maxChars);
+}
+
+function contentPreview(text: string, maxChars = 2000): string {
+  if (!text || text.length <= maxChars) return text ?? "";
+  return text.slice(0, maxChars) + "\n… [truncated]";
 }
 
 function offloadOutput(output: string): string | null {
@@ -57,8 +76,53 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       const raw = (out.output ?? "") as string;
       const failed = !success || !!out.metadata?.error;
       const t0 = performance.now();
+
+      const deltaResult = tryDeltaCompression(DELTA_CACHE, cmd, raw, compressConfig);
+      if (deltaResult) {
+        updateDeltaCache(DELTA_CACHE, cmd, raw, deltaResult.strategy, compressConfig?.deltaMaxCacheSize ?? 50);
+        const durationMs = performance.now() - t0;
+        out.output = `[${raw.length}→${deltaResult.output.length} chars — delta from previous run]\n${deltaResult.output}`;
+        out.metadata = {
+          ...((out.metadata as Record<string, unknown>) ?? {}),
+          compressed: true,
+          compressStrategy: "delta",
+        };
+        writeCompressLog({
+          action: "delta",
+          strategy: "delta",
+          cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+          original_chars: raw.length,
+          compressed_chars: deltaResult.output.length,
+          original_lines: raw.split("\n").length,
+          compressed_lines: deltaResult.output.split("\n").length,
+          reduction_pct: raw.length > 0 ? Math.round((1 - deltaResult.output.length / raw.length) * 100) : 0,
+          duration_ms: Math.round(durationMs),
+          failed: failed ? 1 : 0,
+          before_snippet: contentSnippet(raw, 120),
+          after_snippet: contentSnippet(deltaResult.output, 120),
+        });
+        store.recordCompressionStat({
+          sessionId: input.sessionID ?? "unknown",
+          command: cmd,
+          strategy: "delta",
+          originalChars: raw.length,
+          compressedChars: deltaResult.output.length,
+          originalLines: raw.split("\n").length,
+          compressedLines: deltaResult.output.split("\n").length,
+          cmdPreview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+          originalPreview: contentPreview(raw),
+          compressedPreview: contentPreview(deltaResult.output),
+          durationMs,
+        }).catch(() => {});
+        return;
+      }
+
       const compressed = compressCommandOutput(cmd, raw, failed, compressConfig);
       const durationMs = performance.now() - t0;
+
+      if (compressed) {
+        updateDeltaCache(DELTA_CACHE, cmd, raw, compressed.strategy, compressConfig?.deltaMaxCacheSize ?? 50);
+      }
 
       try {
         const fuzzyConfig: FuzzyDedupConfig = {
@@ -99,6 +163,8 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
                   failed: failed ? 1 : 0,
                   offload_path: offloadPath,
                   offload_bytes: finalOutput.length,
+                  before_snippet: contentSnippet(raw, 120),
+                  after_snippet: contentSnippet(finalOutput, 120),
                 });
               } else {
                 writeCompressLog({
@@ -109,6 +175,8 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
                   compressed_chars: finalOutput.length,
                   duration_ms: Math.round(durationMs),
                   failed: failed ? 1 : 0,
+                  before_snippet: contentSnippet(raw, 120),
+                  after_snippet: contentSnippet(finalOutput, 120),
                 });
               }
             } else {
@@ -121,6 +189,8 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
                 offload_threshold: threshold,
                 duration_ms: Math.round(durationMs),
                 failed: failed ? 1 : 0,
+                before_snippet: contentSnippet(raw, 120),
+                after_snippet: contentSnippet(finalOutput, 120),
               });
             }
           }
@@ -143,6 +213,8 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             reduction_pct: raw.length > 0 ? Math.round((1 - deduped.output.length / raw.length) * 100) : 0,
             duration_ms: Math.round(durationMs),
             failed: failed ? 1 : 0,
+            before_snippet: contentSnippet(raw, 120),
+            after_snippet: contentSnippet(deduped.output, 120),
           });
           store.recordCompressionStat({
             sessionId: input.sessionID ?? "unknown",
@@ -150,6 +222,11 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             strategy: strategyLabel,
             originalChars: raw.length,
             compressedChars: deduped.output.length,
+            originalLines: raw.split("\n").length,
+            compressedLines: deduped.output.split("\n").length,
+            cmdPreview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+            originalPreview: contentPreview(raw),
+            compressedPreview: contentPreview(deduped.output),
             durationMs,
           }).catch(() => {});
         } else {

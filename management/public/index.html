@@ -314,6 +314,7 @@
     <div class="tab-buttons">
       <button class="tab-btn active" data-tab="visualize">Visualize</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn" data-tab="context">Context</button>
       <button class="tab-btn" data-tab="backup">Backup</button>
       <button class="tab-btn" data-tab="quality">Quality</button>
       <button class="tab-btn" data-tab="compress">Compress</button>
@@ -587,6 +588,42 @@
             <p class="config-hint">Auto-detect JSON/CSV/stack-trace/tree output</p>
           </div>
           <div class="config-field">
+            <label>Relevance Trimming</label>
+            <select id="commandCompression-relevanceTrimmingEnabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">TF-IDF scoring drops low-value lines from output</p>
+          </div>
+          <div class="config-field">
+            <label>RT Threshold</label>
+            <input type="number" id="commandCompression-relevanceTrimmingThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>RT Min Keep Lines</label>
+            <input type="number" id="commandCompression-relevanceTrimmingMinKeep" min="1" max="50">
+          </div>
+          <div class="config-field">
+            <label>RT Always Keep Top</label>
+            <input type="number" id="commandCompression-relevanceTrimmingAlwaysKeepTop" min="0" max="20">
+          </div>
+          <div class="config-field">
+            <label>Delta Compression</label>
+            <select id="commandCompression-deltaCompressionEnabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Emit only changed lines on repeated commands</p>
+          </div>
+          <div class="config-field">
+            <label>Delta Max Cache Size</label>
+            <input type="number" id="commandCompression-deltaMaxCacheSize" min="5" max="500">
+          </div>
+          <div class="config-field">
+            <label>Delta Min Similarity</label>
+            <input type="number" id="commandCompression-deltaMinSimilarity" min="0.1" max="1" step="0.05">
+          </div>
+          <div class="config-field">
             <label>Adaptive Pressure</label>
             <select id="adaptivePressure-enabled">
               <option value="true">Enabled</option>
@@ -629,6 +666,138 @@
           <div class="config-field">
             <label>Offload Threshold (chars)</label>
             <input type="number" id="outputOffloading-thresholdChars" min="1000" max="100000" step="500">
+          </div>
+        </div>
+      </div>
+
+      <div class="config-category">
+        <h3 class="category-header">Output Token Control <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Enabled</label>
+            <select id="outputTokenControl-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Inject rules that constrain the agent's response length to save output tokens (4-8× more expensive than input)</p>
+          </div>
+          <div class="config-field">
+            <label>Mode</label>
+            <select id="outputTokenControl-mode">
+              <option value="adaptive">Adaptive (context-pressure based)</option>
+              <option value="always-on">Always On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Default Strategy</label>
+            <select id="outputTokenControl-strategy">
+              <option value="concise">Concise (recommended)</option>
+              <option value="sentence_limit">Sentence Limit</option>
+              <option value="char_limit">Char Limit</option>
+              <option value="bullet_only">Bullet Points Only</option>
+              <option value="custom">Custom Prompt</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Max Sentences (base)</label>
+            <input type="number" id="outputTokenControl-maxSentences" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Max Chars (0 = no limit)</label>
+            <input type="number" id="outputTokenControl-maxChars" min="0" max="10000" step="100">
+          </div>
+          <div class="config-field">
+            <label>Custom Prompt</label>
+            <textarea id="outputTokenControl-customPrompt" rows="2" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;border-radius:4px;padding:6px;font-size:12px;font-family:monospace;"></textarea>
+          </div>
+          <div class="config-field">
+            <label>Warn Threshold</label>
+            <input type="number" id="outputTokenControl-warnThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Aggressive Threshold</label>
+            <input type="number" id="outputTokenControl-aggressiveThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Critical Threshold</label>
+            <input type="number" id="outputTokenControl-criticalThreshold" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Sentences (normal)</label>
+            <input type="number" id="outputTokenControl-normalSentences" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Sentences (warn)</label>
+            <input type="number" id="outputTokenControl-warnSentences" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Sentences (aggressive)</label>
+            <input type="number" id="outputTokenControl-aggressiveSentences" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Sentences (critical)</label>
+            <input type="number" id="outputTokenControl-criticalSentences" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Strategy (normal)</label>
+            <select id="outputTokenControl-normalStrategy">
+              <option value="concise">Concise</option>
+              <option value="sentence_limit">Sentence Limit</option>
+              <option value="char_limit">Char Limit</option>
+              <option value="bullet_only">Bullet Points Only</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Strategy (warn)</label>
+            <select id="outputTokenControl-warnStrategy">
+              <option value="concise">Concise</option>
+              <option value="sentence_limit">Sentence Limit</option>
+              <option value="char_limit">Char Limit</option>
+              <option value="bullet_only">Bullet Points Only</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Strategy (aggressive)</label>
+            <select id="outputTokenControl-aggressiveStrategy">
+              <option value="concise">Concise</option>
+              <option value="sentence_limit">Sentence Limit</option>
+              <option value="char_limit">Char Limit</option>
+              <option value="bullet_only">Bullet Points Only</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Strategy (critical)</label>
+            <select id="outputTokenControl-criticalStrategy">
+              <option value="concise">Concise</option>
+              <option value="sentence_limit">Sentence Limit</option>
+              <option value="char_limit">Char Limit</option>
+              <option value="bullet_only">Bullet Points Only</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Custom Prompt (normal)</label>
+            <input type="text" id="outputTokenControl-normalPrompt" placeholder="Only used when strategy=custom" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;border-radius:4px;padding:6px;font-size:12px;">
+          </div>
+          <div class="config-field">
+            <label>Custom Prompt (warn)</label>
+            <input type="text" id="outputTokenControl-warnPrompt" placeholder="Only used when strategy=custom" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;border-radius:4px;padding:6px;font-size:12px;">
+          </div>
+          <div class="config-field">
+            <label>Custom Prompt (aggressive)</label>
+            <input type="text" id="outputTokenControl-aggressivePrompt" placeholder="Only used when strategy=custom" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;border-radius:4px;padding:6px;font-size:12px;">
+          </div>
+          <div class="config-field">
+            <label>Custom Prompt (critical)</label>
+            <input type="text" id="outputTokenControl-criticalPrompt" placeholder="Only used when strategy=custom" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;border-radius:4px;padding:6px;font-size:12px;">
+          </div>
+          <div class="config-field">
+            <label>Exclude Patterns (regex, one per line)</label>
+            <textarea id="outputTokenControl-excludePatterns" rows="3" style="width:100%;background:#1a1a2e;border:1px solid #333;color:#ccc;border-radius:4px;padding:6px;font-size:12px;font-family:monospace;" placeholder="^explain&#10;^describe&#10;^write"></textarea>
           </div>
         </div>
       </div>
@@ -754,6 +923,22 @@
       <div class="save-message" id="save-message"></div>
     </div>
 
+    <!-- Context Dashboard Panel -->
+    <div id="context-panel" class="settings-panel">
+      <div class="section">
+        <h3>Context Dashboard</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">
+          Breakdown of what occupies the LLM context window. Memory nodes and compressions are queried from the database.
+          Conversation token data is available via <code>memory_total_tokens</code> in the agent.
+        </p>
+        <div id="context-summary" style="margin-bottom:16px;">
+          <div class="stat-row"><span class="stat-label">Loading...</span></div>
+        </div>
+        <div id="context-breakdown" style="margin-bottom:16px;"></div>
+        <div id="context-tables"></div>
+      </div>
+    </div>
+
     <!-- Backup Panel -->
     <!-- Quality Panel -->
     <div id="quality-panel" class="settings-panel">
@@ -775,6 +960,9 @@
         <h3>Compression Stats</h3>
         <div id="compress-summary" style="margin-bottom:16px;"></div>
         <div id="compress-charts"></div>
+        <div id="compress-detail-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center;">
+          <div id="compress-detail-modal" style="background:#111;border:1px solid #333;border-radius:8px;padding:24px;max-width:700px;max-height:80vh;overflow-y:auto;margin:auto;position:relative;top:10vh;"></div>
+        </div>
       </div>
     </div>
 

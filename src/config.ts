@@ -32,6 +32,13 @@ export interface MemConfig {
     fuzzyDedupThreshold: number;
     fuzzyDedupMax: number;
     structuralShapeDetection: boolean;
+    relevanceTrimmingEnabled: boolean;
+    relevanceTrimmingThreshold: number;
+    relevanceTrimmingMinKeep: number;
+    relevanceTrimmingAlwaysKeepTop: number;
+    deltaCompressionEnabled: boolean;
+    deltaMaxCacheSize: number;
+    deltaMinSimilarity: number;
   };
   fileSkeletonization?: {
     enabled: boolean;
@@ -101,6 +108,30 @@ export interface MemConfig {
   outputOffloading?: {
     enabled: boolean;
     thresholdChars: number;
+  };
+  outputTokenControl?: {
+    enabled: boolean;
+    mode: "off" | "always-on" | "adaptive";
+    strategy: "concise" | "sentence_limit" | "char_limit" | "bullet_only" | "custom";
+    maxSentences: number;
+    maxChars: number;
+    customPrompt: string;
+    warnThreshold: number;
+    aggressiveThreshold: number;
+    criticalThreshold: number;
+    normalSentences: number;
+    warnSentences: number;
+    aggressiveSentences: number;
+    criticalSentences: number;
+    normalStrategy: string;
+    warnStrategy: string;
+    aggressiveStrategy: string;
+    criticalStrategy: string;
+    normalPrompt: string;
+    warnPrompt: string;
+    aggressivePrompt: string;
+    criticalPrompt: string;
+    excludePatterns: string[];
   };
 }
 
@@ -180,6 +211,13 @@ const CommandCompressionSchema = z.object({
   fuzzyDedupThreshold: z.number().min(0).max(1).default(0.85),
   fuzzyDedupMax: z.number().positive().int().default(50),
   structuralShapeDetection: z.boolean().default(true),
+  relevanceTrimmingEnabled: z.boolean().default(false),
+  relevanceTrimmingThreshold: z.number().min(0).max(1).default(0.15),
+  relevanceTrimmingMinKeep: z.number().positive().int().default(5),
+  relevanceTrimmingAlwaysKeepTop: z.number().int().min(0).default(3),
+  deltaCompressionEnabled: z.boolean().default(true),
+  deltaMaxCacheSize: z.number().positive().int().default(50),
+  deltaMinSimilarity: z.number().min(0).max(1).default(0.5),
 });
 
 const FileSkeletonizationSchema = z.object({
@@ -207,6 +245,31 @@ const ReReadEliminationSchema = z.object({
 const OutputOffloadingSchema = z.object({
   enabled: z.boolean().default(true),
   thresholdChars: z.number().positive().int().default(8000),
+});
+
+const OutputTokenControlSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(["off", "always-on", "adaptive"]).default("adaptive"),
+  strategy: z.enum(["concise", "sentence_limit", "char_limit", "bullet_only", "custom"]).default("concise"),
+  maxSentences: z.number().int().min(1).default(5),
+  maxChars: z.number().int().min(0).default(0),
+  customPrompt: z.string().default(""),
+  warnThreshold: z.number().min(0).max(1).default(0.7),
+  aggressiveThreshold: z.number().min(0).max(1).default(0.85),
+  criticalThreshold: z.number().min(0).max(1).default(0.95),
+  normalSentences: z.number().int().min(1).default(5),
+  warnSentences: z.number().int().min(1).default(3),
+  aggressiveSentences: z.number().int().min(1).default(1),
+  criticalSentences: z.number().int().min(1).default(1),
+  normalStrategy: z.string().default("concise"),
+  warnStrategy: z.string().default("sentence_limit"),
+  aggressiveStrategy: z.string().default("sentence_limit"),
+  criticalStrategy: z.string().default("char_limit"),
+  normalPrompt: z.string().default(""),
+  warnPrompt: z.string().default(""),
+  aggressivePrompt: z.string().default(""),
+  criticalPrompt: z.string().default(""),
+  excludePatterns: z.array(z.string()).default([]),
 });
 
 const DEFAULT_CONFIG: MemConfig = {
@@ -289,6 +352,30 @@ const DEFAULT_CONFIG: MemConfig = {
     enabled: true,
     thresholdChars: 8000,
   },
+  outputTokenControl: {
+    enabled: false,
+    mode: "adaptive",
+    strategy: "concise",
+    maxSentences: 5,
+    maxChars: 0,
+    customPrompt: "",
+    warnThreshold: 0.7,
+    aggressiveThreshold: 0.85,
+    criticalThreshold: 0.95,
+    normalSentences: 5,
+    warnSentences: 3,
+    aggressiveSentences: 1,
+    criticalSentences: 1,
+    normalStrategy: "concise",
+    warnStrategy: "sentence_limit",
+    aggressiveStrategy: "sentence_limit",
+    criticalStrategy: "char_limit",
+    normalPrompt: "",
+    warnPrompt: "",
+    aggressivePrompt: "",
+    criticalPrompt: "",
+    excludePatterns: [],
+  },
   commandCompression: {
     enabled: true,
     maxLines: 50,
@@ -298,6 +385,13 @@ const DEFAULT_CONFIG: MemConfig = {
     fuzzyDedupThreshold: 0.85,
     fuzzyDedupMax: 50,
     structuralShapeDetection: true,
+    relevanceTrimmingEnabled: false,
+    relevanceTrimmingThreshold: 0.15,
+    relevanceTrimmingMinKeep: 5,
+    relevanceTrimmingAlwaysKeepTop: 3,
+    deltaCompressionEnabled: true,
+    deltaMaxCacheSize: 50,
+    deltaMinSimilarity: 0.5,
   },
   fileSkeletonization: {
     enabled: true,
@@ -332,6 +426,7 @@ const MemConfigSchema = z.object({
   adaptivePressure: AdaptivePressureSchema.optional(),
   reReadElimination: ReReadEliminationSchema.optional(),
   outputOffloading: OutputOffloadingSchema.optional(),
+  outputTokenControl: OutputTokenControlSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),
   fileSkeletonization: FileSkeletonizationSchema.optional(),
 }).default(DEFAULT_CONFIG);
