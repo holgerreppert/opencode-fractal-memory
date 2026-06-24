@@ -4,17 +4,17 @@ import { compressLs } from "./compress-output/strategies/ls";
 import { compressTestOutput } from "./compress-output/strategies/test";
 import { compressGrep } from "./compress-output/strategies/grep";
 import { compressGitStatus, compressGitLog, compressGitDiff } from "./compress-output/strategies/git";
-import { compressGeneric } from "./compress-output/strategies/generic";
+import { compressGeneric, compressRelevantGeneric } from "./compress-output/strategies/generic";
 import { classifyShape, applyShapeCompression } from "./compress-output/shape";
 import { trimByRelevance } from "./compress-output/relevance";
 import { tryDeltaCompression, updateDeltaCache } from "./compress-output/delta";
 import { addContentDedup } from "./compress-output/dedup";
-import { isSignalOutput, stripAnsi, getCommandPrefix } from "./compress-output/utils";
+import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix } from "./compress-output/utils";
 
 export type { CompressConfig, FuzzyDedupConfig } from "./compress-output/config";
 export { tryDeltaCompression, updateDeltaCache } from "./compress-output/delta";
 export { addContentDedup } from "./compress-output/dedup";
-export { compressGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff } from "./compress-output/strategies";
+export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff } from "./compress-output/strategies";
 
 export function compressCommandOutput(
   command: string,
@@ -30,7 +30,7 @@ export function compressCommandOutput(
     if (cmd.startsWith(excl)) return null;
   }
 
-  const out = stripAnsi(rawOutput);
+  const out = smartFilter(stripAnsi(rawOutput));
   if (!out) return null;
   if (out.length < 80) return null;
 
@@ -105,9 +105,9 @@ export function compressCommandOutput(
     }
   }
 
-  const generic = compressGeneric(out, config.maxLines);
+  const generic = compressRelevantGeneric(out, config.maxLines, cmd);
   if (generic !== out) {
-    memLog("debug", "compress", "Generic compression applied", {
+    memLog("debug", "compress", "Relevant generic compression applied", {
       cmd: cmd.slice(0, 60),
       originalChars: out.length,
       compressedChars: generic.length,

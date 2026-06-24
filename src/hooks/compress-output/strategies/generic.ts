@@ -1,3 +1,5 @@
+import { scoreLine, extractQueryTerms } from "../utils";
+
 export function compressGeneric(raw: string, maxLines: number): string {
   const lines = raw.split("\n");
   const deduped: string[] = [];
@@ -26,4 +28,39 @@ export function compressGeneric(raw: string, maxLines: number): string {
   head.push(`... truncated: ${remaining} lines omitted, showing head + tail ...`);
   head.push(...tail);
   return head.join("\n");
+}
+
+export function compressRelevantGeneric(raw: string, maxLines: number, cmd: string): string {
+  const lines = raw.split("\n");
+  if (lines.length <= maxLines) return raw;
+
+  const terms = extractQueryTerms(cmd);
+  const total = lines.length;
+
+  const scored: { line: string; score: number; idx: number }[] = [];
+  for (let i = 0; i < total; i++) {
+    scored.push({ line: lines[i]!, score: scoreLine(lines[i]!, terms, i, total), idx: i });
+  }
+
+  const kept = new Set<number>();
+  const sorted = [...scored].sort((a, b) => b.score - a.score).slice(0, maxLines);
+  for (const s of sorted) kept.add(s.idx);
+
+  const result: string[] = [];
+  const dropped = lines.length - kept.size;
+
+  // Keep head for context, then high-score lines in order, then tail
+  for (let i = 0; i < total; i++) {
+    if (i < 2 || kept.has(i) || i + 2 >= total) {
+      result.push(lines[i]!);
+    }
+  }
+
+  // If everything kept, return raw
+  if (result.length >= lines.length) return raw;
+
+  const truncated = result.join("\n");
+  if (truncated.length > raw.length * 0.9) return raw;
+
+  return `[relevant: kept ${result.length} of ${lines.length} lines — ${dropped} elided]\n${result.join("\n")}`;
 }

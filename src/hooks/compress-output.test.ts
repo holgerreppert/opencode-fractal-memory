@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { compressLs } from "./compress-output/strategies/ls";
 import { compressTestOutput } from "./compress-output/strategies/test";
 import { compressGrep } from "./compress-output";
-import { compressGeneric } from "./compress-output/strategies/generic";
+import { compressGeneric, compressRelevantGeneric } from "./compress-output/strategies/generic";
 import { classifyShape, applyShapeCompression } from "./compress-output/shape";
 import { compressCommandOutput, type CompressConfig } from "./compress-output";
 import { tryDeltaCompression, updateDeltaCache } from "./compress-output/delta";
 import { addContentDedup, trigramJaccard } from "./compress-output/dedup";
+import { smartFilter, scoreLine, extractQueryTerms } from "./compress-output/utils";
 
 const defaultConfig: CompressConfig = {
   enabled: true,
@@ -311,5 +312,84 @@ describe("trigramJaccard", () => {
   test("similar strings have high similarity", () => {
     const sim = trigramJaccard("hello world foo bar", "hello world foo baz");
     expect(sim).toBeGreaterThan(0.5);
+  });
+});
+
+describe("smartFilter", () => {
+  test("strips npm deprecation warnings", () => {
+    const output = "npm warn deprecated package@1.0.0: use v2\nreal content\nsome output";
+    expect(smartFilter(output)).toBe("real content\nsome output");
+  });
+
+  test("strips spinner characters", () => {
+    const output = "⠋ installing\n⠹ progress\nreal result";
+    expect(smartFilter(output)).toBe("real result");
+  });
+
+  test("strips progress bars", () => {
+    const output = "[====>      ] 45%\nreal output here";
+    expect(smartFilter(output)).toBe("real output here");
+  });
+
+  test("strips git hints", () => {
+    const output = "hint: your branch is up to date\nOn branch main\nreal output";
+    expect(smartFilter(output)).toBe("On branch main\nreal output");
+  });
+
+  test("strips log timestamps", () => {
+    const output = "[2026-06-24T12:00:00] some log line\nthe data we want";
+    expect(smartFilter(output)).toBe("some log line\nthe data we want");
+  });
+
+  test("passes through clean output unchanged", () => {
+    const output = "file1.ts\nfile2.ts\ndir/";
+    expect(smartFilter(output)).toBe(output);
+  });
+});
+
+describe("scoreLine", () => {
+  test("signal words score +5", () => {
+    const score = scoreLine("ERROR: connection refused", [], 10, 20);
+    expect(score).toBeGreaterThanOrEqual(5);
+  });
+
+  test("head lines get bias up to +4", () => {
+    expect(scoreLine("line 0", [], 0, 20)).toBeGreaterThan(scoreLine("line 0", [], 10, 20));
+  });
+
+  test("tail lines get +1 bias", () => {
+    expect(scoreLine("tail", [], 18, 20)).toBeGreaterThan(scoreLine("middle", [], 10, 20));
+  });
+
+  test("blank lines penalized -1", () => {
+    expect(scoreLine("   ", [], 10, 20)).toBe(-1);
+  });
+});
+
+describe("compressRelevantGeneric", () => {
+  test("keeps error lines from middle of output", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `ok line ${i}`);
+    lines[10] = "ERROR: connection refused";
+    lines[15] = "panic: out of memory";
+    const result = compressRelevantGeneric(lines.join("\n"), 10, "run test");
+    expect(result).toContain("ERROR: connection refused");
+    expect(result).toContain("panic: out of memory");
+  });
+
+  test("preserves original line order in output", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
+    const result = compressRelevantGeneric(lines.join("\n"), 6, "some command");
+    const output = result.split("\n");
+    const dataLines = output.filter(l => !l.startsWith("[relevant:"));
+    // Data lines should be in ascending order
+    const nums = dataLines.map(l => parseInt(l.match(/\d+/)?.[0] ?? "0"));
+    for (let i = 1; i < nums.length; i++) {
+      expect(nums[i]!).toBeGreaterThan(nums[i - 1]!);
+    }
+  });
+
+  test("returns raw under maxLines", () => {
+    const lines = Array.from({ length: 5 }, (_, i) => `line ${i}`);
+    expect(compressRelevantGeneric(lines.join("\n"), 10, "cmd")).toBe(lines.join("\n"));
   });
 });
