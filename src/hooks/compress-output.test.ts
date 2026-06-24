@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { compressLs } from "./compress-output/strategies/ls";
 import { compressTestOutput } from "./compress-output/strategies/test";
+import { compressGrep } from "./compress-output";
 import { compressGeneric } from "./compress-output/strategies/generic";
 import { classifyShape, applyShapeCompression } from "./compress-output/shape";
 import { compressCommandOutput, type CompressConfig } from "./compress-output";
@@ -194,6 +195,54 @@ describe("compressCommandOutput", () => {
     const result = compressCommandOutput("npm run build", lines.join("\n"), false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("truncate");
+  });
+
+  test("size guard: rejects compression that makes output bigger", () => {
+    const output = "src/a.ts\nsrc/b.ts";
+    const result = compressCommandOutput("rg --count foo", output, false, defaultConfig);
+    expect(result).toBeNull();
+  });
+
+  test("pipelines: extracts prefix before pipe for strategy matching", () => {
+    const output = Array.from({ length: 10 }, (_, i) => `src/file${i}.ts:${i + 1}:export const fn = () => {}`).join("\n");
+    const result = compressCommandOutput("rg something 2>&1 | tail -5", output, false, defaultConfig);
+    expect(result).not.toBeNull();
+    expect(result!.strategy).toBe("grep");
+  });
+});
+
+describe("compressGrep", () => {
+  test("regular grep output groups by file", () => {
+    const output = [
+      "src/a.ts:1:const x = 1",
+      "src/a.ts:5:const y = 2",
+      "src/a.ts:10:const w = 0",
+      "src/b.ts:3:const z = 3",
+    ].join("\n");
+    const result = compressGrep(output);
+    expect(result).toContain("4 matches across 2 files");
+    expect(result).toContain("src/a.ts: 3 matches");
+    expect(result).toContain("src/b.ts: 1 match");
+  });
+
+  test("rg --count output is passed through unchanged", () => {
+    const output = [
+      "src/tools/test.ts:12",
+      "src/management/routes.ts:8",
+      "src/storage/sqlite.ts:5",
+    ].join("\n");
+    const result = compressGrep(output);
+    expect(result).toBe(output);
+  });
+
+  test("returns raw when compression would be bigger", () => {
+    const output = [
+      "src/a.ts:1",
+      "src/b.ts:1",
+      "src/c.ts:1",
+    ].join("\n");
+    const result = compressGrep(output);
+    expect(result).toBe(output);
   });
 });
 

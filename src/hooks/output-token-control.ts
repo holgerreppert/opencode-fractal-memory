@@ -142,7 +142,13 @@ export function estimatePressureLevel(
   return "normal";
 }
 
+let lastLogKey = "";
+
 export function logOutputTokenInjection(level: PressureLevel, text: string): void {
+  const key = `${level}|${text.slice(0, 80)}`;
+  if (key === lastLogKey) return;
+  lastLogKey = key;
+
   writeCompressLog({
     action: "output-token-control",
     strategy: "output-token-control",

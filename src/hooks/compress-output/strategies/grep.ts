@@ -2,6 +2,11 @@ export function compressGrep(raw: string): string {
   const lines = raw.split("\n").filter(Boolean);
   if (lines.length <= 3) return raw;
 
+  const isCountFormat = lines.every(l => /^.+?:\d+$/.test(l));
+  if (isCountFormat) {
+    return raw;
+  }
+
   const fileCounts = new Map<string, number>();
   const fileRe = /^(.+?):/;
 
@@ -23,5 +28,7 @@ export function compressGrep(raw: string): string {
     result.push(`  ${file}: ${count} match${count !== 1 ? "es" : ""}`);
   }
   if (entries.length > 15) result.push(`  ... +${entries.length - 15} more files`);
-  return result.join("\n");
+
+  const out = result.join("\n");
+  return out.length < raw.length ? out : raw;
 }

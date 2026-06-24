@@ -72,7 +72,7 @@ export function compressCommandOutput(
     result = compressGeneric(out, config.maxLines); strategy = "truncate";
   }
 
-  if (result !== null && result !== out) {
+  if (result !== null && result !== out && result.length < out.length) {
     memLog("debug", "compress", "Compressed output", {
       cmd: cmd.slice(0, 60),
       originalChars: out.length,
