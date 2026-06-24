@@ -19,7 +19,7 @@ export function createRecordingHandler(store: MemoryStore, config: MemConfig): H
       );
 
       if (config.predictiveRating?.enabled) {
-        predictiveRateToolCall(store, input as any, out as any, config.predictiveRating).catch(err =>
+        predictiveRateToolCall(store, { tool: input.tool ?? "", args: input.args, sessionID: input.sessionID }, out as { metadata?: { error?: unknown } }, config.predictiveRating).catch(err =>
           memLog("warn", "predictive-rating", "Rating failed", { error: String(err) })
         );
       }

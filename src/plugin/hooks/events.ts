@@ -35,7 +35,7 @@ export function createEventHandler(
 
         const tasks: string[] = [];
         if (config?.autoDistill?.enabled) {
-          distillRules(store, config.autoDistill, sessionId, client).then(msg =>
+          distillRules(store, config.autoDistill, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
             memLog("info", "auto-distill", msg)
           ).catch(err => memLog("error", "auto-distill", "Failed", { error: String(err) }));
           tasks.push("distill");

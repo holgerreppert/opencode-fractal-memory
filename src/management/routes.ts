@@ -10,6 +10,7 @@ import {
 } from "./helpers";
 import { VERSION } from "../version";
 import { queryInjectionMetrics } from "../storage/injection-events";
+import type { SqliteNode } from "../storage/queries/base";
 
 function handleScopes(): Response {
   return jsonResponse(getAvailableScopes());
@@ -84,8 +85,8 @@ async function handleSearch(ctx: { scope: string; url: URL }): Promise<Response>
         WHERE label LIKE ? OR content LIKE ?
         ORDER BY importance DESC
         LIMIT 100
-      `).all(`%${q}%`, `%${q}%`) as any[];
-      return jsonResponse(rows.map(r => ({ ...rowToNode(r), score: r.importance })));
+      `).all(`%${q}%`, `%${q}%`) as SqliteNode[];
+      return jsonResponse(rows.map((r: SqliteNode) => ({ ...rowToNode(r), score: r.importance })));
     }
 
     if (mode === "embedding") {
@@ -97,10 +98,11 @@ async function handleSearch(ctx: { scope: string; url: URL }): Promise<Response>
                LENGTH(content) as content_length, metadata, embedding_blob
         FROM memory_nodes
         WHERE embedding_blob IS NOT NULL
-      `).all() as any[];
+      `).all() as SqliteNode[];
 
-      const results = rows.map(r => {
-        const floats = new Float32Array(r.embedding_blob.buffer, r.embedding_blob.byteOffset, r.embedding_blob.byteLength / 4);
+      const results = rows.map((r: SqliteNode) => {
+        const blob = r.embedding_blob!;
+      const floats = new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
         const embedding = Array.from(floats);
         return { ...rowToNode(r), score: cosineSimilarity(queryEmbedding, embedding) };
       });
@@ -126,7 +128,7 @@ async function handleSearch(ctx: { scope: string; url: URL }): Promise<Response>
         GROUP BY n.id
         ORDER BY bm25_score DESC
         LIMIT 100
-      `).all(...terms) as any[];
+      `).all(...terms) as Array<SqliteNode & { bm25_score: number }>;
       return jsonResponse(rows.map(r => ({ ...rowToNode(r), score: r.bm25_score })));
     }
 
@@ -285,16 +287,16 @@ async function handleCompressionStats(req: Request): Promise<Response> {
   const since = Date.now() - days * 86400000;
 
   return withDb("global", (db) => {
-    const total = db.query("SELECT COUNT(*) as c, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats WHERE timestamp >= ?").get(since) as any;
+    const total = db.query("SELECT COUNT(*) as c, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats WHERE timestamp >= ?").get(since) as { c: number; raw: number; comp: number } | undefined;
     const byStrategy = db.query(
       "SELECT strategy, COUNT(*) as calls, SUM(original_chars) as raw, SUM(compressed_chars) as comp, ROUND(AVG(savings_ratio) * 100, 1) as avg_savings FROM compression_stats WHERE timestamp >= ? GROUP BY strategy ORDER BY calls DESC"
-    ).all(since) as any[];
+    ).all(since) as Array<{ strategy: string; calls: number; raw: number; comp: number; avg_savings: number }>;
     const byCommand = db.query(
       "SELECT command, COUNT(*) as calls, SUM(original_chars) as raw, SUM(compressed_chars) as comp FROM compression_stats WHERE timestamp >= ? GROUP BY command ORDER BY calls DESC LIMIT ?"
-    ).all(since, limit) as any[];
+    ).all(since, limit) as Array<{ command: string; calls: number; raw: number; comp: number }>;
     const recent = db.query(
       "SELECT timestamp, command, strategy, original_chars, compressed_chars, original_lines, compressed_lines, cmd_preview, original_preview, compressed_preview, savings_ratio, duration_ms FROM compression_stats WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 20"
-    ).all(since) as any[];
+    ).all(since) as Array<{ timestamp: number; command: string; strategy: string; original_chars: number; compressed_chars: number; original_lines: number; compressed_lines: number; cmd_preview: string; original_preview: string; compressed_preview: string; savings_ratio: number; duration_ms: number }>;
 
     return jsonResponse({
       total: {

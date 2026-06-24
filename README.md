@@ -43,10 +43,15 @@ if you find bugs or if you just want to suggest improvements
 - **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
 - **Consolidation** — extracts semantic facts from episodic node clusters on session idle
 - **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Stats tracked in `compression_stats` table. View via management app Compress tab
+- **Context dashboard** — new management app tab showing memory node count/tokens by level, active rules, compression stats, recent injection history, and estimated total context usage with overhead breakdown
 - **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count). Falls through to generic if shape is unknown
 - **Fuzzy dedup** — after exact SHA-256 dedup fails, computes trigram Jaccard similarity against recent outputs (threshold 0.85) to catch near-duplicates (timestamps, whitespace diffs). Logged as `fuzzy-dedup` in compress.log
 - **Adaptive pressure** — tracks estimated context token usage; issues warnings and tightens `maxLines` (50→35→20→5) at configurable thresholds (70/85/95%). Logged to compress.log per phase transition
 - **Output offloading** — when compressed output exceeds threshold (default 8K chars), writes to `~/.config/opencode/scratch/<hash>.out` and replaces with a short reference banner. Logged with offload_path and offload_bytes
+- **Output token control** — injects `<system_reminder type="suggestion">` rules into the system prompt that constrain the agent's response length (sentence limit, char limit, bullet-only, or custom prompt). Mode: adaptive (tightens at context pressure thresholds), always-on, or off. 24 configurable fields. Logged to compress.log
+- **Relevance trimming** — TF-IDF scores each output line against command query terms; drops sub-threshold lines (default 0.15). Config via `commandCompression.relevanceTrimming*` fields. Opt-in (default false)
+- **Delta compression** — when the same command runs again and output is ≥50% similar, emits only the diff lines (prefix/suffix) instead of the full compressed output. Config via `commandCompression.deltaCompression*` fields. Logged as `delta` in compress.log
+- **Before/after compression statistics** — each compression event stores original_lines, compressed_lines, cmd_preview, and full content previews (up to 2K chars) in the DB. Management UI shows side-by-side before/after detail with expandable row modal
 - **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
 - **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely. Logged to filesum.log (RE-READ component)
 - **Dedicated log files** — separate `filesum.log` for file summarization/skeletonization events and `compress.log` for command compression events, auto-rotating
@@ -258,6 +263,35 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
 | `commandCompression.alwaysFullOnFailure` | bool | `true` | Preserve full output on non-zero exit |
 | `sessionLog.enabled` | bool | `false` | Log session events to separate file |
+| `commandCompression.relevanceTrimmingEnabled` | bool | `false` | TF-IDF relevance trimming of command output |
+| `commandCompression.relevanceTrimmingThreshold` | float | `0.15` | Min TF-IDF score to keep a line |
+| `commandCompression.relevanceTrimmingMinKeep` | int | `5` | Min lines to keep regardless |
+| `commandCompression.relevanceTrimmingAlwaysKeepTop` | int | `3` | Always keep top N lines |
+| `commandCompression.deltaCompressionEnabled` | bool | `true` | Delta/differential compression for repeated commands |
+| `commandCompression.deltaMaxCacheSize` | int | `50` | Max cached outputs per command |
+| `commandCompression.deltaMinSimilarity` | float | `0.5` | Min Jaccard similarity to attempt delta |
+| `outputTokenControl.enabled` | bool | `false` | Inject concise-output rules into system prompt |
+| `outputTokenControl.mode` | enum | `"adaptive"` | `"adaptive"`, `"always-on"`, or `"off"` |
+| `outputTokenControl.strategy` | enum | `"concise"` | `"concise"`, `"sentence_limit"`, `"char_limit"`, `"bullet_only"`, `"custom"` |
+| `outputTokenControl.maxSentences` | int | `5` | Sentence limit (base/always-on) |
+| `outputTokenControl.maxChars` | int | `0` | Global char limit (0 = disabled) |
+| `outputTokenControl.customPrompt` | string | `""` | Custom rule text for `custom` strategy |
+| `outputTokenControl.warnThreshold` | float | `0.7` | Context % for warn level |
+| `outputTokenControl.aggressiveThreshold` | float | `0.85` | Context % for aggressive level |
+| `outputTokenControl.criticalThreshold` | float | `0.95` | Context % for critical level |
+| `outputTokenControl.normalSentences` | int | `5` | Sentence limit at normal pressure |
+| `outputTokenControl.warnSentences` | int | `3` | Sentence limit at warn pressure |
+| `outputTokenControl.aggressiveSentences` | int | `1` | Sentence limit at aggressive pressure |
+| `outputTokenControl.criticalSentences` | int | `1` | Sentence limit at critical pressure |
+| `outputTokenControl.normalStrategy` | enum | `"concise"` | Strategy at normal pressure |
+| `outputTokenControl.warnStrategy` | enum | `"sentence_limit"` | Strategy at warn pressure |
+| `outputTokenControl.aggressiveStrategy` | enum | `"sentence_limit"` | Strategy at aggressive pressure |
+| `outputTokenControl.criticalStrategy` | enum | `"char_limit"` | Strategy at critical pressure |
+| `outputTokenControl.normalPrompt` | string | `""` | Custom prompt at normal (for custom strategy) |
+| `outputTokenControl.warnPrompt` | string | `""` | Custom prompt at warn |
+| `outputTokenControl.aggressivePrompt` | string | `""` | Custom prompt at aggressive |
+| `outputTokenControl.criticalPrompt` | string | `""` | Custom prompt at critical |
+| `outputTokenControl.excludePatterns` | string[] | `[]` | Regex patterns to skip constraint injection |
 
 ## Advanced Features
 
@@ -398,6 +432,10 @@ Built-in, zero-dependency compression for bash tool output. 7 strategies automat
 | `generic` | (fallback) | Dedup + truncate at maxLines |
 
 Stats tracked in the `compression_stats` table. View at management app → **Compress** tab. Full output preserved on non-zero exit (tee mode).
+
+**Relevance trimming** — when enabled, TF-IDF scores each line against command terms and drops lines below the threshold. Keeps at least `minKeep` lines and always preserves the top `alwaysKeepTop` lines. Config under `commandCompression.relevanceTrimming*`.
+
+**Delta compression** — when the same command runs multiple times and the new output is ≥50% similar (Jaccard) to the cached previous output, only the differing lines are emitted as a delta. The delta shows `- prefix lines` + new content + `+ suffix lines`. Config under `commandCompression.deltaCompression*`.
 
 ```json
 {
@@ -617,6 +655,10 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 - Restore with per-source selection — a pre-restore safety backup is auto-created
 - Manual retention: list, inspect, and delete backups from the UI
 
+**Context** — shows a unified dashboard of all memory node tokens by level/type, active rules, compression savings, recent injection history, and estimated total LLM context usage (memory + system prompts + tool defs + conversation estimate).
+
+**Compress (Before/After)** — the compression tab now shows each event with before/after char counts, line counts, and duration. Click any row to see a modal with the full before/after content preview side-by-side.
+
 ## How Plugin Initialization Works
 
 When OpenCode loads the plugin, `initStorage()` runs automatically:
@@ -724,14 +766,13 @@ MIT
 
 ## Changelog
 
-### v0.6.33 (current)
-- **Re-read elimination** — caches file reads by path with mtime comparison. When a file is unchanged, serves `[File unchanged since turn N]` banner with cached content. Config via `reReadElimination` section.
-- **Output offloading** — when compressed output exceeds configurable threshold (default 8K chars), writes full content to `~/.config/opencode/scratch/<hash>.out` and replaces with reference banner. 24h scratch file purge. Config via `outputOffloading` section.
-- **Structural shape detection** — auto-classifies output shape (JSON/CSV/stack-trace/tree/table) before generic fallback, applies tailored compressors (e.g., JSON → `Object(N keys)`, stack-trace → error + unique frames). Only applied when ≥20% smaller than raw output.
-- **Fuzzy dedup** — trigram Jaccard similarity (default threshold 0.85) catches near-duplicate outputs after exact SHA-256 misses. Config via `commandCompression.fuzzyDedup*` fields.
-- **Adaptive pressure** — tracks estimated context token usage, tightens `maxLines` (50→35→20→5) at 70/85/95% thresholds with warning banners. Config via `adaptivePressure` section.
-- **Dedicated logging** — all compression events (shape detection, fuzzy dedup, offloading, adaptive pressure) log to `compress.log` via `writeCompressLog()`. Re-read elimination logs to `filesum.log` (RE-READ component).
-- **Management UI** — config fields for re-read elimination, output offloading, fuzzy dedup, shape detection, and adaptive pressure in the AI & Compression panel.
+### v0.6.34 (current)
+- **Relevance trimming** — TF-IDF scores each output line against command query terms; drops sub-threshold lines (threshold 0.15, minKeep 5, alwaysKeepTop 3). Config via `commandCompression.relevanceTrimming*` fields. Opt-in (default false). Logged to compress.log.
+- **Delta compression** — per-command output cache (max 50). When new output is ≥50% similar (Jaccard) to cached output, emits a diff (prefix/suffix) instead of re-compressing. Config via `commandCompression.deltaCompression*` fields. Enabled by default.
+- **Context dashboard** — new management app tab (`/api/context-dashboard`) showing memory tokens by level/type, active rules, compression savings, recent injection history, and estimated total context. Summary cards, by-level/by-type tables, injection history table.
+- **Before/after compression stats** — migration v26 adds `original_lines`, `compressed_lines`, `cmd_preview`, `original_preview`, `compressed_preview` to `compression_stats` table. Compress tab now shows rich per-event table (before K, after K, Δlines, savings, duration). Click-to-expand modal with side-by-side raw vs compressed content preview. Strategy breakdown with raw/compressed/saved columns. `contentSnippet()` in log output for all compression events.
+- **Output token control** — injects concise-output `<system_reminder type="suggestion">` rules into the system prompt. Three modes: adaptive (tightens at 70/85/95% context), always-on, or off. Five strategies: concise, sentence_limit, char_limit, bullet_only, custom. Per-level overrides for sentences, strategy, and custom prompt. Exclusion patterns (regex). 24 config fields with Zod schema + management UI. Logged to compress.log as `output-token-control`.
+- **386 tests, 0 fail** (20 new tests — 16 unit + 4 integration).
 
 ### v0.6.32 (2026-06-19)
 - **Cross-encoder reranker** — in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) replaces the unavailable Ollama `/api/rerank` endpoint. Configurable via `ollama.strategy: "cross-encoder"` (vs `"llm"` default). Management app UI dropdown to switch strategies. Model auto-downloads with `ensureModels()`.

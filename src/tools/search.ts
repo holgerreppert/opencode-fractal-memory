@@ -84,7 +84,7 @@ export function MemorySearch(store: MemoryStore) {
       if (args.project_name !== undefined) options.projectName = args.project_name;
       if (args.category_filter !== undefined) options.categoryFilter = args.category_filter;
       if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
-      if (args.temporal_hops !== undefined && args.temporal_hops > 0) (options as any).temporalHops = args.temporal_hops;
+      if (args.temporal_hops !== undefined && args.temporal_hops > 0) (options as { temporalHops?: number }).temporalHops = args.temporal_hops;
 
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 

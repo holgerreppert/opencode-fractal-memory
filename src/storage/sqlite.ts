@@ -322,7 +322,7 @@ class SqliteMemoryStore {
     sourceNodeId: string, targetNodeId: string, edgeType: string,
     scope?: string, confidence?: number, metadata?: Record<string, unknown> | null,
   ): Promise<import("./types").TemporalEdge> {
-    const db = await this.getDb(scope as any ?? "project");
+    const db = await this.getDb(scope as MemoryScope ?? "project");
     return queryCreateTemporalEdge(db, { sourceNodeId, targetNodeId, edgeType, scope, confidence, metadata });
   }
 

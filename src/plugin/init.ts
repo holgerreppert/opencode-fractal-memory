@@ -1,4 +1,4 @@
-import { createSqliteMemoryStore as createMemoryStore, type MemoryStore, type MemoryScope } from "../storage/sqlite";
+import { createSqliteMemoryStore as createMemoryStore, type MemoryStore, type MemoryScope, type MemoryNodeType } from "../storage/sqlite";
 import { loadMemConfig, type MemConfig } from "../config";
 import { generateEmbedding } from "../embeddings";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
@@ -56,7 +56,7 @@ export async function seedRuleNodes(store: MemoryStore): Promise<void> {
           label: seed.label,
           content: seed.content,
           summary: seed.summary ?? null,
-          type: (seed.type ?? "note") as any,
+          type: seed.type as MemoryNodeType | null ?? "note",
           level: 0,
           parentIds: null,
           embedding: null,
@@ -132,7 +132,7 @@ export function createAutoRetrieveIfEnabled(
     ? createAutoRetrieveHook({
         store,
         config: memConfig,
-        log: (level, msg, data) => memLog(level as any, "auto-retrieve", msg, data),
+        log: (level: string, msg: string, data?: unknown) => memLog(level as "debug" | "info" | "warn" | "error", "auto-retrieve", msg, data as Record<string, unknown> | undefined),
       })
     : null;
 }

@@ -43,7 +43,7 @@ export function MemoryInject(store: MemoryStore) {
       });
 
       const filtered = candidates.filter((n) => {
-        const confidential = (n as any).confidential as boolean | undefined;
+        const confidential = (n as MemoryNode & { confidential?: boolean }).confidential;
         if (!includeConfidential && confidential) return false;
         if (maxLevel !== undefined && (n.level ?? 0) > maxLevel) return false;
         if (minConfidence !== undefined && (n.confidence ?? 0) < minConfidence) return false;
@@ -52,7 +52,7 @@ export function MemoryInject(store: MemoryStore) {
 
       const nodeTokenCounts = new Map<string, number>();
       for (const n of filtered) {
-        const metaTokens = (n as any).metadata?.tokenCount as number | undefined;
+        const metaTokens = (n.metadata as { tokenCount?: number } | null)?.tokenCount;
         const count = metaTokens ?? estimateTokens(n.content);
         nodeTokenCounts.set(n.id, count);
       }

@@ -23,7 +23,7 @@ export async function predictiveRateToolCall(
     nodeId = args.id as string;
     if (!nodeId && args.label) {
       try {
-        const node = await store.getNodeByLabel((args.scope as any) ?? "project", args.label as string);
+        const node = await store.getNodeByLabel((args.scope ?? "project") as "global" | "project", args.label as string);
         nodeId = node.id;
       } catch { /* Not found, skip rating */ return; }
     }
@@ -41,7 +41,7 @@ export async function predictiveRateToolCall(
     nodeId = args.id as string;
     if (!nodeId && args.label) {
       try {
-        const node = await store.getNodeByLabel((args.scope as any) ?? "project", args.label as string);
+        const node = await store.getNodeByLabel((args.scope ?? "project") as "global" | "project", args.label as string);
         nodeId = node.id;
       } catch { /* Not found, skip rating */ return; }
     }

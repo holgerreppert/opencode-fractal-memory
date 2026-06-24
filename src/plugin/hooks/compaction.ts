@@ -73,11 +73,11 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
         summaries.push(`Middle-term capture stored for session ${sessionId}.`);
 
         try {
-          const typedClient = client as any;
+          const typedClient = client as { session?: { messages: (opts: { path: { id: string }; query: { limit: number } }) => Promise<{ data?: Array<Record<string, unknown>>; [key: string]: unknown }> } };
           if (typedClient?.session?.messages) {
             const msgResponse = await typedClient.session.messages({ path: { id: sessionId }, query: { limit: 50 } });
             const messages: Array<{ info: Record<string, any>; parts: Array<Record<string, any>> }> =
-              msgResponse?.data ?? msgResponse ?? [];
+              ((msgResponse?.data ?? msgResponse) as unknown as Array<{ info: Record<string, any>; parts: Array<Record<string, any>> }>) ?? [];
             if (Array.isArray(messages) && messages.length > 0) {
               const entries: string[] = [];
               let totalSize = 0;

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createSqliteMemoryStore } from "../storage/sqlite";
-import type { MemoryScope } from "../storage/sqlite";
+import type { MemoryScope, MemoryNodeType } from "../storage/sqlite";
 import { withMcpLogging, mcpLog } from "./logging";
 import { nodeToPlain, ensureScope, resourceStats } from "./transform";
 import { VERSION } from "../version";
@@ -255,7 +255,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
           await store.updateNode(existing.id, {
             content: args.content,
             level: args.level as 0 | 1 | 2 | 3 | 4 | 5,
-            type: (args.type as any) ?? null,
+            type: (args.type as MemoryNodeType | null) ?? null,
             importance: args.importance,
             metadata: metadata ?? undefined,
           });
@@ -267,7 +267,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
           label: args.label,
           content: args.content,
           level: args.level as 0 | 1 | 2 | 3 | 4 | 5,
-          type: (args.type as any) ?? null,
+          type: (args.type as import("../storage/types").MemoryNodeType | null) ?? null,
           importance: args.importance,
           metadata,
           projectName: args.project_name ?? store.projectName,

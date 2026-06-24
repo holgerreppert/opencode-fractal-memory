@@ -19,7 +19,7 @@ export function MemoryPlaybookExecute(memoryStore: MemoryStore) {
 
       const metadata = node.metadata || {};
       const rawSteps = metadata.steps;
-      const steps: Array<{ toolName: string; description: string; params: Record<string, string>; expectedOutcome?: string; critical: boolean }> = Array.isArray(rawSteps) ? rawSteps as any : [];
+      const steps: Array<{ toolName: string; description: string; params: Record<string, string>; expectedOutcome?: string; critical: boolean }> = Array.isArray(rawSteps) ? rawSteps as Array<Record<string, unknown>> as Array<{ toolName: string; description: string; params: Record<string, string>; expectedOutcome?: string; critical: boolean }> : [];
       if (steps.length === 0) {
         return `Playbook "${args.playbook_id}" has no steps defined in its metadata.`;
       }

@@ -10,7 +10,7 @@ export async function distillRules(
   store: MemoryStore,
   config: AutoDistillConfig,
   sessionId?: string,
-  client?: unknown
+  client?: { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } }
 ): Promise<string> {
   const lessons = await store.listNodes("global");
   const lessonNodes = lessons.filter(n => n.label?.startsWith("lesson:") && !n.label.includes(":", 7));
@@ -55,7 +55,7 @@ export async function distillRules(
     }
   }
 
-  if (config.useLlm && client && (client as any)?.session?.prompt) {
+  if (config.useLlm && client?.session?.prompt) {
     try {
       const lessonContent = recentLessons.map(l => l.content).join("\n---\n");
       const prompt = `Based on these lesson summaries, generate specific, actionable rules for the agent.

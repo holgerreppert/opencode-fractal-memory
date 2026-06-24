@@ -251,7 +251,7 @@ export function queryTemporalEdges(scope: string, projectName?: string, nodeId?:
     WHERE ${conditions.join(" AND ")}
     ORDER BY te.created_at DESC
   `;
-  const rows = db.query(sql).all(...params) as any[];
+  const rows = db.query(sql).all(...params) as Array<Record<string, unknown>>;
   db.close();
   return rows;
 }

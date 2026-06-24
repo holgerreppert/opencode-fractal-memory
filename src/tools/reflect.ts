@@ -104,7 +104,7 @@ export function MemoryReflect(store: MemoryStore, client?: unknown) {
       const label = `lesson:${timestamp}`;
       let content = analysisLines.join("\n");
 
-      if (args.use_llm && client && (client as any)?.session?.prompt) {
+      if (args.use_llm && client && (client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } }).session?.prompt) {
         try {
           const prompt = `Analyze these tool failures and provide specific, actionable fixes:
 
@@ -243,7 +243,7 @@ export function MemoryDistill(store: MemoryStore, client?: unknown) {
         }
       }
 
-      if (args.use_llm && client && (client as any)?.session?.prompt) {
+      if (args.use_llm && client && (client as { session?: { prompt: string } })?.session?.prompt) {
         try {
           const lessonContent = recentLessons.map(l => l.content).join("\n---\n");
           const prompt = `Based on these lesson summaries, generate specific, actionable rules for the agent.

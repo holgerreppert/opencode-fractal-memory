@@ -84,6 +84,39 @@ Config:
 
 Phase transitions logged to compress.log as `pressure-warn`, `pressure-aggressive`, `pressure-critical`.
 
+### Relevance Trimming (`commandCompression.relevanceTrimming*`)
+
+TF-IDF scoring of each output line against command query terms. Lines with scores below `relevanceTrimmingThreshold` (default 0.15) are dropped unless they're among the top `relevanceTrimmingAlwaysKeepTop` lines or we haven't hit `relevanceTrimmingMinKeep` yet. Only applied when the trimmed output is at least 10% smaller than the original. Config:
+
+```json
+{
+  "commandCompression": {
+    "relevanceTrimmingEnabled": false,
+    "relevanceTrimmingThreshold": 0.15,
+    "relevanceTrimmingMinKeep": 5,
+    "relevanceTrimmingAlwaysKeepTop": 3
+  }
+}
+```
+
+Opt-in (default false). Logged as `relevance-trim` with dropped line count.
+
+### Delta Compression (`commandCompression.deltaCompression*`)
+
+When a command runs multiple times and the new output is at least `deltaMinSimilarity` (default 0.5) similar to the cached previous output, only the differing lines are emitted. The delta shows removed prefix lines (`- N lines`), new/changed content, and appended suffix lines (`+ N lines`). Cache retained per command (max `deltaMaxCacheSize`).
+
+```json
+{
+  "commandCompression": {
+    "deltaCompressionEnabled": true,
+    "deltaMaxCacheSize": 50,
+    "deltaMinSimilarity": 0.5
+  }
+}
+```
+
+Enabled by default. Falls through to normal compression when similarity is below threshold. Logged as `delta` with strategy label.
+
 ### Output Offloading (`outputOffloading`)
 
 When compressed output still exceeds 8K chars (configurable), the full compressed content is written to `~/.config/opencode/scratch/<hash>.out` and replaced with a reference banner. Old scratch files are purged after 24h. Config:
@@ -97,7 +130,73 @@ When compressed output still exceeds 8K chars (configurable), the full compresse
 }
 ```
 
-## Re-Read Elimination (`reReadElimination`)
+## Output Token Control (`outputTokenControl`)
+
+Injects a `<system_reminder type="suggestion">` rule into the system prompt that constrains the agent's response length. Output tokens cost 4-8× more than input tokens across all major providers, so reducing response verbosity saves the most expensive token type.
+
+### How it works
+
+The `experimental.chat.system.transform` hook appends a concise-output rule after the static system prompt. The rule text depends on the configured `mode` and current context pressure level (shared with `adaptivePressure` state).
+
+| Mode | Behavior |
+|---|---|
+| `adaptive` | Rule tightens as context fills: normal → warn → aggressive → critical |
+| `always-on` | Same rule injected every turn (uses normal-level settings) |
+| `off` | No injection |
+
+### Strategies
+
+| Strategy | Example output |
+|---|---|
+| `concise` | *"Be concise. Prefer bullet points. Answer in at most 5 sentences. Skip introductions."* |
+| `sentence_limit` | *"Answer in at most 3 sentences."* |
+| `char_limit` | *"Answer in at most 200 characters. Be extremely concise."* |
+| `bullet_only` | *"Use bullet points only. No paragraphs or prose."* |
+| `custom` | Exact text from `customPrompt` field |
+
+### Per-level overrides
+
+Each adaptive level has its own `{strategy}`, `{sentences}`, and `{prompt}` fields. Critical defaults to `char_limit` with 1 sentence; warn defaults to `sentence_limit` with 3 sentences.
+
+### Exclusion
+
+`excludePatterns` is a list of regex patterns. If the user message matches, the rule is skipped — useful for queries that explicitly ask for detailed explanations.
+
+### Config defaults
+
+```json
+{
+  "outputTokenControl": {
+    "enabled": false,
+    "mode": "adaptive",
+    "strategy": "concise",
+    "maxSentences": 5,
+    "maxChars": 0,
+    "customPrompt": "",
+    "warnThreshold": 0.7,
+    "aggressiveThreshold": 0.85,
+    "criticalThreshold": 0.95,
+    "normalSentences": 5,
+    "warnSentences": 3,
+    "aggressiveSentences": 1,
+    "criticalSentences": 1,
+    "normalStrategy": "concise",
+    "warnStrategy": "sentence_limit",
+    "aggressiveStrategy": "sentence_limit",
+    "criticalStrategy": "char_limit",
+    "normalPrompt": "",
+    "warnPrompt": "",
+    "aggressivePrompt": "",
+    "criticalPrompt": "",
+    "excludePatterns": []
+  }
+}
+```
+
+Logged to compress.log as `output-token-control` with level and rule text snippet.
+
+
+### Re-Read Elimination (`reReadElimination`)
 
 In `tool.execute.before` for `read` commands. When a file was previously read and its mtime hasn't changed, the cached content is served with `[File unchanged since turn N]` banner, eliminating redundant disk reads and token usage. Logged to filesum.log with component `RE-READ`. Config:
 
@@ -118,7 +217,7 @@ OpenCode loads from plugin cache, NOT from node_modules. Both steps required:
 bun run build         # compile TS
 npm pack              # create .tgz
 cd ~/.config/opencode
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.33.tgz
+npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.34.tgz
 cp -r node_modules/opencode-fractal-memory/dist \
   node_modules/opencode-fractal-memory/management \
   node_modules/opencode-fractal-memory/package.json \
@@ -145,7 +244,7 @@ Then restart OpenCode.
 | `src/hooks/skeletonize.ts` | Tree-sitter AST skeleton extraction (32 languages) + regex fallback |
 | `src/hooks/auto-retrieve/index.ts` | Multi-reasoning reranking pipeline (agent-pull model) |
 | `src/hooks/auto-retrieve/scoring.ts` | Fallback scoring (metadata + keyword overlap, no embeddings) |
-| `src/plugin/hooks.ts` | **Thin orchestration** — calls 8 extracted handlers |
+| `src/plugin/hooks.ts` | **Thin orchestration** — calls 9 extracted handlers |
 | `src/plugin/hooks/types.ts` | HookHandler interface for the pipeline pattern |
 | `src/plugin/hooks/recording.ts` | Memory tool call recording + predictive rating |
 | `src/plugin/hooks/working-cache.ts` | Populate working cache from memory tool results |
@@ -163,6 +262,12 @@ Then restart OpenCode.
 | `src/storage/migrations/definitions.ts` | DB migrations (v25 = compression_stats) |
 | `src/logging.ts` | Per-feature logging (`writeMemLog`, `writeFileSumLog`, `writeCompressLog`) |
 | `install-dev.md` | Full install guide |
+| `src/hooks/output-token-control.ts` | Output token control — rule generation + exclusion logic |
+| `src/plugin/hooks/output-token-control.ts` | Output token control handler + system transform injection |
+| `src/hooks/re-read-elimination.ts` | Read cache + mtime check |
+| `src/hooks/adaptive-pressure.ts` | Token estimation + pressure phase tracking |
+| `src/management/helpers.ts` | withDb, rowToNode, JSON serialization helpers |
+| `src/management-standalone.ts` | Management server entry point (separate subprocess) |
 
 ## Config default for commandCompression
 
@@ -233,7 +338,7 @@ Use `memory_drilldown(label="<label>")` to retrieve full context for these key n
 | `rule:feature:file-skeletonization` | rule | Skeletonization feature details — tree-sitter, banners |
 | `rule:feature:file-summarization` | rule | File summary feature details — auto-store on read |
 | `rule:feature:auto-retrieve` | rule | Auto-retrieve reranking feature details |
-| `file:src/plugin/hooks.ts` | file | Thin orchestration — calls 8 extracted handlers |
+| `file:src/plugin/hooks.ts` | file | Thin orchestration — calls 9 extracted handlers |
 | `file:src/plugin/hooks/compression.ts` | file | Compression handler with feature banner |
 | `file:src/plugin/hooks/skeletonization.ts` | file | Skeletonization handler with feature banner |
 | `file:src/plugin/hooks/file-summary.ts` | file | Before/after hooks for auto-file-summarization |
@@ -242,3 +347,6 @@ Use `memory_drilldown(label="<label>")` to retrieve full context for these key n
 | `file:src/plugin/hooks/recording.ts` | file | Memory tool call recording + predictive rating |
 | `file:src/plugin/hooks/compaction.ts` | file | Middle-term capture + stored context |
 | `file:src/plugin/hooks/events.ts` | file | Session lifecycle event handling |
+| `task:compress-before-after-stats-2026-06-23` | task | Before/after compression stats implementation details |
+| `task:context-dashboard-2026-06-23` | task | Context dashboard implementation details |
+| `output-token-control` | howto | Output token control feature — config, strategies, levels |

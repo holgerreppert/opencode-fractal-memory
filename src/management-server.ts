@@ -34,7 +34,7 @@ function killOrphanedServer(port: number): void {
 
 export function ensureManagementServer(): void {
   if (mgmtConfig && mgmtConfig.enabled) {
-    startManagementServer(null as any, mgmtConfig.directory, { enabled: true, port: mgmtConfig.port });
+    startManagementServer(null, mgmtConfig.directory, { enabled: true, port: mgmtConfig.port });
   }
 }
 
@@ -67,7 +67,7 @@ export function startManagementServer(
         MGMT_PID_FILE: PID_FILE,
       },
       stdio: ["ignore", "pipe", "pipe"],
-      deathSignal: "SIGKILL",
+      deathSignal: "SIGKILL" as any,
     } as any);
 
     activeProcess = proc;

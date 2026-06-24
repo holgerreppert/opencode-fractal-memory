@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../config";
+import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type CompressConfig, type FuzzyDedupConfig } from "../../hooks/compress-output";
 import type { HookHandler } from "./types";
@@ -49,21 +50,24 @@ function offloadOutput(output: string): string | null {
   }
 }
 
-function purgeOldScratch(): void {
+async function purgeOldScratch(): Promise<void> {
   try {
     const cutoff = Date.now() - 86400000;
-    for (const f of fs.readdirSync(SCRATCH_DIR)) {
+    const entries = await fs.promises.readdir(SCRATCH_DIR);
+    for (const f of entries) {
       const fp = path.join(SCRATCH_DIR, f);
-      const stat = fs.statSync(fp);
-      if (stat.mtimeMs < cutoff) {
-        fs.unlinkSync(fp);
-      }
+      try {
+        const stat = await fs.promises.stat(fp);
+        if (stat.mtimeMs < cutoff) {
+          await fs.promises.unlink(fp);
+        }
+      } catch { /* best-effort per-file */ }
     }
   } catch { /* best-effort */ }
 }
 
 export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
-  purgeOldScratch();
+  purgeOldScratch().catch(() => {});
   return {
     "tool.after": async (_input: unknown, output: unknown) => {
       const input = _input as { tool?: string; args?: { command?: string }; sessionID?: string };
@@ -113,7 +117,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
           originalPreview: contentPreview(raw),
           compressedPreview: contentPreview(deltaResult.output),
           durationMs,
-        }).catch(() => {});
+        }).catch((err) => memLog("error", "compress", "Failed to record delta compression stat", { error: String(err) }));
         return;
       }
 
@@ -228,7 +232,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             originalPreview: contentPreview(raw),
             compressedPreview: contentPreview(deduped.output),
             durationMs,
-          }).catch(() => {});
+          }).catch((err) => memLog("error", "compress", "Failed to record compression stat", { error: String(err) }));
         } else {
           writeCompressLog({
             action: "skipped",

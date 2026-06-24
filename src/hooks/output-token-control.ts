@@ -132,7 +132,7 @@ export function estimatePressureLevel(
 ): PressureLevel {
   if (!apConfig?.enabled) return "normal";
 
-  const state = (globalThis as any).__pressureState;
+  const state = (globalThis as Record<string, unknown>).__pressureState as { estimatedTokens: number; maxTokens: number } | undefined;
   if (!state) return "normal";
 
   const ratio = state.maxTokens > 0 ? state.estimatedTokens / state.maxTokens : 0;
