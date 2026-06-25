@@ -1,7 +1,7 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
-import { distillRules, runConsolidation, applyScoreDecay } from "../../hooks";
+import { distillRules, runConsolidation, applyScoreDecay } from "../../application";
 import { cleanupMiddleTermCaptures } from "../state";
 import type { HookHandler } from "./types";
 

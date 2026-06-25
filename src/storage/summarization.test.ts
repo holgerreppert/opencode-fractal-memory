@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CompressionHelper } from "./compression";
+import { CompressionHelper } from "./summarization";
 import type { MemoryNode } from "./types";
 
 function makeNode(overrides: Partial<MemoryNode> = {}): MemoryNode {

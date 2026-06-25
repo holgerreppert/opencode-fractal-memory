@@ -3,7 +3,7 @@ import type { MemoryScope, MemoryNode, MemoryNodeLevel, CreateNodeInput } from "
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { generateEmbedding } from "../embeddings";
-import { CompressionHelper, COMPRESSION_LEVELS } from "./compression";
+import { CompressionHelper, COMPRESSION_LEVELS } from "./summarization";
 
 export async function getCompressionCandidates(
   getDb: (scope: MemoryScope) => Promise<Database>,

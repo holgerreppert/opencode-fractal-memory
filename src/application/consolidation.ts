@@ -1,6 +1,6 @@
 import type { MemoryNode, MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
-import { CompressionHelper } from "../storage/compression";
+import { CompressionHelper } from "../storage/summarization";
 import { generateEmbedding } from "../embeddings";
 
 export interface ConsolidationConfig {

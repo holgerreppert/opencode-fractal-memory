@@ -1,20 +1,20 @@
 import { memLog } from "../logging";
-import type { CompressConfig, FuzzyDedupConfig } from "./compress-output/config";
-import { compressLs } from "./compress-output/strategies/ls";
-import { compressTestOutput } from "./compress-output/strategies/test";
-import { compressGrep } from "./compress-output/strategies/grep";
-import { compressGitStatus, compressGitLog, compressGitDiff } from "./compress-output/strategies/git";
-import { compressGeneric, compressRelevantGeneric } from "./compress-output/strategies/generic";
-import { classifyShape, applyShapeCompression } from "./compress-output/shape";
-import { trimByRelevance } from "./compress-output/relevance";
-import { tryDeltaCompression, updateDeltaCache } from "./compress-output/delta";
-import { addContentDedup } from "./compress-output/dedup";
-import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix } from "./compress-output/utils";
+import type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";
+import { compressLs } from "./command-compression/strategies/ls";
+import { compressTestOutput } from "./command-compression/strategies/test";
+import { compressGrep } from "./command-compression/strategies/grep";
+import { compressGitStatus, compressGitLog, compressGitDiff } from "./command-compression/strategies/git";
+import { compressGeneric, compressRelevantGeneric } from "./command-compression/strategies/generic";
+import { classifyShape, applyShapeCompression } from "./command-compression/shape";
+import { trimByRelevance } from "./command-compression/relevance";
+import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
+import { addContentDedup } from "./command-compression/dedup";
+import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix } from "./command-compression/utils";
 
-export type { CompressConfig, FuzzyDedupConfig } from "./compress-output/config";
-export { tryDeltaCompression, updateDeltaCache } from "./compress-output/delta";
-export { addContentDedup } from "./compress-output/dedup";
-export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff } from "./compress-output/strategies";
+export type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";
+export { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
+export { addContentDedup } from "./command-compression/dedup";
+export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff } from "./command-compression/strategies";
 
 export function compressCommandOutput(
   command: string,

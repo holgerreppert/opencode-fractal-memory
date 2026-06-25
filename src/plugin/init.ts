@@ -2,7 +2,7 @@ import { createSqliteMemoryStore as createMemoryStore, type MemoryStore, type Me
 import { loadMemConfig, type MemConfig } from "../config";
 import { generateEmbedding } from "../embeddings";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
-import { createAutoRetrieveHook } from "../hooks";
+import { createAutoRetrieveHook } from "../application";
 import { createJournalStore, type JournalContext } from "../journal";
 import { startManagementServer } from "../management-server";
 import { SEED_NODES } from "../seed-nodes";

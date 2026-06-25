@@ -1,5 +1,5 @@
 import type { MemConfig } from "../../config";
-import { getPressurePhase } from "../../hooks/adaptive-pressure";
+import { getPressurePhase } from "../../application/adaptive-pressure";
 import { writeCompressLog } from "../../logging";
 import type { HookHandler } from "./types";
 

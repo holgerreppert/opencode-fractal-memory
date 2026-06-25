@@ -6,7 +6,7 @@ import {
   getEffectiveMaxLines,
   shouldSkipGeneric,
   getPressurePhase,
-} from "../../hooks/adaptive-pressure";
+} from "../../application/adaptive-pressure";
 import type { HookHandler } from "./types";
 
 export function createAdaptivePressureHandler(config: MemConfig): HookHandler {

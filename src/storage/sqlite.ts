@@ -14,7 +14,7 @@ import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelF
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
 import { updateBM25Index, removeBM25Index } from "./queries/search-helpers";
-import { CompressionHelper, COMPRESSION_LEVELS } from "./compression";
+import { CompressionHelper, COMPRESSION_LEVELS } from "./summarization";
 export { CompressionHelper, COMPRESSION_LEVELS };
 import { memLog } from "../logging";
 import { insertToolUsageLog, queryToolPatterns, queryFrequentSequences, deleteUsageLog, getToolCategory } from "./tool-usage";
