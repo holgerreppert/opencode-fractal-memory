@@ -9,7 +9,8 @@ import { getHNSWIndex } from "../hnsw-index";
 import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
-import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
+import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult } from "./types";
+import type { IMemoryStore } from "../domain/ports/IMemoryStore";
 import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
@@ -50,7 +51,7 @@ function validateLabel(label: string): string {
   return trimmed;
 }
 
-class SqliteMemoryStore {
+class SqliteMemoryStore implements IMemoryStore {
   private dbs: Map<string, Database> = new Map();
   private dbInitPromises: Map<string, Promise<Database>> = new Map();
   private idScopeCache: Map<string, MemoryScope> = new Map();
@@ -666,6 +667,6 @@ class SqliteMemoryStore {
   }
 }
 
-export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): MemoryStore {
+export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): IMemoryStore {
   return new SqliteMemoryStore(projectDirectory, globalDbPath);
 }
