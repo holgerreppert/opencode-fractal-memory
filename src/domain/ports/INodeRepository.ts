@@ -33,6 +33,8 @@ export interface INodeRepository {
   backfillLinks(scope: MemoryScope): Promise<void>;
   updateLinksForNewNode(scope: MemoryScope, label: string, nodeId: string): Promise<void>;
   createTemporalEdge(sourceNodeId: string, targetNodeId: string, edgeType: string, scope?: string, confidence?: number, metadata?: Record<string, unknown> | null): Promise<TemporalEdge>;
-  getTemporalEdges(nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string): Promise<TemporalEdge[]>;
+  getTemporalEdges(nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string, scope?: MemoryScope): Promise<TemporalEdge[]>;
   expandWithTemporalContext(nodeIds: string[], maxHops?: number, edgeType?: string): Promise<string[]>;
+  searchText(scope: MemoryScope | "all", query: string, limit?: number, projectName?: string): Promise<MemoryNode[]>;
+  searchBM25(scope: MemoryScope | "all", query: string, limit?: number, projectName?: string): Promise<MemoryNode[]>;
 }

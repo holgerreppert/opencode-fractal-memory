@@ -23,4 +23,5 @@ export interface IInjectionStore {
   getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>>;
   markInjectionProcessed(id: number): Promise<void>;
   migrateFromProjectDb(): Promise<number>;
+  injectNode(nodeId: string, scope: string): Promise<void>;
 }

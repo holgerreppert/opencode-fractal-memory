@@ -4,7 +4,8 @@ import * as fs from "node:fs";
 import { memLog } from "./logging";
 import { Router } from "./management/router";
 import { registerRoutes } from "./management/routes";
-import { initDbPaths, serveFile } from "./management/helpers";
+import { serveFile } from "./management/helpers";
+import { createSqliteMemoryStore } from "./storage/sqlite";
 
 const port = parseInt(process.env.MGMT_PORT || "8787");
 const projectDir = process.env.MGMT_PROJECT_DIR || process.cwd();
@@ -21,10 +22,10 @@ if (pidFile) {
   } catch { }
 }
 
-initDbPaths(projectDir);
+const store = createSqliteMemoryStore(projectDir);
 
 const router = new Router();
-registerRoutes(router);
+registerRoutes(router, store);
 
 Bun.serve({
   port,

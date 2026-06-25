@@ -5,6 +5,7 @@ import {
   markInjectionProcessed as markProcessed,
   finalizeInjection as finalizeInjectionRow,
   insertInjectionFeedback, queryInjectionMetrics,
+  updateMemoryToolCall,
 } from "../../../storage/injection-events";
 
 export class SqliteInjectionStore implements IInjectionStore {
@@ -42,7 +43,6 @@ export class SqliteInjectionStore implements IInjectionStore {
 
   async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
     const db = await this.getGlobalDb();
-    const { updateMemoryToolCall } = await import("../../../storage/injection-events");
     await updateMemoryToolCall(db, sessionId, toolName);
   }
 
@@ -76,6 +76,13 @@ export class SqliteInjectionStore implements IInjectionStore {
   }>> {
     const db = await this.getGlobalDb();
     return queryInjectionMetrics(db, limit);
+  }
+
+  async injectNode(nodeId: string, scope: string): Promise<void> {
+    const db = await this.getGlobalDb();
+    const exists = db.query("SELECT id FROM memory_nodes WHERE id = ?").get(nodeId);
+    if (!exists) throw new Error("Node not found");
+    db.run("INSERT INTO pending_injections (node_id, scope, source) VALUES (?, ?, 'management')", [nodeId, scope]);
   }
 
   async migrateFromProjectDb(): Promise<number> {

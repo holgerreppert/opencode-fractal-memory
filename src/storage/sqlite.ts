@@ -11,7 +11,7 @@ import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, wi
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
 import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult } from "./types";
 import type { IMemoryStore } from "../domain/ports/IMemoryStore";
-import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
+import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode, querySearchText, querySearchBM25 } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
 import { updateBM25Index, removeBM25Index } from "./queries/search-helpers";
@@ -331,9 +331,9 @@ class SqliteMemoryStore implements IMemoryStore {
   }
 
   async getTemporalEdges(
-    nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string,
+    nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string, scope?: MemoryScope,
   ): Promise<import("./types").TemporalEdge[]> {
-    const db = await this.getDb("project");
+    const db = await this.getDb(scope ?? "project");
     return queryGetTemporalEdges(db, nodeId, direction, edgeType);
   }
 
@@ -360,6 +360,30 @@ class SqliteMemoryStore implements IMemoryStore {
     options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number }; categoryFilter?: MemoryCategory; typeFilter?: MemoryNodeType }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
+  }
+
+  async searchText(scope: MemoryScope | "all", query: string, limit: number = 100, projectName?: string): Promise<MemoryNode[]> {
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    const results: MemoryNode[] = [];
+    for (const s of scopes) {
+      const db = await this.getDb(s);
+      results.push(...querySearchText(db, s, query, limit, projectName));
+    }
+    results.sort((a, b) => b.importance - a.importance);
+    return results.slice(0, limit);
+  }
+
+  async searchBM25(scope: MemoryScope | "all", query: string, limit: number = 100, projectName?: string): Promise<MemoryNode[]> {
+    const terms = query.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(t => t.length >= 2);
+    if (terms.length === 0) return [];
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    const results: MemoryNode[] = [];
+    for (const s of scopes) {
+      const db = await this.getDb(s);
+      results.push(...querySearchBM25(db, s, terms, limit, projectName));
+    }
+    results.sort((a, b) => b.importance - a.importance);
+    return results.slice(0, limit);
   }
 
   async getCompressionCandidates(
@@ -641,6 +665,18 @@ class SqliteMemoryStore implements IMemoryStore {
     taskOutcome: string | null;
   }>> {
     return this.injectionStore.getInjectionMetrics(limit);
+  }
+
+  async injectNode(nodeId: string, scope: string): Promise<void> {
+    return this.injectionStore.injectNode(nodeId, scope);
+  }
+
+  async getCompressionStats(days: number = 7, limit: number = 100): Promise<import("../domain/ports/ICompressionStore").CompressionStatsResult> {
+    return this.compressionStore.getCompressionStats(days, limit);
+  }
+
+  async getContextDashboard(): Promise<import("../domain/ports/ICompressionStore").ContextDashboardResult> {
+    return this.compressionStore.getContextDashboard();
   }
 }
 
