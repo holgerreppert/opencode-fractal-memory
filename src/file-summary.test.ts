@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "./file-summary";
+import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "./application/file-summary";
 
 describe("generateFileSummary", () => {
   const tempDir = path.join(os.tmpdir(), `opencode-summary-test-${Date.now()}`);
