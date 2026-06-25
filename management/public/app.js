@@ -78,20 +78,32 @@ class NodeFilterEngine {
     this.searchMode = "text";
     this.serverSearchIds = null;
     this.onUpdate = null;
+    this.hideAll = false;
+    this._allValues = null;
   }
 
   initFromStats(stats) {
+    this._allValues = {
+      levels: Object.keys(stats.nodesPerLevel || {}).map(Number).sort((a, b) => a - b),
+      types: Object.keys(stats.nodesPerType || {}).sort(),
+      customTypes: Object.keys(stats.nodesPerCustomType || {}).sort(),
+      shapes: Object.keys(stats.nodesPerShape || {}).sort(),
+    };
+
     this.levels.clear();
     this.types.clear();
     this.customTypes.clear();
     this.shapes.clear();
     this.projects.clear();
 
-    Object.keys(stats.nodesPerLevel || {}).map(Number).sort((a, b) => a - b).forEach(l => this.levels.add(l));
-    Object.keys(stats.nodesPerType || {}).sort().forEach(t => this.types.add(t));
-    Object.keys(stats.nodesPerCustomType || {}).sort().forEach(ct => this.customTypes.add(ct));
-    Object.keys(stats.nodesPerShape || {}).sort().forEach(s => this.shapes.add(s));
-    // projects are managed by dropdown, not auto-populated
+    this._allValues.levels.forEach(l => this.levels.add(l));
+    this._allValues.types.forEach(t => this.types.add(t));
+    this._allValues.customTypes.forEach(ct => this.customTypes.add(ct));
+    this._allValues.shapes.forEach(s => this.shapes.add(s));
+
+    this.hideAll = false;
+    this.searchQuery = "";
+    this.serverSearchIds = null;
   }
 
   toggleLevel(v) { this._toggle(this.levels, v); this.changed(); }
@@ -99,6 +111,23 @@ class NodeFilterEngine {
   toggleCustomType(v) { this._toggle(this.customTypes, v); this.changed(); }
   toggleShape(v) { this._toggle(this.shapes, v); this.changed(); }
   toggleProject(v) { this._toggle(this.projects, v); this.changed(); }
+
+  selectAll() {
+    if (!this._allValues) return;
+    this.levels.clear();
+    this.types.clear();
+    this.customTypes.clear();
+    this.shapes.clear();
+    this.projects.clear();
+    this._allValues.levels.forEach(l => this.levels.add(l));
+    this._allValues.types.forEach(t => this.types.add(t));
+    this._allValues.customTypes.forEach(ct => this.customTypes.add(ct));
+    this._allValues.shapes.forEach(s => this.shapes.add(s));
+    this.hideAll = false;
+    this.searchQuery = "";
+    this.serverSearchIds = null;
+    this.changed();
+  }
 
   clearAll() {
     this.levels.clear();
@@ -108,14 +137,48 @@ class NodeFilterEngine {
     this.projects.clear();
     this.searchQuery = "";
     this.serverSearchIds = null;
+    this.hideAll = true;
     this.changed();
   }
 
-  setSearchQuery(q) { this.searchQuery = (q || "").toLowerCase(); }
+  toggleAll(category) {
+    const all = this._allValues?.[category];
+    if (!all || all.length === 0) return;
+    const set = this._getSet(category);
+    if (!set) return;
+    // If any value in this category is missing from set, add all
+    const allSelected = all.every(v => set.has(typeof v === "number" ? v : v));
+    if (allSelected) {
+      set.clear();
+    } else {
+      all.forEach(v => set.add(typeof v === "number" ? v : v));
+    }
+    this.changed();
+  }
+
+  _getSet(category) {
+    switch (category) {
+      case "level": return this.levels;
+      case "type": return this.types;
+      case "customType": return this.customTypes;
+      case "shape": return this.shapes;
+      case "project": return this.projects;
+    }
+  }
+
+  setSearchQuery(q) {
+    this.searchQuery = (q || "").toLowerCase();
+    if (this.searchQuery) this.hideAll = false;
+  }
   setSearchMode(m) { this.searchMode = m; }
   setServerSearchIds(ids) { this.serverSearchIds = ids; }
 
   changed() {
+    if (this.levels.size > 0 || this.types.size > 0 ||
+        this.customTypes.size > 0 || this.shapes.size > 0 ||
+        this.projects.size > 0 || this.searchQuery) {
+      this.hideAll = false;
+    }
     if (this.onUpdate) this.onUpdate();
   }
 
@@ -126,8 +189,10 @@ class NodeFilterEngine {
 
   matches(node) {
     if (!node) return false;
-    if (!this.levels.has(node.level)) return false;
-    if (!this.types.has(node.type || "unknown")) return false;
+    if (this.hideAll) return false;
+
+    if (this.levels.size > 0 && !this.levels.has(node.level)) return false;
+    if (this.types.size > 0 && !this.types.has(node.type || "unknown")) return false;
 
     if (this.customTypes.size > 0) {
       const ct = node.metadata?.customType;
@@ -397,13 +462,6 @@ class SceneController {
       const radius = shellRadii[lvl] ?? 120;
 
       const pos = fibonacciSphere(idx, count, radius);
-      const nodeSize = getNodeSize(node);
-      const jitterScale = Math.max(1, nodeSize * 0.3);
-      if (count > 1) {
-        pos.x += (Math.random() - 0.5) * jitterScale * 3;
-        pos.y += (Math.random() - 0.5) * jitterScale * 3;
-        pos.z += (Math.random() - 0.5) * jitterScale * 3;
-      }
       this.nodePositions.set(node.id, pos);
       this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
 
@@ -510,88 +568,223 @@ class SceneController {
     console.log(`[scene] Built ${edgeData.length} temporal edges (${this.edgeObjects.filter(o => o.userData.isTemporal).length} rendered)`);
   }
 
+  _nudgeConnectedNodes(linkData, temporalEdgeData) {
+    // Pre-simulation pass: move connected nodes closer together
+    // and center each connected component
+    const allEdges = [];
+    if (linkData) linkData.forEach(e => allEdges.push([e.source, e.target]));
+    if (temporalEdgeData) temporalEdgeData.forEach(e => allEdges.push([e.source_node_id, e.target_node_id]));
+    if (allEdges.length === 0) return;
+
+    // Find connected components via BFS
+    const adj = new Map();
+    for (const [a, b] of allEdges) {
+      if (!adj.has(a)) adj.set(a, []);
+      if (!adj.has(b)) adj.set(b, []);
+      adj.get(a).push(b);
+      adj.get(b).push(a);
+    }
+
+    const visited = new Set();
+    const allIds = Array.from(this.nodePositions.keys());
+
+    for (const startId of allIds) {
+      if (visited.has(startId)) continue;
+      if (!adj.has(startId)) { visited.add(startId); continue; }
+
+      // BFS component
+      const component = [];
+      const queue = [startId];
+      visited.add(startId);
+      while (queue.length > 0) {
+        const id = queue.shift();
+        component.push(id);
+        for (const nb of adj.get(id) || []) {
+          if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
+        }
+      }
+      if (component.length < 2) continue;
+
+      // Compute component centroid
+      let cx = 0, cy = 0, cz = 0;
+      for (const id of component) {
+        const p = this.nodePositions.get(id);
+        if (p) { cx += p.x; cy += p.y; cz += p.z; }
+      }
+      cx /= component.length; cy /= component.length; cz /= component.length;
+
+      // Pull nodes toward centroid
+      for (const id of component) {
+        const p = this.nodePositions.get(id);
+        if (!p) continue;
+        const dx = cx - p.x, dy = cy - p.y, dz = cz - p.z;
+        p.x += dx * 0.3;
+        p.y += dy * 0.3;
+        p.z += dz * 0.3;
+      }
+    }
+  }
+
   runSimulation(iterations, linkData, temporalEdgeData) {
     const ids = Array.from(this.nodePositions.keys());
     const radii = this.shellRadii || {};
 
+    if (ids.length === 0) return;
+
+    // Pre-simulation: nudge connected nodes together
+    this._nudgeConnectedNodes(linkData, temporalEdgeData);
+
     const nodeLevels = new Map();
+    const nodeSizes = new Map();
     for (const id of ids) {
       const mesh = this.nodeObjects.find(o => o.isMesh && o.userData.nodeId === id);
       nodeLevels.set(id, mesh?.userData?.nodeData?.level ?? 3);
+      nodeSizes.set(id, mesh?.userData?.nodeData ? getNodeSize(mesh.userData.nodeData) : 3);
     }
 
     for (let iter = 0; iter < iterations; iter++) {
-      const temp = 1 - iter / iterations;
+      const t = iter / iterations;
+      const cooling = 1 - t;
+
+      // --- Repulsive forces (distance-capped O(n²) with grid acceleration) ---
+      // Compute bounding box and build grid cells
+      let min = Infinity, max = -Infinity;
+      for (const id of ids) {
+        const p = this.nodePositions.get(id);
+        if (!p) continue;
+        if (p.x < min) min = p.x; if (p.x > max) max = p.x;
+        if (p.y < min) min = p.y; if (p.y > max) max = p.y;
+        if (p.z < min) min = p.z; if (p.z > max) max = p.z;
+      }
+      const cellSize = 80;
+      const grid = new Map();
+      const toCell = (v) => Math.floor((v - min) / cellSize);
+      for (const id of ids) {
+        const p = this.nodePositions.get(id);
+        if (!p) continue;
+        const key = `${toCell(p.x)},${toCell(p.y)},${toCell(p.z)}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(id);
+      }
 
       for (const id of ids) {
         const pos = this.nodePositions.get(id);
         const vel = this.nodeVelocities.get(id);
-        const lvlA = nodeLevels.get(id) ?? 3;
-        const wA = Math.max(0.4, 1.0 - lvlA * 0.12);
-        const kA = 80 + lvlA * 10;
+        if (!pos || !vel) continue;
+        const lvl = nodeLevels.get(id) ?? 3;
+        const k = 80 + lvl * 10;
+        const cx = toCell(pos.x), cy = toCell(pos.y), cz = toCell(pos.z);
 
-        for (const oid of ids) {
-          if (oid === id) continue;
-          const op = this.nodePositions.get(oid);
-          const dx = pos.x - op.x, dy = pos.y - op.y, dz = pos.z - op.z;
-          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-          const lvlB = nodeLevels.get(oid) ?? 3;
-          const wB = Math.max(0.4, 1.0 - lvlB * 0.12);
-          const kB = 80 + lvlB * 10;
-          const k = (kA + kB) / 2;
-          const f = (k * k) / dist * ((wA + wB) / 2);
-          vel.x += (dx / dist) * f * 0.015;
-          vel.y += (dy / dist) * f * 0.015;
-          vel.z += (dz / dist) * f * 0.015;
+        // Check neighboring cells (3x3x3 neighborhood)
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              const cell = grid.get(`${cx + dx},${cy + dy},${cz + dz}`);
+              if (!cell) continue;
+              for (const oid of cell) {
+                if (oid === id) continue;
+                const op = this.nodePositions.get(oid);
+                if (!op) continue;
+                const ddx = pos.x - op.x, ddy = pos.y - op.y, ddz = pos.z - op.z;
+                const distSq = ddx * ddx + ddy * ddy + ddz * ddz;
+                if (distSq > 40000) continue; // skip beyond ~200 units
+                const dist = Math.sqrt(distSq) || 1;
+                const f = (k * k) / dist * cooling;
+                vel.x += (ddx / dist) * f * 0.015;
+                vel.y += (ddy / dist) * f * 0.015;
+                vel.z += (ddz / dist) * f * 0.015;
+              }
+            }
+          }
         }
       }
 
+      // --- Spring forces along edges ---
       const applySpringForces = (edges, sourceKey, targetKey) => {
-        edges.forEach(edge => {
+        for (const edge of edges) {
           const sp = this.nodePositions.get(edge[sourceKey]);
           const tp = this.nodePositions.get(edge[targetKey]);
-          if (!sp || !tp) return;
+          if (!sp || !tp) continue;
           const dx = tp.x - sp.x, dy = tp.y - sp.y, dz = tp.z - sp.z;
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
           const lvlA = nodeLevels.get(edge[sourceKey]) ?? 3;
           const lvlB = nodeLevels.get(edge[targetKey]) ?? 3;
-          const restLen = 40 + (lvlA + lvlB) * 8;
-          const f = (dist - restLen) * 0.06;
+          const szA = nodeSizes.get(edge[sourceKey]) ?? 3;
+          const szB = nodeSizes.get(edge[targetKey]) ?? 3;
+          const restLen = (szA + szB) * 6 + (lvlA + lvlB) * 4;
+          const f = (dist - restLen) * 0.12;
           const sv = this.nodeVelocities.get(edge[sourceKey]);
           const tv = this.nodeVelocities.get(edge[targetKey]);
-          sv.x += dx * f * 0.01; sv.y += dy * f * 0.01; sv.z += dz * f * 0.01;
-          tv.x -= dx * f * 0.01; tv.y -= dy * f * 0.01; tv.z -= dz * f * 0.01;
-        });
+          if (!sv || !tv) continue;
+          sv.x += (dx / dist) * f * 0.015;
+          sv.y += (dy / dist) * f * 0.015;
+          sv.z += (dz / dist) * f * 0.015;
+          tv.x -= (dx / dist) * f * 0.015;
+          tv.y -= (dy / dist) * f * 0.015;
+          tv.z -= (dz / dist) * f * 0.015;
+        }
       };
 
       if (linkData) applySpringForces(linkData, "source", "target");
       if (temporalEdgeData) applySpringForces(temporalEdgeData, "source_node_id", "target_node_id");
 
+      // --- Shell constraint (gentle centering) ---
       for (const id of ids) {
         const pos = this.nodePositions.get(id);
         const vel = this.nodeVelocities.get(id);
+        if (!pos || !vel) continue;
         const lvl = nodeLevels.get(id) ?? 3;
         const targetRadius = radii[lvl] ?? 120;
         const curDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
 
-        const shellForce = (targetRadius - curDist) * 0.02;
+        // Gentle pull toward target radius
+        const shellForce = (targetRadius - curDist) * 0.008 * (0.5 + cooling * 0.5);
         vel.x += (pos.x / curDist) * shellForce;
         vel.y += (pos.y / curDist) * shellForce;
         vel.z += (pos.z / curDist) * shellForce;
 
-        vel.x *= 0.85; vel.y *= 0.85; vel.z *= 0.85;
-        const maxStep = 8 * temp + 1;
+        // Damping
+        vel.x *= 0.82; vel.y *= 0.82; vel.z *= 0.82;
+
+        // Clamp velocity
+        const maxStep = 6 * cooling + 0.5;
         vel.x = Math.max(-maxStep, Math.min(maxStep, vel.x));
         vel.y = Math.max(-maxStep, Math.min(maxStep, vel.y));
         vel.z = Math.max(-maxStep, Math.min(maxStep, vel.z));
 
         pos.add(vel);
 
-        const maxRadius = Math.max(targetRadius + 80, targetRadius * 1.3);
+        // Hard clamp to max radius
+        const maxRadius = Math.max(targetRadius + 80, targetRadius * 1.35);
         const newDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
         if (newDist > maxRadius) {
           const scale = maxRadius / newDist;
           pos.x *= scale; pos.y *= scale; pos.z *= scale;
+        }
+      }
+    }
+
+    // --- Post-simulation: prevent overlap ---
+    for (let pass = 0; pass < 3; pass++) {
+      for (const id of ids) {
+        const pos = this.nodePositions.get(id);
+        if (!pos) continue;
+        const szA = nodeSizes.get(id) ?? 3;
+        const minDist = szA * 3;
+
+        for (const oid of ids) {
+          if (oid === id) continue;
+          const op = this.nodePositions.get(oid);
+          if (!op) continue;
+          const dx = pos.x - op.x, dy = pos.y - op.y, dz = pos.z - op.z;
+          const distSq = dx * dx + dy * dy + dz * dz;
+          if (distSq < minDist * minDist && distSq > 0.01) {
+            const dist = Math.sqrt(distSq);
+            const push = (minDist - dist) * 0.3;
+            pos.x += (dx / dist) * push;
+            pos.y += (dy / dist) * push;
+            pos.z += (dz / dist) * push;
+          }
         }
       }
     }
@@ -609,24 +802,6 @@ class SceneController {
     });
 
     this._syncEdges();
-
-    // Log final positions for debugging
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    ids.forEach(id => {
-      const p = this.nodePositions.get(id);
-      if (!p) return;
-      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-      if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
-    });
-    let maxDist = 0;
-    ids.forEach(id => {
-      const p = this.nodePositions.get(id);
-      if (!p) return;
-      const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
-      if (d > maxDist) maxDist = d;
-    });
-    console.log(`[scene] Sim bounds: X[${minX.toFixed(1)}, ${maxX.toFixed(1)}] Y[${minY.toFixed(1)}, ${maxY.toFixed(1)}] Z[${minZ.toFixed(1)}, ${maxZ.toFixed(1)}] maxRadius=${maxDist.toFixed(1)}`);
   }
 
   _syncEdges() {
@@ -759,13 +934,13 @@ function setupEventListeners() {
   document.getElementById("search-input").addEventListener("input", (e) => {
     filterEngine.setSearchQuery(e.target.value);
     filterEngine.setServerSearchIds(null);
-    sceneCtrl.updateVisibility(filterEngine);
+    filterEngine.changed();
   });
 
   document.getElementById("search-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       if (filterEngine.searchMode === "text") {
-        sceneCtrl.updateVisibility(filterEngine);
+        filterEngine.changed();
       } else {
         performServerSearch(filterEngine.searchQuery);
       }
@@ -809,18 +984,16 @@ function setupEventListeners() {
 
     if (btn.dataset.selectAll !== undefined) {
       const category = btn.dataset.selectAll;
+      filterEngine.toggleAll(category);
       const container = btn.parentElement;
+      const set = filterEngine._getSet(category);
+      const allSelected = set && set.size > 0;
       container.querySelectorAll(".filter-btn:not(.select-all-btn)").forEach(b => {
-        const val = b.dataset.level || b.dataset.type || b.dataset.customType || b.dataset.shape || b.dataset.project;
-        if (!val) return;
-        if (category === "level") filterEngine.levels.add(parseInt(val));
-        else if (category === "type") filterEngine.types.add(val);
-        else if (category === "customType") filterEngine.customTypes.add(val);
-        else if (category === "shape") filterEngine.shapes.add(val);
-        else if (category === "project") filterEngine.projects.add(val);
-        b.classList.add("active");
+        const val = b.dataset.level !== undefined ? parseInt(b.dataset.level) :
+                    b.dataset.type || b.dataset.customType || b.dataset.shape || b.dataset.project;
+        if (val === undefined) return;
+        b.classList.toggle("active", allSelected && set.has(val));
       });
-      sceneCtrl.updateVisibility(filterEngine);
       return;
     }
 
@@ -830,10 +1003,12 @@ function setupEventListeners() {
       currentScope = scope;
       document.querySelectorAll("#scope-filters .filter-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      filterEngine.clearAll();
       filterEngine.setSearchQuery("");
       filterEngine.setServerSearchIds(null);
       document.getElementById("search-input").value = "";
       document.getElementById("search-info").textContent = "";
+      document.querySelectorAll(".filter-btn[data-level], .filter-btn[data-type], .filter-btn[data-custom-type], .filter-btn[data-shape]").forEach(b => b.classList.remove("active"));
       loadData();
     } else if (btn.dataset.level !== undefined) {
       filterEngine.toggleLevel(parseInt(btn.dataset.level));
@@ -855,15 +1030,24 @@ function setupEventListeners() {
 
   // Clear all filters button
   document.getElementById("clear-filters").addEventListener("click", () => {
-    filterEngine.initFromStats(statsData);
+    filterEngine.clearAll();
     filterEngine.setSearchQuery("");
     filterEngine.setServerSearchIds(null);
+
+    document.querySelectorAll(".filter-btn[data-level], .filter-btn[data-type], .filter-btn[data-custom-type], .filter-btn[data-shape]").forEach(b => b.classList.remove("active"));
     document.getElementById("search-input").value = "";
     document.getElementById("search-info").textContent = "";
-    currentProject = "";
     document.getElementById("project-dropdown").value = "";
-    buildFilters();
     sceneCtrl.updateVisibility(filterEngine);
+  });
+
+  // Select all filters button
+  document.getElementById("select-all-filters").addEventListener("click", () => {
+    filterEngine.selectAll();
+    document.querySelectorAll(".filter-btn[data-level], .filter-btn[data-type], .filter-btn[data-custom-type], .filter-btn[data-shape], .select-all-btn").forEach(b => b.classList.add("active"));
+    document.getElementById("search-input").value = "";
+    document.getElementById("search-info").textContent = "";
+    document.getElementById("project-dropdown").value = "";
   });
 
   // Project dropdown
@@ -973,7 +1157,7 @@ async function loadData() {
       sceneCtrl.buildFromData(nodeData);
       sceneCtrl.buildEdges(linkData);
       sceneCtrl.buildTemporalEdges(temporalEdgeData);
-      sceneCtrl.runSimulation(150, linkData, temporalEdgeData);
+      sceneCtrl.runSimulation(300, linkData, temporalEdgeData);
     } catch (vizErr) {
       console.error("[viewer] Visualization error:", vizErr);
     }

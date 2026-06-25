@@ -6,16 +6,28 @@ Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, 
 
 I made this because I needed a longterm memory at first.
 Then while working with it I extended it's functionality.
-It might be a little bit overwhelming but if you work with it you will
-start to love it.
+I realized that the overall amout of tokens that gets used is huge.
+So I tried to find ways to reduce that.
+It might be a little bit overwhelming (lots of features)
+but if you work with it you will start to love it.
+It's kind of a swiss knife for opencode.
 You can tell the coding agent to make a memory of everything.
-And later on you can tell it to read it.
+And later on you can tell it to read it, making expensive queries
+sometimes obsolete.
+
+Tool output get's compressed.
+
+There are also skill nodes.
+
 You can also use the management app that includes a nice threejs visualization
 and searching from there in the memory nodes.
 You can also inject nodes directly to the agent from there.
 You can edit the nodes too.
-I think I forgot to mention some of features here.
+
+I think I forgot to mention some of the features here.
+
 I'll update this project constantly.
+
 Feel free to use it and tell me how much you hate or like it ;)
 
 Have phun
@@ -768,7 +780,25 @@ MIT
 
 ## Changelog
 
-### v0.6.35 (current)
+### v0.6.36 (current)
+- **`chat.params` SDK hook** — adaptive pressure-based temperature/maxTokens clamping in the `chat.params` pipeline. Gated by `adaptivePressure.enabled`. Logged to compress.log when clamping is applied.
+- **`messages.transform` SDK hook** — alternative memory injection path via `experimental.chat.messages.transform`. Performs a drilldown query against top auto-retrieve candidates, injecting relevant context as additional messages. Falls through on empty results.
+- **`compaction.autocontinue` pipeline wiring** — `experimental.compaction.autocontinue` now calls through the handler chain (was a bare `{ enabled: true }`) so compaction hook logic integrates with the autocontinue flow.
+- **Config merge fix (`writeProjectConfig`)** — `writeProjectConfig` now deep-merges with existing config instead of overwriting it. Prevents silent data loss when management app saves partial config updates. Uses recursive `deepMerge()` for nested objects.
+- **Filter engine refactor** — `hideAll` flag (`matches()` returns `false` when no filters are active), consistent `matches()` semantics (empty filter sets are now pass-through, not reject-all), `toggleAll(category)` per-category toggle method, `selectAll()` bulk-select. Fixes invisible-scene-on-load bug.
+- **3D graph layout improvements**:
+  - Grid-accelerated repulsion force (3×3×3 cell neighborhood reduces O(n²) to O(kn) for nearby pairs)
+  - Sim bounds debug logging removed
+  - Connectivity-aware initial placement (`_nudgeConnectedNodes`) pulls connected components toward centroids pre-simulation
+  - Post-simulation overlap prevention pass (3 iterations, pushes overlapping nodes apart)
+  - Center pull reduced (0.008 vs 0.02) and cooling-modulated for gentler shell convergence
+  - Spring rest length now based on node sizes (sprite radius) instead of fixed per-level
+  - Velocity damping increased (0.82 vs 0.85), maxStep reduced
+  - Simulation iterations increased (300 vs 150)
+- **Select All / Clear All buttons** — new `#select-all-filters` button alongside `#clear-filters` in the visualize panel. Select All resets filters and activates all available categories. Clear All now sets `hideAll=true` (hides all nodes) consistent with clearing all selections.
+- **Per-category "All" toggle** — `toggleAll(category)` on the `NodeFilterEngine` class, wired to existing `data-select-all` buttons. Clicking "All" for a category adds all values; clicking again removes them all.
+
+### v0.6.35
 - **SmartFilter** — noise-stripping preprocessor for shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines. Logged with noise counts per shape event
 - **Signal-word relevance scoring** — replaces legacy TF-IDF with error-term boosted (+5 for fail/error/fatal/exception) and keyword-density-weighted per-line scoring for relevance trimming
 - **Relevant generic truncation** — relevance-weighted line selection replaces blind top-N in generic fallback. Scores lines by signal-word density, keeps highest-scoring up to maxLines

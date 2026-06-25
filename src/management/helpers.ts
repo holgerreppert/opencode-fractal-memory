@@ -267,10 +267,29 @@ export function readProjectConfig(): Record<string, unknown> {
   return {};
 }
 
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (source[key] !== null && typeof source[key] === "object" && !Array.isArray(source[key]) &&
+        result[key] !== null && typeof result[key] === "object" && !Array.isArray(result[key])) {
+      result[key] = deepMerge(result[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
 export function writeProjectConfig(config: Record<string, unknown>): string {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json");
   try {
-    const merged = { ...config };
+    let existing: Record<string, unknown> = {};
+    try {
+      if (fs.existsSync(configPath)) {
+        existing = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      }
+    } catch {}
+    const merged = deepMerge(existing, config);
     fs.writeFileSync(configPath, JSON.stringify(merged, null, 2));
     memLog("info", "config", "[config] Saved to:", { configPath });
     return "ok";

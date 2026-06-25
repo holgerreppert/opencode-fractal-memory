@@ -12,6 +12,8 @@ import { createSeedRulesHandler } from "./hooks/seed-rules";
 import { createCompactionHandler } from "./hooks/compaction";
 import { createEventHandler } from "./hooks/events";
 import { createOutputTokenControlHandler } from "./hooks/output-token-control";
+import { createChatParamsHandler } from "./hooks/chat-params";
+import { createMessagesTransformHandler } from "./hooks/messages-transform";
 import type { HookHandler } from "./hooks/types";
 
 export function createHookHandlers(
@@ -36,6 +38,8 @@ export function createHookHandlers(
     createCompactionHandler(store, memConfig, client),
     createEventHandler(store, memConfig, client, managementServer),
     createOutputTokenControlHandler(memConfig),
+    createChatParamsHandler(memConfig),
+    createMessagesTransformHandler(store, memConfig),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {
@@ -60,9 +64,14 @@ export function createHookHandlers(
       callHooks("tool.after", input, output),
     "experimental.session.compacting": (input: any, output: any) =>
       callHooks("compacting", input, output),
-    "experimental.compaction.autocontinue": async (_input: unknown, output: { enabled: boolean }) => {
+    "experimental.compaction.autocontinue": async (input: any, output: { enabled: boolean }) => {
       output.enabled = true;
+      await callHooks("compaction.autocontinue", input, output);
     },
+    "chat.params": (input: any, output: any) =>
+      callHooks("chat.params", input, output),
+    "experimental.chat.messages.transform": (input: any, output: any) =>
+      callHooks("chat.messages.transform", input, output),
     event: (input: any) => callHooks("event", input),
   };
 }
