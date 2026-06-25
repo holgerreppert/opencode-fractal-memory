@@ -1,16 +1,18 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { createSqliteMemoryStore } from "../storage/sqlite";
+import { createApplication } from "../infrastructure/composition-root";
+import type { MemoryStore } from "../storage/sqlite";
 import type { MemoryScope, MemoryNodeType } from "../storage/sqlite";
 import { withMcpLogging, mcpLog } from "./logging";
 import { nodeToPlain, ensureScope, resourceStats } from "./transform";
 import { VERSION } from "../version";
 
-let store: ReturnType<typeof createSqliteMemoryStore>;
+let store: MemoryStore;
 
 export async function createMemoryMcpServer(projectDir: string, globalDbPath: string): Promise<McpServer> {
   mcpLog("info", "Creating memory store", { projectDir });
-  store = createSqliteMemoryStore(projectDir, globalDbPath);
+  const ctx = await createApplication(projectDir, globalDbPath);
+  store = ctx.store;
   mcpLog("info", "Memory store created");
 
   const server = new McpServer(
