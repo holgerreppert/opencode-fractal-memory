@@ -205,7 +205,7 @@ describe("Router", () => {
 
   test("registerRoutes binds all API routes", async () => {
     const fullRouter = new Router();
-    registerRoutes(fullRouter);
+    registerRoutes(fullRouter, null as any);
 
     const routes: Array<{ path: string; method: string }> = [
       { path: "/api/scopes", method: "GET" },

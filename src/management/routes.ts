@@ -6,7 +6,7 @@ import type { IMemoryStore } from "../domain/ports/IMemoryStore";
 import type { MemoryScope } from "../domain/ports/IMemoryStore";
 import {
   readProjectConfig, writeProjectConfig,
-  getAvailableScopes, getAvailableProjects,
+  getAvailableScopes,
   extractLinks, computeStats,
   getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup,
 } from "./helpers";
@@ -21,7 +21,7 @@ export function registerRoutes(router: Router, store: IMemoryStore): void {
   router.get(/^\/api\/links$/, async (_, ctx) => handleLinks(ctx, store));
   router.get(/^\/api\/temporal-edges$/, async (_, ctx) => handleTemporalEdges(ctx, store));
   router.get(/^\/api\/stats$/, async (_, ctx) => handleStats(ctx, store));
-  router.get(/^\/api\/projects$/, async (_, ctx) => handleProjects(ctx));
+  router.get(/^\/api\/projects$/, async (req, ctx) => handleProjects(ctx, store));
 
   // ==================== Config ====================
   router.get(/^\/api\/config$/, () => handleConfigGet());
@@ -80,8 +80,13 @@ async function handleConfigSave(req: Request): Promise<Response> {
   return jsonResponse({ success: error === "ok", error: error === "ok" ? null : error });
 }
 
-function handleProjects(ctx: { scope: string }): Response {
-  return jsonResponse(getAvailableProjects(ctx.scope));
+async function handleProjects(ctx: { scope: string }, store: IMemoryStore): Promise<Response> {
+  const nodes = await store.listNodes(ctx.scope as MemoryScope);
+  const projects = new Set<string>();
+  for (const n of nodes) {
+    projects.add(n.projectName || "(default)");
+  }
+  return jsonResponse([...projects].sort());
 }
 
 function handleVersion(): Response {
