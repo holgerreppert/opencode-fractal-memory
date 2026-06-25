@@ -1,7 +1,7 @@
 import type { MemoryNode, MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
 import { CompressionHelper } from "../storage/summarization";
-import { generateEmbedding } from "../embeddings";
+import { generateEmbedding } from "../infrastructure/llm/embeddings";
 
 export interface ConsolidationConfig {
   enabled: boolean;

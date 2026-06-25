@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { generateEmbedding } from "../embeddings";
+import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import type { MemoryNodeType } from "../storage/types";
 
 export function MemoryRecallContext(store: MemoryStore) {

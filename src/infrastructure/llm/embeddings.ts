@@ -122,4 +122,4 @@ export function estimateTokens(text: string): number {
   return encoded.ids.length;
 }
 
-export { cosineSimilarity } from "./math";
+export { cosineSimilarity } from "../../math";

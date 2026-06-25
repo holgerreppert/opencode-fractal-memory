@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { SqliteNode } from "./base";
 import { blobToEmbedding, embeddingToBlob, rowToNode } from "./base";
 import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, CreateNodeInput } from "../types";
-import { getHNSWIndex } from "../../hnsw-index";
+import { getHNSWIndex } from "../../infrastructure/vector/hnsw-index";
 
 const TYPE_METADATA: Record<string, Record<string, unknown>> = {
   note:                { tags: ["auto-generated"], customType: "note" },

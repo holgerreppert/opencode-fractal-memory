@@ -1,4 +1,4 @@
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { getPressurePhase } from "../../application/adaptive-pressure";
 import { writeCompressLog } from "../../logging";
 import type { HookHandler } from "./types";

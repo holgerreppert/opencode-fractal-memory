@@ -1,4 +1,4 @@
-import type { JournalStore, JournalContext } from "../journal";
+import type { JournalStore, JournalContext } from "../application/journal";
 import { tool } from "@opencode-ai/plugin";
 
 export function JournalWrite(store: JournalStore, ctx: JournalContext) {

@@ -1,4 +1,4 @@
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import {
   resetPressureState,

@@ -1,5 +1,5 @@
 import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import type { HookHandler } from "./types";
 

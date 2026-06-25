@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type CompressConfig, type FuzzyDedupConfig } from "../../application/command-compression";

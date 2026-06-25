@@ -1,8 +1,8 @@
 import type { MemoryStore } from "../../storage/sqlite";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, appendSessionLog } from "../../logging";
-import { generateEmbedding } from "../../embeddings";
-import { getWorkingCache, addToWorkingCache } from "../../cache";
+import { generateEmbedding } from "../../infrastructure/llm/embeddings";
+import { getWorkingCache, addToWorkingCache } from "../../application/cache";
 import { cleanupMiddleTermCaptures } from "../state";
 import type { HookHandler } from "./types";
 

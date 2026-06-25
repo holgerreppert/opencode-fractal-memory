@@ -1,7 +1,7 @@
 // Ollama client for chat and reranking
 const OLLAMA_BASE = "http://localhost:11434";
 
-import { memLog } from "./logging";
+import { memLog } from "../../logging";
 import { scorePairs } from "./cross-encoder";
 
 export type RerankStrategy = "llm" | "cross-encoder";

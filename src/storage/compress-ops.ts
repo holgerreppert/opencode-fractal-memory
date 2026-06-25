@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import type { MemoryScope, MemoryNode, MemoryNodeLevel, CreateNodeInput } from "./types";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
-import { generateEmbedding } from "../embeddings";
+import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { CompressionHelper, COMPRESSION_LEVELS } from "./summarization";
 
 export async function getCompressionCandidates(

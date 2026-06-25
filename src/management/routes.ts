@@ -1,5 +1,5 @@
 import { memLog } from "../logging";
-import { generateEmbedding } from "../embeddings";
+import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { Router } from "./router";
 import { cosineSimilarity } from "../math";
 import {

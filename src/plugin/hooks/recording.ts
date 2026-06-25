@@ -1,5 +1,5 @@
 import type { MemoryStore } from "../../storage/sqlite";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { predictiveRateToolCall } from "../../application";
 import type { HookHandler } from "./types";

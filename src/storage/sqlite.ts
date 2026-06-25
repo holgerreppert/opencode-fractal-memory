@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { Database } from "bun:sqlite";
 
 import { runMigrations, getConfig, setConfig } from "./migrations";
-import { getHNSWIndex } from "../hnsw-index";
+import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };

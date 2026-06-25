@@ -49,7 +49,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
         }
 
         if (args.mode === "embedding") {
-          const { generateEmbedding } = await import("../embeddings");
+          const { generateEmbedding } = await import("../infrastructure/llm/embeddings");
           const queryEmbedding = await generateEmbedding(q);
           const opts: { queryText: string; projectName?: string } = { queryText: q };
           if (args.project_name) opts.projectName = args.project_name;

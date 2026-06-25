@@ -1,6 +1,6 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import { memLog } from "../../logging";
-import { addToWorkingCache } from "../../cache";
+import { addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
 
 export function createWorkingCacheHandler(store: MemoryStore): HookHandler {

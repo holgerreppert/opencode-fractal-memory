@@ -3,7 +3,7 @@ import { Tokenizer } from "@huggingface/tokenizers";
 import { readFile, access } from "node:fs/promises";
 import { join } from "path";
 import { homedir } from "os";
-import { memLog } from "./logging";
+import { memLog } from "../../logging";
 
 const MODELS_DIR = join(homedir(), ".config", "opencode", "models", "Xenova", "ms-marco-MiniLM-L-6-v2");
 const MODEL_PATH = join(MODELS_DIR, "onnx", "model_quantized.onnx");
