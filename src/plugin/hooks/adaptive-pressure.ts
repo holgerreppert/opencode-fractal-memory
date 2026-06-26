@@ -1,4 +1,4 @@
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import {
   resetPressureState,
@@ -6,7 +6,7 @@ import {
   getEffectiveMaxLines,
   shouldSkipGeneric,
   getPressurePhase,
-} from "../../hooks/adaptive-pressure";
+} from "../../application/adaptive-pressure";
 import type { HookHandler } from "./types";
 
 export function createAdaptivePressureHandler(config: MemConfig): HookHandler {

@@ -1,6 +1,6 @@
 import type { MemoryScope, MemoryStore } from "../storage/sqlite";
 import type { MemoryNode } from "../memory";
-import { estimateTokens } from "../embeddings";
+import { estimateTokens } from "../infrastructure/llm/embeddings";
 
 export const CONTEXT_LIMIT = 128000;
 export const WARN_THRESHOLD = 0.8;

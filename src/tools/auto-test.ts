@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { generateEmbedding } from "../embeddings";
-import { rerankDocuments } from "../ollama";
+import { generateEmbedding } from "../infrastructure/llm/embeddings";
+import { rerankDocuments } from "../infrastructure/llm/ollama";
 
 export function createMemoryAutoTest(store: MemoryStore) {
   const testQuery = "JSON parsing and validation best practices";

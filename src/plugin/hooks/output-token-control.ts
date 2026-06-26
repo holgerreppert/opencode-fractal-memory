@@ -1,7 +1,7 @@
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import type { HookHandler } from "./types";
-import type { OutputTokenControlConfig } from "../../hooks/output-token-control";
-import { getInjectionText, estimatePressureLevel, logOutputTokenInjection } from "../../hooks/output-token-control";
+import type { OutputTokenControlConfig } from "../../application/output-token-control";
+import { getInjectionText, estimatePressureLevel, logOutputTokenInjection } from "../../application/output-token-control";
 
 export function createOutputTokenControlHandler(config: MemConfig): HookHandler {
   const otcConfig = config.outputTokenControl as OutputTokenControlConfig | undefined;

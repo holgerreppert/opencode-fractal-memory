@@ -5,28 +5,32 @@ import * as path from "node:path";
 import { Database } from "bun:sqlite";
 
 import { runMigrations, getConfig, setConfig } from "./migrations";
-import { getHNSWIndex } from "../hnsw-index";
+import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
-import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
-import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
+import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult } from "./types";
+import type { IMemoryStore } from "../domain/ports/IMemoryStore";
+import { queryListNodes, queryGetNode, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode, querySearchText, querySearchBM25 } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
 import { updateBM25Index, removeBM25Index } from "./queries/search-helpers";
-import { CompressionHelper, COMPRESSION_LEVELS } from "./compression";
+import { CompressionHelper, COMPRESSION_LEVELS } from "./summarization";
 export { CompressionHelper, COMPRESSION_LEVELS };
 import { memLog } from "../logging";
-import { insertToolUsageLog, queryToolPatterns, queryFrequentSequences, deleteUsageLog, getToolCategory } from "./tool-usage";
-import { insertAgentToolCall, createSessionMetrics as createSessionMetricsRow, updateSessionMetrics, incrementSessionToolCall, getSessionStats as getSessionStatsForSession } from "./session-tracking";
-import { insertInjectionMetrics, getPendingInjections as getPendingInjectionRows, markInjectionProcessed, updateMemoryToolCall, finalizeInjection, insertInjectionFeedback, queryInjectionMetrics, querySessionMetrics, type InjectionQualityRow } from "./injection-events";
-import { runScoreDecay as runScoreDecayFn, calculateNodeConfidence as calculateNodeConfidenceFn } from "./scoring";
-import { ensureSeed as ensureSeedFn, resolveNode as resolveNodeFn, getNode as getNodeFn, verifyNode as verifyNodeFn } from "./lifecycle";
+import { getToolCategory } from "./tool-usage";
+import { getExpiredNodes as getExpiredNodesFn, deleteExpiredNodes as deleteExpiredNodesFn, pruneNodes as pruneNodesFn } from "./expiration";
+import { backfillLinks as backfillLinksFn, backfillBinaryEmbeddingsAndBM25 as backfillBinaryEmbeddingsAndBM25Fn, rebuildHNSWIndex as rebuildHNSWIndexFn } from "./maintenance";
 import { searchByEmbedding as searchByEmbeddingFn, detectTopicBoundaries as detectTopicBoundariesFn, drilldownQuery as drilldownQueryFn, getDrilldownPath as getDrilldownPathFn } from "./search";
 import { retrieveFractal as retrieveFractalFn, getFractalStats as getFractalStatsFn } from "./navigation";
 import { getCompressionCandidates as getCompressionCandidatesFn, runCompression as runCompressionFn, runPatternExtraction as runPatternExtractionFn } from "./compress-ops";
-import { getExpiredNodes as getExpiredNodesFn, deleteExpiredNodes as deleteExpiredNodesFn, pruneNodes as pruneNodesFn } from "./expiration";
-import { backfillLinks as backfillLinksFn, backfillBinaryEmbeddingsAndBM25 as backfillBinaryEmbeddingsAndBM25Fn, rebuildHNSWIndex as rebuildHNSWIndexFn } from "./maintenance";
+import { ensureSeed as ensureSeedFn, resolveNode as resolveNodeFn, getNode as getNodeFn, verifyNode as verifyNodeFn } from "./lifecycle";
+import { runScoreDecay as runScoreDecayFn, calculateNodeConfidence as calculateNodeConfidenceFn } from "./scoring";
+
+import { SqliteSessionTracker } from "../infrastructure/persistence/sqlite/SqliteSessionTracker";
+import { SqliteCompressionStore } from "../infrastructure/persistence/sqlite/SqliteCompressionStore";
+import { SqliteConfigStore } from "../infrastructure/persistence/sqlite/SqliteConfigStore";
+import { SqliteInjectionStore } from "../infrastructure/persistence/sqlite/SqliteInjectionStore";
 
 export type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
 
@@ -50,13 +54,18 @@ function validateLabel(label: string): string {
   return trimmed;
 }
 
-class SqliteMemoryStore {
+class SqliteMemoryStore implements IMemoryStore {
   private dbs: Map<string, Database> = new Map();
   private dbInitPromises: Map<string, Promise<Database>> = new Map();
   private idScopeCache: Map<string, MemoryScope> = new Map();
   private projectDirectory: string;
   private globalDbPath?: string;
   private _projectName: string;
+
+  private sessionTracker: SqliteSessionTracker;
+  private compressionStore: SqliteCompressionStore;
+  private configStore: SqliteConfigStore;
+  private injectionStore: SqliteInjectionStore;
 
   get projectName(): string {
     return this._projectName;
@@ -66,6 +75,11 @@ class SqliteMemoryStore {
     this.projectDirectory = projectDirectory;
     this.globalDbPath = globalDbPath;
     this._projectName = path.basename(projectDirectory);
+
+    this.sessionTracker = new SqliteSessionTracker(() => this.getGlobalDb());
+    this.compressionStore = new SqliteCompressionStore(() => this.getGlobalDb());
+    this.configStore = new SqliteConfigStore((s) => this.getDb(s));
+    this.injectionStore = new SqliteInjectionStore(() => this.getGlobalDb());
   }
 
   private async getDb(_scope?: MemoryScope): Promise<Database> {
@@ -112,10 +126,6 @@ class SqliteMemoryStore {
     return this.getDb("global");
   }
 
-  async runScoreDecay(decayDays: number): Promise<number> {
-    return runScoreDecayFn((s) => this.getDb(s), decayDays);
-  }
-
   async close(): Promise<void> {
     for (const [key, db] of this.dbs) {
       try {
@@ -126,6 +136,10 @@ class SqliteMemoryStore {
     }
     this.dbs.clear();
     this.idScopeCache.clear();
+  }
+
+  async runScoreDecay(decayDays: number): Promise<number> {
+    return runScoreDecayFn((s) => this.getDb(s), decayDays);
   }
 
   async ensureSeed(): Promise<void> {
@@ -176,7 +190,7 @@ class SqliteMemoryStore {
         const docStats = oldDb.query("SELECT * FROM bm25_doc_stats WHERE node_id = ?").get(oldRow.id) as { node_id: string; token_count: number; scope: string } | null;
         if (docStats) {
           unifiedDb.run(
-            "INSERT OR IGNORE INTO bm25_doc_stats (node_id, token_count, scope, project_name) VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO bm25_doc_stats (node_id, token_count, scope, project_name) VALUES (?, ?, ?, ?, ?)",
             [docStats.node_id, docStats.token_count, docStats.scope, this.projectName],
           );
         }
@@ -276,16 +290,6 @@ class SqliteMemoryStore {
     await hnsw.removeNode(scope, id);
   }
 
-  async getConfig(scope: MemoryScope, key: string, defaultValue: string): Promise<string> {
-    const db = await this.getDb(scope);
-    return getConfig(db, key, defaultValue);
-  }
-
-  async setConfig(scope: MemoryScope, key: string, value: string): Promise<void> {
-    const db = await this.getDb(scope);
-    await withRetry(() => setConfig(db, key, value));
-  }
-
   async storeLinks(scope: MemoryScope, sourceId: string, content: string): Promise<void> {
     const db = await this.getDb(scope);
     await queryStoreLinks(db, sourceId, content, queryGetNodeByLabel);
@@ -327,9 +331,9 @@ class SqliteMemoryStore {
   }
 
   async getTemporalEdges(
-    nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string,
+    nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string, scope?: MemoryScope,
   ): Promise<import("./types").TemporalEdge[]> {
-    const db = await this.getDb("project");
+    const db = await this.getDb(scope ?? "project");
     return queryGetTemporalEdges(db, nodeId, direction, edgeType);
   }
 
@@ -353,9 +357,33 @@ class SqliteMemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } }
+    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number }; categoryFilter?: MemoryCategory; typeFilter?: MemoryNodeType }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
+  }
+
+  async searchText(scope: MemoryScope | "all", query: string, limit: number = 100, projectName?: string): Promise<MemoryNode[]> {
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    const results: MemoryNode[] = [];
+    for (const s of scopes) {
+      const db = await this.getDb(s);
+      results.push(...querySearchText(db, s, query, limit, projectName));
+    }
+    results.sort((a, b) => b.importance - a.importance);
+    return results.slice(0, limit);
+  }
+
+  async searchBM25(scope: MemoryScope | "all", query: string, limit: number = 100, projectName?: string): Promise<MemoryNode[]> {
+    const terms = query.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(t => t.length >= 2);
+    if (terms.length === 0) return [];
+    const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+    const results: MemoryNode[] = [];
+    for (const s of scopes) {
+      const db = await this.getDb(s);
+      results.push(...querySearchBM25(db, s, terms, limit, projectName));
+    }
+    results.sort((a, b) => b.importance - a.importance);
+    return results.slice(0, limit);
   }
 
   async getCompressionCandidates(
@@ -413,110 +441,6 @@ class SqliteMemoryStore {
     return detectTopicBoundariesFn((s) => this.getDb(s), scope, minSimilarity, projectName);
   }
 
-  async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {
-    const db = await this.getDb("global");
-    await insertToolUsageLog(db, toolName, resultTokens, contextWarning, success, durationMs);
-  }
-
-  async getToolPatterns(_scope: MemoryScope | "all"): Promise<Array<{ toolName: string; count: number; avgTokens: number; avgDurationMs: number; warningRate: number; successRate: number }>> {
-    const db = await this.getDb("global");
-    return queryToolPatterns(db);
-  }
-
-  async getFrequentSequences(_scope: MemoryScope | "all", minCount: number = 3): Promise<Array<{ prev: string; next: string; count: number }>> {
-    const db = await this.getDb("global");
-    return queryFrequentSequences(db, minCount);
-  }
-
-  async pruneUsageLog(maxAgeMs?: number): Promise<number> {
-    const db = await this.getDb("global");
-    return deleteUsageLog(db, maxAgeMs);
-  }
-
-  private getToolCategory(toolName: string): string {
-    return getToolCategory(toolName);
-  }
-
-  async recordAgentToolCall(
-    sessionId: string,
-    toolName: string,
-    args: Record<string, unknown> | null,
-    output: string | null,
-    success: boolean | null,
-    durationMs: number | null
-  ): Promise<void> {
-    const db = await this.getGlobalDb();
-    const category = getToolCategory(toolName);
-    await insertAgentToolCall(db, sessionId, toolName, args, output, success, durationMs, category);
-
-    if (sessionId) {
-      await this.incrementSessionToolCall(sessionId, toolName, success ?? true, null);
-    }
-  }
-
-  async createSessionMetrics(sessionId: string, startedAt?: number): Promise<void> {
-    const db = await this.getGlobalDb();
-    await createSessionMetricsRow(db, sessionId, startedAt);
-  }
-
-  async updateSessionMetrics(
-    sessionId: string,
-    updates: Partial<{
-      endedAt: number;
-      totalToolCalls: number;
-      fileReads: number;
-      fileEdits: number;
-      bashCommands: number;
-      memoryTools: number;
-      failedTools: number;
-      uniqueFilesTouched: string[];
-      injectionCount: number;
-      injectedTokens: number;
-      taskDescription: string;
-      status: string;
-    }>
-  ): Promise<void> {
-    const db = await this.getGlobalDb();
-    await updateSessionMetrics(db, sessionId, updates);
-  }
-
-  async incrementSessionToolCall(
-    sessionId: string,
-    toolName: string,
-    success: boolean,
-    filePath?: string | null
-  ): Promise<void> {
-    const db = await this.getGlobalDb();
-    await incrementSessionToolCall(db, sessionId, toolName, success, filePath);
-  }
-
-  async getSessionStats(sessionId: string): Promise<{
-    sessionId: string;
-    startedAt: number;
-    endedAt: number | null;
-    status: string;
-    totalToolCalls: number;
-    fileReads: number;
-    fileEdits: number;
-    bashCommands: number;
-    memoryTools: number;
-    failedTools: number;
-    uniqueFilesTouched: string[];
-    injectionCount: number;
-    injectedTokens: number;
-    toolCalls: Array<{
-      toolName: string;
-      timestamp: number;
-      toolCategory: string;
-      filePath: string | null;
-      command: string | null;
-      success: boolean | null;
-    }>;
-  } | null> {
-    const db = await this.getGlobalDb();
-    return getSessionStatsForSession(db, sessionId);
-  }
-
   async verifyNode(id: string): Promise<MemoryNode> {
     return verifyNodeFn((s) => this.getDb(s), id);
   }
@@ -564,6 +488,129 @@ class SqliteMemoryStore {
     return deleteExpiredNodesFn((s) => this.getDb(s), scope, projectName);
   }
 
+  async getConfig(scope: MemoryScope, key: string, defaultValue: string): Promise<string> {
+    return this.configStore.getConfig(scope, key, defaultValue);
+  }
+
+  async setConfig(scope: MemoryScope, key: string, value: string): Promise<void> {
+    return this.configStore.setConfig(scope, key, value);
+  }
+
+  async recordCompressionStat(stat: {
+    sessionId?: string;
+    command: string;
+    strategy: string;
+    originalChars: number;
+    compressedChars: number;
+    originalLines?: number;
+    compressedLines?: number;
+    cmdPreview?: string;
+    originalPreview?: string;
+    compressedPreview?: string;
+    durationMs?: number;
+  }): Promise<void> {
+    return this.compressionStore.recordCompressionStat(stat);
+  }
+
+  async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {
+    return this.sessionTracker.logToolCall(toolName, resultTokens, contextWarning, success, durationMs);
+  }
+
+  async getToolPatterns(_scope: "all" | "global" | "project"): Promise<Array<{ toolName: string; count: number; avgTokens: number; avgDurationMs: number; warningRate: number; successRate: number }>> {
+    return this.sessionTracker.getToolPatterns(_scope);
+  }
+
+  async getFrequentSequences(_scope: "all" | "global" | "project", minCount: number = 3): Promise<Array<{ prev: string; next: string; count: number }>> {
+    return this.sessionTracker.getFrequentSequences(_scope, minCount);
+  }
+
+  async pruneUsageLog(maxAgeMs?: number): Promise<number> {
+    return this.sessionTracker.pruneUsageLog(maxAgeMs);
+  }
+
+  async recordAgentToolCall(
+    sessionId: string,
+    toolName: string,
+    args: Record<string, unknown> | null,
+    output: string | null,
+    success: boolean | null,
+    durationMs: number | null
+  ): Promise<void> {
+    return this.sessionTracker.recordAgentToolCall(sessionId, toolName, args, output, success, durationMs);
+  }
+
+  async createSessionMetrics(sessionId: string, startedAt?: number): Promise<void> {
+    return this.sessionTracker.createSessionMetrics(sessionId, startedAt);
+  }
+
+  async updateSessionMetrics(
+    sessionId: string,
+    updates: Partial<{
+      endedAt: number;
+      totalToolCalls: number;
+      fileReads: number;
+      fileEdits: number;
+      bashCommands: number;
+      memoryTools: number;
+      failedTools: number;
+      uniqueFilesTouched: string[];
+      injectionCount: number;
+      injectedTokens: number;
+      taskDescription: string;
+      status: string;
+    }>
+  ): Promise<void> {
+    return this.sessionTracker.updateSessionMetrics(sessionId, updates as any);
+  }
+
+  async incrementSessionToolCall(
+    sessionId: string,
+    toolName: string,
+    success: boolean,
+    filePath?: string | null
+  ): Promise<void> {
+    return this.sessionTracker.incrementSessionToolCall(sessionId, toolName, success, filePath);
+  }
+
+  async getSessionStats(sessionId: string): Promise<{
+    sessionId: string;
+    startedAt: number;
+    endedAt: number | null;
+    status: string;
+    totalToolCalls: number;
+    fileReads: number;
+    fileEdits: number;
+    bashCommands: number;
+    memoryTools: number;
+    failedTools: number;
+    uniqueFilesTouched: string[];
+    injectionCount: number;
+    injectedTokens: number;
+    toolCalls: Array<{
+      toolName: string;
+      timestamp: number;
+      toolCategory: string;
+      filePath: string | null;
+      command: string | null;
+      success: boolean | null;
+    }>;
+  } | null> {
+    return this.sessionTracker.getSessionStats(sessionId);
+  }
+
+  async getSessionMetrics(sessionId: string): Promise<{
+    totalInjections: number;
+    totalToolCalls: number;
+    memoryToolsUsed: string[];
+    avgEffectiveness: number | null;
+  } | null> {
+    return this.sessionTracker.getSessionMetrics(sessionId);
+  }
+
+  async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
+    return this.sessionTracker.recordMemoryToolCall(sessionId, toolName, _args);
+  }
+
   async logInjectionMetrics(
     sessionId: string,
     data: {
@@ -580,63 +627,19 @@ class SqliteMemoryStore {
       activeTypeBoosts?: Record<string, number>;
     }
   ): Promise<void> {
-    const db = await this.getGlobalDb();
-    await insertInjectionMetrics(db, sessionId, data);
+    return this.injectionStore.logInjectionMetrics(sessionId, data);
   }
 
   async getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>> {
-    const db = await this.getGlobalDb();
-    return getPendingInjectionRows(db);
+    return this.injectionStore.getPendingInjections();
   }
 
   async markInjectionProcessed(id: number): Promise<void> {
-    const db = await this.getGlobalDb();
-    markInjectionProcessed(db, id);
-  }
-
-  async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
-    const db = await this.getGlobalDb();
-    await updateMemoryToolCall(db, sessionId, toolName);
-  }
-
-  async recordCompressionStat(stat: {
-    sessionId?: string;
-    command: string;
-    strategy: string;
-    originalChars: number;
-    compressedChars: number;
-    originalLines?: number;
-    compressedLines?: number;
-    cmdPreview?: string;
-    originalPreview?: string;
-    compressedPreview?: string;
-    durationMs?: number;
-  }): Promise<void> {
-    const db = await this.getGlobalDb();
-    db.run(
-      `INSERT INTO compression_stats (session_id, timestamp, command, strategy, original_chars, compressed_chars, original_lines, compressed_lines, cmd_preview, original_preview, compressed_preview, savings_ratio, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        stat.sessionId ?? null,
-        Date.now(),
-        stat.command.slice(0, 100),
-        stat.strategy,
-        stat.originalChars,
-        stat.compressedChars,
-        stat.originalLines ?? null,
-        stat.compressedLines ?? null,
-        stat.cmdPreview ?? null,
-        stat.originalPreview ?? null,
-        stat.compressedPreview ?? null,
-        stat.originalChars > 0 ? 1 - stat.compressedChars / stat.originalChars : 0,
-        stat.durationMs ?? null,
-      ]
-    );
+    return this.injectionStore.markInjectionProcessed(id);
   }
 
   async finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void> {
-    const db = await this.getGlobalDb();
-    await finalizeInjection(db, sessionId, effectivenessScore, taskDescription);
+    return this.injectionStore.finalizeInjection(sessionId, effectivenessScore, taskDescription);
   }
 
   async recordInjectionFeedback(
@@ -646,26 +649,37 @@ class SqliteMemoryStore {
     taskOutcome?: string,
     neededNodes?: string[]
   ): Promise<void> {
-    const db = await this.getGlobalDb();
-    await insertInjectionFeedback(db, sessionId, upvotes, downvotes, taskOutcome, neededNodes);
+    return this.injectionStore.recordInjectionFeedback(sessionId, upvotes, downvotes, taskOutcome, neededNodes);
   }
 
-  async getInjectionMetrics(limit = 100): Promise<InjectionQualityRow[]> {
-    const db = await this.getGlobalDb();
-    return queryInjectionMetrics(db, limit);
+  async getInjectionMetrics(limit = 100): Promise<Array<{
+    sessionId: string; timestamp: number; injectedNodeCount: number;
+    injectedTokens: number; injectionMode: string; queryText: string | null;
+    preRerankIds: string[] | null; postRerankIds: string[] | null;
+    rerankScores: number[] | null; rerankStrategy: string | null;
+    rerankDurationMs: number | null;
+    injectedNodeTypes: Record<string, number> | null;
+    activeTypeBoosts: Record<string, number> | null;
+    toolCalls: number; effectivenessScore: number | null;
+    injectionUpvotes: number; injectionDownvotes: number;
+    taskOutcome: string | null;
+  }>> {
+    return this.injectionStore.getInjectionMetrics(limit);
   }
 
-  async getSessionMetrics(sessionId: string): Promise<{
-    totalInjections: number;
-    totalToolCalls: number;
-    memoryToolsUsed: string[];
-    avgEffectiveness: number | null;
-  }> {
-    const db = await this.getGlobalDb();
-    return querySessionMetrics(db, sessionId);
+  async injectNode(nodeId: string, scope: string): Promise<void> {
+    return this.injectionStore.injectNode(nodeId, scope);
+  }
+
+  async getCompressionStats(days: number = 7, limit: number = 100): Promise<import("../domain/ports/ICompressionStore").CompressionStatsResult> {
+    return this.compressionStore.getCompressionStats(days, limit);
+  }
+
+  async getContextDashboard(): Promise<import("../domain/ports/ICompressionStore").ContextDashboardResult> {
+    return this.compressionStore.getContextDashboard();
   }
 }
 
-export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): MemoryStore {
+export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): IMemoryStore {
   return new SqliteMemoryStore(projectDirectory, globalDbPath);
 }

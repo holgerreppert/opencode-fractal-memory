@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fractal Memory Viewer</title>
   <style>
-    :root { --sidebar-width: 280px; }
+    :root { --sidebar-width: 240px; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0a0a0f; color: #e0e0e0; font-family: 'Inter', -apple-system, sans-serif; overflow: hidden; }
     #canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
@@ -159,7 +159,7 @@
     }
 
     .toggle-sidebar {
-      position: fixed; top: 15px; left: calc(var(--sidebar-width, 280px) + 10px); z-index: 150;
+      position: fixed; top: 15px; left: calc(var(--sidebar-width, 240px) + 10px); z-index: 150;
       background: rgba(15, 15, 25, 0.9); border: 1px solid rgba(255,255,255,0.1);
       color: #ccc; padding: 6px 10px; border-radius: 6px; cursor: pointer;
       font-size: 12px;
@@ -288,7 +288,7 @@
     .restore-source input[type="checkbox"] { accent-color: #6699ff; }
 
     #node-list {
-      max-height: 40vh; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);
+      max-height: 25vh; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);
       border-radius: 6px;
     }
     .node-list-item {
@@ -300,6 +300,33 @@
     .node-list-item .node-label { font-size: 12px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .node-list-item .node-meta { font-size: 10px; color: #666; margin-top: 2px; }
     .node-list-count { font-size: 11px; color: #666; margin-left: 8px; }
+
+    /* Mini-bar stats */
+    .mini-stats { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: #888; padding: 4px 0; }
+    .mini-stats span { white-space: nowrap; }
+    .mini-stats strong { color: #e0e0e0; }
+    .stat-ctx { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+    .stat-ctx.ok { color: #34d399; background: rgba(52,211,153,0.12); }
+    .stat-ctx.warn { color: #fbbf24; background: rgba(251,191,36,0.12); }
+    .stat-ctx.high { color: #fb923c; background: rgba(251,146,60,0.12); }
+    .stat-ctx.crit { color: #ef4444; background: rgba(239,68,68,0.12); }
+
+    /* Filters accordion */
+    #filters-badge { font-size: 9px; color: #666; font-weight: normal; text-transform: none; margin-left: auto; margin-right: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: right; }
+    #visualize-panel .config-category { margin-bottom: 6px; }
+    #visualize-panel .category-header { font-size: 12px; padding: 7px 10px; }
+    #visualize-panel .category-body { padding: 6px 10px 8px; }
+    #visualize-panel .category-body .section { margin-bottom: 8px; }
+    #visualize-panel .category-body .section:last-child { margin-bottom: 0; }
+    #visualize-panel .category-body h3 { font-size: 11px; margin-bottom: 6px; }
+
+    /* Legend popover */
+    #legend-section { position: relative; margin-bottom: 6px; }
+    #legend-toggle-btn { background: none; border: 1px solid rgba(255,255,255,0.15); color: #888; border-radius: 50%; width: 22px; height: 22px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
+    #legend-toggle-btn:hover { background: rgba(255,255,255,0.1); color: #ccc; border-color: rgba(255,255,255,0.3); }
+    #legend-popover { display: none; position: absolute; left: 0; right: 0; top: 28px; background: rgba(20,20,35,0.98); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; z-index: 200; box-shadow: 0 4px 24px rgba(0,0,0,0.6); }
+    #legend-popover.open { display: block; }
+    #legend-popover .legend-item { padding: 3px 0; }
   </style>
 </head>
 <body>
@@ -323,12 +350,12 @@
     <!-- Visualize Panel -->
     <div id="visualize-panel" class="settings-panel active">
 
-    <div class="section">
+    <div class="section" style="margin-bottom:10px;">
       <h3>Scope</h3>
       <div class="filter-group" id="scope-filters"></div>
     </div>
 
-    <div class="section">
+    <div class="section" style="margin-bottom:10px;">
       <input type="text" id="search-input" placeholder="Search nodes...">
       <div style="display:flex; gap:4px; margin-top:6px;">
         <button class="search-mode-btn active" data-mode="text">Text</button>
@@ -339,53 +366,66 @@
       <div id="search-info"></div>
     </div>
 
-    <div class="section">
-      <h3>Statistics</h3>
+    <div class="section" style="margin-bottom:10px;">
       <div id="stats-container"></div>
     </div>
 
-    <div class="section">
-      <h3>Filter by Level</h3>
-      <div class="filter-group" id="level-filters"></div>
-    </div>
-
-    <div class="section">
-      <h3>Filter by Type</h3>
-      <div class="filter-group" id="type-filters"></div>
-    </div>
-
-    <div class="section">
-      <h3>Filter by Custom Type</h3>
-      <div class="filter-group" id="custom-type-filters"></div>
-    </div>
-
-    <div class="section">
-      <h3>Filter by Shape</h3>
-      <div class="filter-group" id="shape-filters"></div>
-    </div>
-
-    <div class="section" style="display:none;">
-      <h3>Filter by Project</h3>
-      <select id="project-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;">
-        <option value="">All Projects</option>
-      </select>
-    </div>
-
-    <div class="section">
-      <div style="display:flex; gap:4px;">
-        <button class="search-btn" id="select-all-filters" style="border-color: rgba(100,200,100,0.4); background: rgba(100,200,100,0.15); flex:1;">Select All</button>
-        <button class="search-btn" id="clear-filters" style="border-color: rgba(255,100,100,0.4); background: rgba(255,100,100,0.15); flex:1;">Clear All Filters</button>
+    <!-- Filters Accordion -->
+    <div class="config-category" style="margin-bottom:6px;">
+      <h3 class="category-header" id="filters-header">
+        Filters <span id="filters-badge"></span>
+        <span class="collapse-arrow">&#x25BC;</span>
+      </h3>
+      <div class="category-body" id="filters-body">
+        <div class="section">
+          <h3>Level</h3>
+          <div class="filter-group" id="level-filters"></div>
+        </div>
+        <div class="section">
+          <h3>Type</h3>
+          <div class="filter-group" id="type-filters"></div>
+        </div>
+        <div class="section">
+          <h3>Custom Type</h3>
+          <div class="filter-group" id="custom-type-filters"></div>
+        </div>
+        <div class="section">
+          <h3>Shape</h3>
+          <div class="filter-group" id="shape-filters"></div>
+        </div>
+        <div class="section" style="display:none;">
+          <h3>Project</h3>
+          <select id="project-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;">
+            <option value="">All Projects</option>
+          </select>
+        </div>
+        <div class="section" style="margin-bottom:0;">
+          <div style="display:flex; gap:4px;">
+            <button class="search-btn" id="select-all-filters" style="border-color: rgba(100,200,100,0.4); background: rgba(100,200,100,0.15); flex:1;">Select All</button>
+            <button class="search-btn" id="clear-filters" style="border-color: rgba(255,100,100,0.4); background: rgba(255,100,100,0.15); flex:1;">Clear All</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="section">
-      <h3>Legend</h3>
-      <div id="legend"></div>
+    <!-- Legend -->
+    <div class="section" id="legend-section" style="margin-bottom:6px;">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <h3 style="margin-bottom:0; flex:1;">Legend</h3>
+        <button id="legend-toggle-btn" title="Show legend">&#9432;</button>
+      </div>
+      <div id="legend-popover"></div>
     </div>
 
-    <div class="section">
-      <h3>Nodes <span class="node-list-count" id="node-list-count"></span></h3>
-      <div id="node-list"></div>
+    <!-- Nodes Accordion -->
+    <div class="config-category" style="margin-bottom:0;">
+      <h3 class="category-header" id="node-list-header">
+        Nodes <span class="node-list-count" id="node-list-count"></span>
+        <span class="collapse-arrow">&#x25BC;</span>
+      </h3>
+      <div class="category-body" id="node-list-body">
+        <div id="node-list"></div>
+      </div>
     </div>
     </div>
 

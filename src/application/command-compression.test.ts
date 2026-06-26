@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { compressLs } from "./compress-output/strategies/ls";
-import { compressTestOutput } from "./compress-output/strategies/test";
-import { compressGrep } from "./compress-output";
-import { compressGeneric, compressRelevantGeneric } from "./compress-output/strategies/generic";
-import { classifyShape, applyShapeCompression } from "./compress-output/shape";
-import { compressCommandOutput, type CompressConfig } from "./compress-output";
-import { tryDeltaCompression, updateDeltaCache } from "./compress-output/delta";
-import { addContentDedup, trigramJaccard } from "./compress-output/dedup";
-import { smartFilter, scoreLine, extractQueryTerms } from "./compress-output/utils";
+import { compressLs } from "./command-compression/strategies/ls";
+import { compressTestOutput } from "./command-compression/strategies/test";
+import { compressGrep } from "./command-compression";
+import { compressGeneric, compressRelevantGeneric } from "./command-compression/strategies/generic";
+import { classifyShape, applyShapeCompression } from "./command-compression/shape";
+import { compressCommandOutput, type CompressConfig } from "./command-compression";
+import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
+import { addContentDedup, trigramJaccard } from "./command-compression/dedup";
+import { smartFilter, scoreLine, extractQueryTerms } from "./command-compression/utils";
 
 const defaultConfig: CompressConfig = {
   enabled: true,

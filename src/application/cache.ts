@@ -1,4 +1,4 @@
-import type { MemoryNode } from "./storage/sqlite";
+import type { MemoryNode } from "../storage/sqlite";
 
 export interface CachedMemoryNode {
   id: string;

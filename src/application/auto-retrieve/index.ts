@@ -1,6 +1,6 @@
 import { fallbackScore } from "./scoring";
-import { rerankDocuments } from "../../ollama";
-import type { MemConfig } from "../../config";
+import { rerankDocuments } from "../../infrastructure/llm/ollama";
+import type { MemConfig } from "../../infrastructure/config/config";
 import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
 
 interface Part {

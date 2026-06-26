@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
 import type { MemoryNodeType } from "../storage/types";
-import { estimateTokens, generateEmbedding } from "../embeddings";
+import { estimateTokens, generateEmbedding } from "../infrastructure/llm/embeddings";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking, lastSearchResults } from "./shared";
 
 export function MemoryDrilldown(store: MemoryStore) {

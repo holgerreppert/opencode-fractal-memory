@@ -5,7 +5,7 @@ import * as path from "node:path";
 import yaml from "js-yaml";
 import { z } from "zod";
 
-import { cosineSimilarity, generateEmbedding } from "./embeddings";
+import { cosineSimilarity, generateEmbedding } from "../infrastructure/llm/embeddings";
 import { atomicWriteFile, buildFrontmatterDocument, splitFrontmatter } from "./frontmatter";
 
 const TagSchema = z.looseObject({

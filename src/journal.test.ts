@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { createJournalStore } from "./journal";
+import { createJournalStore } from "./application/journal";
 
 // Mock the embeddings module to avoid downloading a real model in tests
 mock.module("./embeddings", () => ({

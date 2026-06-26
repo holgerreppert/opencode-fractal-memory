@@ -7,7 +7,7 @@ export { MemoryInject } from "./tools/inject";
 export { MemoryMiddleTerm } from "./tools/middle-term";
 
 export { JournalWrite, JournalRead, JournalSearch } from "./tools/journal";
-export type { JournalContext } from "./journal";
+export type { JournalContext } from "./application/journal";
 export { wrapWithContextWarning, wrapWithTracking, recentCalls, pruneCallCounter, lastSearchResults, CONTEXT_LIMIT, WARN_THRESHOLD, MAX_RECENT_CALLS } from "./tools/shared";
 export { MemoryList, MemorySet, MemoryRate, MemoryGet, MemoryFetch, MemoryReplace, MemoryDelete } from "./tools/core";
 export { MemoryDrilldown, MemorySearch, MemoryDrilldownQuery } from "./tools/search";

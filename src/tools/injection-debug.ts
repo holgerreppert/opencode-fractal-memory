@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { estimateTokens } from "../embeddings";
+import { estimateTokens } from "../infrastructure/llm/embeddings";
 import { wrapWithTracking } from "./shared";
 
 const CONTEXT_LIMIT = 128000;

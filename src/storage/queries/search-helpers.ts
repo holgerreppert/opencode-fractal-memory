@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { MemoryNode, MemoryNodeLevel } from "../types";
 import { tokenize } from "../utils";
-import { estimateTokens } from "../../embeddings";
+import { estimateTokens } from "../../infrastructure/llm/embeddings";
 export function updateBM25Index(db: Database, nodeId: string, content: string, label: string | undefined, scope: string): void {
   const tokens = tokenize(content + ' ' + (label ?? ''));
   const termFreq = new Map<string, number>();

@@ -1,37 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { Database } from "bun:sqlite";
 import { memLog } from "../logging";
 
-const ALLOWED_SCOPES = new Set(["global", "project"]);
-
-export const DB_PATHS: Record<string, string> = {};
-
-export function initDbPaths(_projectDir: string) {
-  const unifiedDbPath = path.join(os.homedir(), ".config", "opencode", "memory.db");
-  DB_PATHS.global = unifiedDbPath;
-  DB_PATHS.project = unifiedDbPath;
-}
-
-export function openDb(scope: string): Database | null {
-  if (!ALLOWED_SCOPES.has(scope)) return null;
-  const dbPath = DB_PATHS[scope] || scope;
-  if (!Bun.file(dbPath).exists()) return null;
-  const db = Database.open(dbPath);
-  db.run("PRAGMA journal_mode=WAL");
-  db.run("PRAGMA busy_timeout=5000");
-  return db;
-}
-
-export async function withDb<T>(dbOrScope: string | Database | null, fn: (db: Database) => T): Promise<T> {
-  const db = typeof dbOrScope === "string" ? openDb(dbOrScope) : dbOrScope;
-  if (!db) throw new Error("Database not found");
-  try {
-    return await fn(db);
-  } finally {
-    if (typeof dbOrScope === "string") db.close();
-  }
+function getDbPath(): string {
+  return path.join(os.homedir(), ".config", "opencode", "memory.db");
 }
 
 export const MIME_TYPES: Record<string, string> = {
@@ -84,27 +57,7 @@ export function rowToNode(r: any) {
   };
 }
 
-export function queryNodes(scope: string, projectName?: string) {
-  const db = openDb(scope);
-  if (!db) return [];
-  let sql = `
-    SELECT id, label, content, summary, level, type, importance,
-           usefulness_score, times_used, times_helpful, access_count,
-           sticky, confidence, created_at, updated_at, parent_ids,
-           LENGTH(content) as content_length, metadata, project_name
-    FROM memory_nodes
-    WHERE scope = ?
-  `;
-  const params: (string | number)[] = [scope];
-  if (projectName) {
-    sql += ` AND project_name = ?`;
-    params.push(projectName);
-  }
-  sql += ` ORDER BY level, importance DESC`;
-  const rows = db.query(sql).all(...params);
-  db.close();
-  return rows.map((r: any) => rowToNode(r));
-}
+
 
 export function extractLinks(nodes: any[]) {
   const links: any[] = [];
@@ -140,9 +93,12 @@ export function extractLinks(nodes: any[]) {
 }
 
 export function getAvailableScopes(): Array<{ scope: string; path: string }> {
-  return Object.entries(DB_PATHS)
-    .filter(([_, p]) => Bun.file(p).exists())
-    .map(([k, v]) => ({ scope: k, path: v }));
+  const dbPath = getDbPath();
+  if (!fs.existsSync(dbPath)) return [];
+  return [
+    { scope: "global", path: dbPath },
+    { scope: "project", path: dbPath },
+  ];
 }
 
 export const TYPE_SHAPES: Record<string, string> = {
@@ -171,7 +127,31 @@ export function resolveNodeShape(node: any): string {
   return TYPE_SHAPES[node.type] ?? "sphere";
 }
 
-export function computeStats(nodes: any[]) {
+export interface StatsResult {
+  totalNodes: number;
+  nodesPerLevel: Record<number, number>;
+  nodesPerType: Record<string, number>;
+  nodesPerCustomType: Record<string, number>;
+  nodesPerShape: Record<string, number>;
+  nodesPerProject: Record<string, number>;
+  avgImportance: number;
+  avgUsefulness: number;
+  totalAccessCount: number;
+  stickyCount: number;
+  // Extended efficiency fields (optional, set by handleStats)
+  memoryTokens?: number;
+  totalChars?: number;
+  compressionCalls?: number;
+  compressionSavings?: number;
+  originalChars?: number;
+  compressedChars?: number;
+  charsSaved?: number;
+  injectionCount?: number;
+  avgInjectionTokens?: number;
+  injectionHelpfulness?: number;
+}
+
+export function computeStats(nodes: any[]): StatsResult {
   const nodesPerLevel: Record<number, number> = {};
   const nodesPerType: Record<string, number> = {};
   const nodesPerCustomType: Record<string, number> = {};
@@ -214,46 +194,8 @@ export function computeStats(nodes: any[]) {
 }
 
 export function getAvailableProjects(scope: string): string[] {
-  const db = openDb(scope);
-  if (!db) return [];
-  const rows = db.query(`
-    SELECT DISTINCT COALESCE(project_name, '') as project_name
-    FROM memory_nodes
-    WHERE scope = ?
-    ORDER BY project_name
-  `).all(scope) as { project_name: string }[];
-  db.close();
-  return rows.map(r => r.project_name || "(default)");
-}
-
-export function queryTemporalEdges(scope: string, projectName?: string, nodeId?: string) {
-  const db = openDb(scope);
-  if (!db) return [];
-  const conditions: string[] = [];
-  const params: (string | number)[] = [];
-  conditions.push("(n1.scope = ? OR n2.scope = ?)");
-  params.push(scope, scope);
-  if (nodeId) {
-    conditions.push("(te.source_node_id = ? OR te.target_node_id = ?)");
-    params.push(nodeId, nodeId);
-  }
-  if (projectName) {
-    conditions.push("(n1.project_name = ? OR n2.project_name = ?)");
-    params.push(projectName, projectName);
-  }
-  const sql = `
-    SELECT te.id, te.source_node_id, te.target_node_id, te.edge_type,
-           te.confidence, te.created_at, te.metadata,
-           n1.label as source_label, n2.label as target_label
-    FROM temporal_edges te
-    LEFT JOIN memory_nodes n1 ON te.source_node_id = n1.id
-    LEFT JOIN memory_nodes n2 ON te.target_node_id = n2.id
-    WHERE ${conditions.join(" AND ")}
-    ORDER BY te.created_at DESC
-  `;
-  const rows = db.query(sql).all(...params) as Array<Record<string, unknown>>;
-  db.close();
-  return rows;
+  // This function is kept for compat; management routes now use store.listNodes()
+  return [];
 }
 
 export function readProjectConfig(): Record<string, unknown> {

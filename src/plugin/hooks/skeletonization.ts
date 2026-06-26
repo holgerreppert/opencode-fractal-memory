@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { writeFileSumLog } from "../../logging";
-import { extractSkeleton } from "../../hooks/skeletonize";
+import { extractSkeleton } from "../../application/skeletonize";
 import type { HookHandler } from "./types";
 
 export function createSkeletonizationHandler(config: MemConfig): HookHandler {

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { MemoryScope } from "./types";
-import { getHNSWIndex } from "../hnsw-index";
+import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { extractLinks, embeddingToBlob, blobToEmbedding, withRetry } from "./utils";
 import { updateBM25Index } from "./queries/search-helpers";
 

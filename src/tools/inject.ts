@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore, MemoryNode } from "../storage/sqlite";
-import { generateEmbedding, estimateTokens } from "../embeddings";
+import { generateEmbedding, estimateTokens } from "../infrastructure/llm/embeddings";
 import { computeHybridScore, tokenize } from "../utils/hybridScore";
 
 export function MemoryInject(store: MemoryStore) {

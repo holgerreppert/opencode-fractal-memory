@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { writeFileSumLog } from "../../logging";
-import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "../../file-summary";
+import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "../../application/file-summary";
 import type { HookHandler } from "./types";
 
 export function createFileSummaryHandler(store: MemoryStore, config: MemConfig): HookHandler {

@@ -3,7 +3,7 @@ import type { MemoryScope, MemoryNode, MemoryNodeLevel } from "./types";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { withRetry } from "./utils";
-import { getHNSWIndex } from "../hnsw-index";
+import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 
 export async function getExpiredNodes(
   getDb: (scope: MemoryScope) => Promise<Database>,

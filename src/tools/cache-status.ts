@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { getWorkingCache } from "../cache";
+import { getWorkingCache } from "../application/cache";
 import { wrapWithTracking } from "./shared";
 
 export function MemoryCacheStatus(store: MemoryStore) {

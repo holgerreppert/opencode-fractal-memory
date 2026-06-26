@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { runMigrations } from "./migrations";
 import { backfillBinaryEmbeddingsAndBM25, rebuildHNSWIndex, backfillLinks } from "./maintenance";
-import { getHNSWIndex } from "../hnsw-index";
+import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import type { MemoryScope } from "./types";
 
 type MemoryScopes = "global" | "project";

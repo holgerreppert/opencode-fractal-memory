@@ -1,7 +1,7 @@
 import type { MemoryStore } from "../../storage/sqlite";
-import type { MemConfig } from "../../config";
+import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
-import { predictiveRateToolCall } from "../../hooks";
+import { predictiveRateToolCall } from "../../application";
 import type { HookHandler } from "./types";
 
 export function createRecordingHandler(store: MemoryStore, config: MemConfig): HookHandler {
