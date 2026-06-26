@@ -121,7 +121,38 @@ async function handleTemporalEdges(ctx: { scope: string; url: URL }, store: IMem
 async function handleStats(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
   const projectName = ctx.url.searchParams.get("project_name") || undefined;
   const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, undefined, undefined, undefined, projectName);
-  return jsonResponse(computeStats(nodes.map(mapNode)));
+  const stats = computeStats(nodes.map(mapNode));
+
+  // Fetch token, compression, and injection efficiency data in parallel
+  const [compressStats, dashboardData, injectionMetrics] = await Promise.all([
+    store.getCompressionStats(7, 5).catch(() => null),
+    store.getContextDashboard().catch(() => null),
+    store.getInjectionMetrics(100).catch(() => null),
+  ]);
+
+  if (dashboardData?.memory) {
+    stats.memoryTokens = dashboardData.memory.totalTokens;
+    stats.totalChars = dashboardData.memory.totalChars;
+  }
+  if (compressStats?.total) {
+    stats.compressionCalls = compressStats.total.calls;
+    stats.compressionSavings = compressStats.total.savingsPercent;
+    stats.originalChars = compressStats.total.originalChars;
+    stats.compressedChars = compressStats.total.compressedChars;
+    stats.charsSaved = compressStats.total.originalChars - compressStats.total.compressedChars;
+  }
+  if (injectionMetrics && injectionMetrics.length > 0) {
+    stats.injectionCount = injectionMetrics.length;
+    stats.avgInjectionTokens = Math.round(
+      injectionMetrics.reduce((s: number, m: any) => s + (m.injectedTokens || 0), 0) / injectionMetrics.length
+    );
+    const helpful = injectionMetrics.filter((m: any) => m.usefulnessScore > 0).length;
+    stats.injectionHelpfulness = injectionMetrics.length > 0
+      ? Math.round((helpful / injectionMetrics.length) * 100)
+      : 0;
+  }
+
+  return jsonResponse(stats);
 }
 
 async function handleInject(req: Request, store: IMemoryStore): Promise<Response> {

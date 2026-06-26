@@ -1086,6 +1086,22 @@ function setupEventListeners() {
     }
   });
 
+  // Legend popover toggle
+  const legendToggle = document.getElementById("legend-toggle-btn");
+  if (legendToggle) {
+    legendToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const popover = document.getElementById("legend-popover");
+      popover.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+      const popover = document.getElementById("legend-popover");
+      if (popover && !e.target.closest("#legend-section")) {
+        popover.classList.remove("open");
+      }
+    });
+  }
+
   // Node list click
   document.getElementById("node-list").addEventListener("click", (e) => {
     const item = e.target.closest(".node-list-item");
@@ -1274,19 +1290,48 @@ function buildScopeButtons() {
 function buildStats() {
   if (!statsData) return;
   const container = document.getElementById("stats-container");
-  container.innerHTML = `
-    <div class="stat-row"><span class="stat-label">Total Nodes</span><span class="stat-value">${statsData.totalNodes}</span></div>
-    <div class="stat-row"><span class="stat-label">Avg Importance</span><span class="stat-value">${statsData.avgImportance}</span></div>
-    <div class="stat-row"><span class="stat-label">Avg Usefulness</span><span class="stat-value">${statsData.avgUsefulness}</span></div>
-    <div class="stat-row"><span class="stat-label">Total Accesses</span><span class="stat-value">${statsData.totalAccessCount}</span></div>
-    <div class="stat-row"><span class="stat-label">Sticky Nodes</span><span class="stat-value">${statsData.stickyCount}</span></div>
-  `;
+
+  // Token formatting
+  const fmtTokens = (n) => {
+    if (!n && n !== 0) return "";
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+    return String(n);
+  };
+
+  const tokens = statsData.memoryTokens;
+  const savings = statsData.compressionSavings;
+  const ctxLimit = 128000;
+  const ctxPct = tokens ? Math.round((tokens / ctxLimit) * 100) : 0;
+  const ctxClass = ctxPct >= 85 ? "crit" : ctxPct >= 70 ? "high" : ctxPct >= 50 ? "warn" : "ok";
+
+  let html = `<div class="mini-stats">`;
+  html += `<span><strong>${statsData.totalNodes}</strong> nodes</span>`;
+  if (tokens) html += `<span><strong>${fmtTokens(tokens)}</strong> tokens</span>`;
+  if (savings !== undefined) html += `<span><strong>${savings}%</strong> saved</span>`;
+  if (tokens) html += `<span class="stat-ctx ${ctxClass}">${ctxPct}% ctx</span>`;
+  if (statsData.injectionCount) html += `<span><strong>${statsData.injectionCount}</strong> inj.</span>`;
+  html += `<span><strong>${statsData.totalAccessCount}</strong> accesses</span>`;
+  html += `</div>`;
+
+  container.innerHTML = html;
 }
 
 function buildFilters() {
   if (!statsData) return;
 
   filterEngine.initFromStats(statsData);
+
+  // Build compact badge summary for the accordion header
+  const badgeLevels = Object.keys(statsData.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
+  const badgeTypes = Object.keys(statsData.nodesPerType || {}).sort();
+  const badgeShapes = Object.keys(statsData.nodesPerShape || {}).sort();
+  const badgeParts = [];
+  if (badgeLevels.length) badgeParts.push(badgeLevels.map(l => `L${l}:${statsData.nodesPerLevel[l]}`).join(' '));
+  if (badgeTypes.length) badgeParts.push(`${badgeTypes.length} types`);
+  if (badgeShapes.length) badgeParts.push(`${badgeShapes.length} shapes`);
+  const badgeEl = document.getElementById("filters-badge");
+  if (badgeEl) badgeEl.textContent = badgeParts.join(' · ');
 
   // Level filters
   const levels = Object.keys(statsData.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
@@ -1344,7 +1389,8 @@ function buildFilters() {
 
 function buildLegend() {
   if (!statsData) return;
-  const legend = document.getElementById("legend");
+  const popover = document.getElementById("legend-popover");
+  if (!popover) return;
   let html = "";
   for (const [level, color] of Object.entries(LEVEL_COLORS)) {
     if (statsData.nodesPerLevel[level]) {
@@ -1352,7 +1398,8 @@ function buildLegend() {
       html += `<div class="legend-item"><div class="legend-dot" style="background: ${hex}"></div><span class="legend-label">Level ${level}</span></div>`;
     }
   }
-  html += `<div style="margin-top: 10px; font-weight: bold; color: #aaa;">Shapes by type:</div>`;
+  html += `<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0;">`;
+  html += `<div style="margin-bottom:6px; font-weight: 600; color: #aaa; font-size:11px;">Shapes by type:</div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 50%;"></div><span class="legend-label">Sphere = Note / Task / Session / Preference</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Event / Episode / Architecture / Convention / Bug / Fix</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #34d399; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Octahedron = Fact / Concept / Knowledge / Research</span></div>`;
@@ -1360,14 +1407,14 @@ function buildLegend() {
   html += `<div class="legend-item"><div class="legend-dot" style="background: #f472b6; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Icosahedron = Skill / Rule</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus (orange) = Playbook</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus (red) = Middle-Term</span></div>`;
-  html += `<div style="margin-top: 10px; font-weight: bold; color: #aaa;">Temporal Edges:</div>`;
+  html += `<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0;">`;
+  html += `<div style="margin-bottom:6px; font-weight: 600; color: #aaa; font-size:11px;">Temporal Edges:</div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #22c55e; border-radius: 1px; flex-shrink: 0;"></div><span class="legend-label">NEXT (sequence)</span></div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #3b82f6; border-radius: 1px; border-top: 1px dashed #3b82f6;"></div><span class="legend-label">DURING_SESSION</span></div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #ef4444; border-radius: 1px;"></div><span class="legend-label">CAUSAL (cause-effect)</span></div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #eab308; border-radius: 1px; border-top: 1px dotted #eab308;"></div><span class="legend-label">REFERENCES (label refs)</span></div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #d946ef; border-radius: 1px;"></div><span class="legend-label">RELATED_TO (related)</span></div>`;
-  html += `</div>`;
-  legend.innerHTML = html;
+  popover.innerHTML = html;
 }
 
 function buildNodeList() {

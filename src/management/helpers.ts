@@ -127,7 +127,31 @@ export function resolveNodeShape(node: any): string {
   return TYPE_SHAPES[node.type] ?? "sphere";
 }
 
-export function computeStats(nodes: any[]) {
+export interface StatsResult {
+  totalNodes: number;
+  nodesPerLevel: Record<number, number>;
+  nodesPerType: Record<string, number>;
+  nodesPerCustomType: Record<string, number>;
+  nodesPerShape: Record<string, number>;
+  nodesPerProject: Record<string, number>;
+  avgImportance: number;
+  avgUsefulness: number;
+  totalAccessCount: number;
+  stickyCount: number;
+  // Extended efficiency fields (optional, set by handleStats)
+  memoryTokens?: number;
+  totalChars?: number;
+  compressionCalls?: number;
+  compressionSavings?: number;
+  originalChars?: number;
+  compressedChars?: number;
+  charsSaved?: number;
+  injectionCount?: number;
+  avgInjectionTokens?: number;
+  injectionHelpfulness?: number;
+}
+
+export function computeStats(nodes: any[]): StatsResult {
   const nodesPerLevel: Record<number, number> = {};
   const nodesPerType: Record<string, number> = {};
   const nodesPerCustomType: Record<string, number> = {};
