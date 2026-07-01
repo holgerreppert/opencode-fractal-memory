@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
+import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { writeFileSumLog } from "../../logging";
 import { generateFileSummary, generateFileLabel, SOURCE_FILE_EXTENSIONS } from "../../application/file-summary";

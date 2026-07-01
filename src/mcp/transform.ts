@@ -1,5 +1,4 @@
 import type { MemoryNode, MemoryScope, MemoryStore } from "../storage/sqlite";
-import { mcpLog } from "./logging";
 
 export function nodeToPlain(n: MemoryNode) {
   return {

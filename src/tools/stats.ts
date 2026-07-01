@@ -1,7 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
 import { estimateTokens } from "../infrastructure/llm/embeddings";
-import type { MemoryNode } from "../memory";
 import { CONTEXT_LIMIT, WARN_THRESHOLD, wrapWithTracking } from "./shared";
 
 export function MemoryStats(store: MemoryStore) {

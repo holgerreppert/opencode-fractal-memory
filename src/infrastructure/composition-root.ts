@@ -4,13 +4,11 @@ import { loadMemConfig } from "./config/config";
 import { generateEmbedding } from "./llm/embeddings";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
 import { createAutoRetrieveHook } from "../application";
-import { createJournalStore, type JournalContext } from "../application/journal";
 import { startManagementServer } from "../management-server";
 import { SEED_NODES } from "../seed-nodes";
-import type { ToolDefinition } from "@opencode-ai/plugin";
 import { memLog } from "../logging";
 import { setCacheConfig } from "../application/cache";
-import { setContextLimit, setHighContextThreshold, setCriticalContextThreshold, setMaxInjectionTokens, setCoreInjectionTokens, setAutoCompressThreshold, cleanupMiddleTermCaptures } from "../plugin/state";
+import { setHighContextThreshold, setCriticalContextThreshold, setMaxInjectionTokens, setCoreInjectionTokens, setAutoCompressThreshold, cleanupMiddleTermCaptures } from "../plugin/state";
 
 export interface ApplicationContext {
   store: MemoryStore;

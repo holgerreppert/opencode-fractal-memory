@@ -3,7 +3,6 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, appendSessionLog } from "../../logging";
 import { generateEmbedding } from "../../infrastructure/llm/embeddings";
 import { getWorkingCache, addToWorkingCache } from "../../application/cache";
-import { cleanupMiddleTermCaptures } from "../state";
 import type { HookHandler } from "./types";
 
 export function createCompactionHandler(store: MemoryStore, config: MemConfig, client: unknown): HookHandler {

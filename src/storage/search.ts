@@ -6,7 +6,7 @@ import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
 import { computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
-import { tokenize, blobToEmbedding, withRetry } from "./utils";
+import { tokenize, blobToEmbedding } from "./utils";
 
 const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
 

@@ -1,5 +1,4 @@
 import type { MemoryStore } from "../../storage/sqlite";
-import { memLog } from "../../logging";
 import { addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
 

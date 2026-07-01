@@ -1,4 +1,3 @@
-import { memLog } from "../../logging";
 
 export const SIGNAL_PATTERNS = [
   /error/i, /exception/i, /traceback/i, /at\s+\S+\.\S+\(/,

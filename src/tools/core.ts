@@ -2,7 +2,6 @@ import { tool } from "@opencode-ai/plugin";
 import type { MemoryScope, MemoryStore } from "../storage/sqlite";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { memLog, getSessionId } from "../logging";
-import type { MemoryNodeLevel } from "../memory";
 import { onNodeCreated } from "../storage/auto-edges";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking } from "./shared";
 

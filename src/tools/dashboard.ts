@@ -1,6 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import type { MemoryNode } from "../memory";
 import { wrapWithTracking } from "./shared";
 
 export function MemoryDashboard(store: MemoryStore) {

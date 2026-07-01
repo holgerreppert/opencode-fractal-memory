@@ -6,7 +6,7 @@ import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
-import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type CompressConfig, type FuzzyDedupConfig } from "../../application/command-compression";
+import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type FuzzyDedupConfig } from "../../application/command-compression";
 import type { HookHandler } from "./types";
 
 const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();

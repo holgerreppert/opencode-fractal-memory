@@ -1,4 +1,4 @@
-import type { MemoryStore, MemoryScope } from "../storage/sqlite";
+import type { MemoryStore } from "../storage/sqlite";
 import type { MemConfig } from "../infrastructure/config/config";
 import { memLog } from "../logging";
 import { createRecordingHandler } from "./hooks/recording";

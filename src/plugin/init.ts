@@ -1,7 +1,6 @@
 import { createJournalStore } from "../application/journal";
 import * as tools from "../tools";
 import type { ToolDefinition } from "@opencode-ai/plugin";
-import { memLog } from "../logging";
 import type { MemConfig } from "../infrastructure/config/config";
 import { scheduleBackgroundEmbeddings } from "../infrastructure/composition-root";
 

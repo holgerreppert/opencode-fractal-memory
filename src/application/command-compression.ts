@@ -1,14 +1,12 @@
 import { memLog } from "../logging";
-import type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";
+import type { CompressConfig } from "./command-compression/config";
 import { compressLs } from "./command-compression/strategies/ls";
 import { compressTestOutput } from "./command-compression/strategies/test";
 import { compressGrep } from "./command-compression/strategies/grep";
 import { compressGitStatus, compressGitLog, compressGitDiff } from "./command-compression/strategies/git";
 import { compressGeneric, compressRelevantGeneric } from "./command-compression/strategies/generic";
-import { classifyShape, applyShapeCompression } from "./command-compression/shape";
+import { applyShapeCompression } from "./command-compression/shape";
 import { trimByRelevance } from "./command-compression/relevance";
-import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
-import { addContentDedup } from "./command-compression/dedup";
 import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix } from "./command-compression/utils";
 
 export type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";

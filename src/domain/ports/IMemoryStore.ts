@@ -105,7 +105,7 @@ export type MemoryChunk = {
 import type { INodeRepository } from "./INodeRepository";
 import type { ISessionTracker } from "./ISessionTracker";
 import type { IInjectionStore } from "./IInjectionStore";
-import type { ICompressionStore, CompressionStatsResult, ContextDashboardResult } from "./ICompressionStore";
+import type { ICompressionStore } from "./ICompressionStore";
 import type { IMaintenanceStore } from "./IMaintenanceStore";
 import type { IConfigStore } from "./IConfigStore";
 

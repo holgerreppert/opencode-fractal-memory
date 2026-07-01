@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createApplication } from "../infrastructure/composition-root";
 import type { MemoryStore } from "../storage/sqlite";
-import type { MemoryScope, MemoryNodeType } from "../storage/sqlite";
+import type { MemoryNodeType } from "../storage/sqlite";
 import { withMcpLogging, mcpLog } from "./logging";
 import { nodeToPlain, ensureScope, resourceStats } from "./transform";
 import { VERSION } from "../version";
