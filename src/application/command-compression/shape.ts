@@ -24,7 +24,7 @@ export function classifyShape(raw: string): OutputShape {
   if (/at\s+\S+\.\S+\s*\(/.test(raw) || /File\s+"[^"]+",\s+line\s+\d+/i.test(raw)) {
     return "stack-trace";
   }
-  if (lines.some(l => /^(?:│|├──|└──|  ├──|  └──)/.test(l) || /^\s*[│├└]/u.test(l))) {
+  if (lines.some(l => /^(?:│|├──|└──| {2}├──| {2}└──)/.test(l) || /^\s*[│├└]/u.test(l))) {
     return "tree";
   }
   if (lines.some(l => /^\s*\S+\s+\S+\s+\S+\s+\S+/.test(l)) && lines.length >= 3) {

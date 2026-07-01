@@ -32,7 +32,6 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   const currentSessionId: { value: string } = { value: "" };
   const autoRetrieveHook = createAutoRetrieve(store, memConfig, client, currentSessionId);
 
-  t = perfNow();
   const handlers = createHookHandlers(
     store, client, memConfig,
     ruleCache, ruleCacheDirty, sessionInjectionLock, latestUserMessage,

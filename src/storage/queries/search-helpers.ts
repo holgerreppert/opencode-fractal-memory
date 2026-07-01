@@ -42,7 +42,7 @@ export function detectCodeQuery(text: string): boolean {
   if (/`[^`]+`/.test(text)) return true;
   if (/\.\w{2,4}\b/.test(text)) return true;
   if (/\b\w+\(\)/.test(text)) return true;
-  if (/[\/\\][\w.-]+\.[\w]+/.test(text)) return true;
+  if (/(?:[/\\])[\w.-]+\.[\w]+/.test(text)) return true;
   if (/\b(function|class|import|export|const|let|var|def|fn)\b/.test(text)) return true;
   return false;
 }
@@ -280,7 +280,7 @@ export function computeFinalScores(
     : new Map<string, number>());
   
   // Normalize semantic scores to [0,1] for fair convex combination
-  let semanticScores = scoredNodes.map(n => n.importance ?? 0);
+  const semanticScores = scoredNodes.map(n => n.importance ?? 0);
   const minSem = Math.min(...semanticScores);
   const maxSem = Math.max(...semanticScores);
   const semRange = maxSem - minSem;

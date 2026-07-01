@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
-import type { MemoryNodeType } from "../storage/types";
+import type { MemoryNode, MemoryNodeType } from "../storage/types";
 
 export function MemoryRecallContext(store: MemoryStore) {
   return tool({
@@ -13,7 +13,7 @@ export function MemoryRecallContext(store: MemoryStore) {
     },
     async execute(args) {
       const limit = args.limit ?? 5;
-      let nodes = [];
+      let nodes: MemoryNode[];
 
       if (args.sessionId) {
         const allNodes = await store.listNodes("all");

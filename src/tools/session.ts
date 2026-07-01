@@ -100,7 +100,7 @@ export function MemoryTotalTokens(store: MemoryStore, client: unknown) {
         totalMemoryTokens += tokens;
       }
 
-      let conversationTokens = {
+      const conversationTokens = {
         input: 0,
         output: 0,
         reasoning: 0,

@@ -86,7 +86,7 @@ export async function searchByEmbedding(
   const hnsw = getHNSWIndex();
   const hnswResults = await hnsw.search(query, limit * 5);
 
-  let scoredNodes: MemoryNode[] = [];
+  const scoredNodes: MemoryNode[] = [];
 
   if (hnswResults.length > 0) {
     const candidateIds = new Set(hnswResults.map(r => r.id));

@@ -8,7 +8,7 @@ export const MAX_RECENT_CALLS = 50;
 
 export const recentCalls: string[] = [];
 export let pruneCallCounter = 0;
-export let lastSearchResults: Array<{ id: string; label: string | undefined; scope: MemoryScope }> = [];
+export const lastSearchResults: Array<{ id: string; label: string | undefined; scope: MemoryScope }> = [];
 
 export async function resolveNode(
   store: MemoryStore,
@@ -43,14 +43,13 @@ export function wrapWithContextWarning(result: string, extraTokens = 0): string 
   return result;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function wrapWithTracking(toolDef: any, store: MemoryStore | undefined | null, toolName: string): typeof toolDef {
   if (!store) return toolDef;
   const originalExecute = toolDef.execute;
   if (!originalExecute) return toolDef;
 
   toolDef.execute = async (...args: unknown[]) => {
-    let contextWarning = false;
+    let contextWarning: boolean;
     let result: unknown;
     const startTime = performance.now();
 

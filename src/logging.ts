@@ -11,7 +11,7 @@ try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 let currentSessionId: string | null = null;
-let logLevel: LogLevel = "info";
+const logLevel: LogLevel = "info";
 
 // Categories to always skip (OpenCode core noise)
 const SKIP_CATEGORIES = ["event"];

@@ -289,7 +289,7 @@ export function createJournalStore(configDir?: string): JournalStore {
         }
 
         // Score the entry
-        let score = 0;
+        let score: number;
 
         if (query.text) {
           if (queryEmbedding) {
