@@ -93,7 +93,7 @@ export async function ingestConversation(conv: Conversation, compress = false): 
   }
 
   if (compress) {
-    await store.runCompression("project", false, undefined, "project");
+    await store.runCompression("project", false, undefined, "project", undefined);
   }
 
   return { store, tmpDir, turnIndex, sessions };

@@ -510,4 +510,28 @@ export const MIGRATIONS: Migration[] = [
       if (!existing.has("compressed_preview")) db.run("ALTER TABLE compression_stats ADD COLUMN compressed_preview TEXT");
     },
   },
+  {
+    version: 28,
+    name: "add-token-tracking",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS token_tracking (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          timestamp INT NOT NULL,
+          input_tokens INT DEFAULT 0,
+          output_tokens INT DEFAULT 0,
+          reasoning_tokens INT DEFAULT 0,
+          cache_read_tokens INT DEFAULT 0,
+          cache_write_tokens INT DEFAULT 0,
+          cost REAL DEFAULT 0,
+          turn_index INT DEFAULT 0,
+          agent TEXT,
+          model TEXT
+        )
+      `);
+      db.run("CREATE INDEX IF NOT EXISTS idx_token_session ON token_tracking(session_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_token_ts ON token_tracking(timestamp)");
+    },
+  },
 ];

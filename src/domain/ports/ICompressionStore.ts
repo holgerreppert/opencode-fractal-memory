@@ -27,6 +27,39 @@ export interface ContextDashboardResult {
   overhead: { systemPromptTokens: number; toolDefTokens: number };
 }
 
+export type TokenTrackingEntry = {
+  id?: number;
+  sessionId: string;
+  timestamp: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+  turnIndex: number;
+  agent: string | null;
+  model: string | null;
+};
+
+export type TokenHistoryResult = {
+  totalSessions: number;
+  totalTurns: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalReasoningTokens: number;
+  totalCost: number;
+  bySession: Array<{
+    sessionId: string;
+    turns: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cost: number;
+  }>;
+  recentTurns: Array<TokenTrackingEntry>;
+};
+
 export interface ICompressionStore {
   recordCompressionStat(stat: {
     sessionId?: string; command: string; strategy: string;
@@ -37,4 +70,6 @@ export interface ICompressionStore {
   }): Promise<void>;
   getCompressionStats(days?: number, limit?: number): Promise<CompressionStatsResult>;
   getContextDashboard(): Promise<ContextDashboardResult>;
+  recordTokenUsage(entry: TokenTrackingEntry): Promise<void>;
+  getTokenHistory(days?: number, limit?: number): Promise<TokenHistoryResult>;
 }

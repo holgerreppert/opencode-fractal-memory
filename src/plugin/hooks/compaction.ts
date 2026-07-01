@@ -80,6 +80,31 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
               ((msgResponse?.data ?? msgResponse) as unknown as Array<{ info: Record<string, any>; parts: Array<Record<string, any>> }>) ?? [];
             if (Array.isArray(messages) && messages.length > 0) {
               const entries: string[] = [];
+
+              // Record per-turn token usage
+              let turnIndex = 0;
+              for (const msg of messages) {
+                if (msg.info?.role === "assistant" && msg.info?.tokens) {
+                  const t = msg.info.tokens;
+                  const modelStr = msg.info?.model
+                    ? `${msg.info.model.providerID ?? ""}/${msg.info.model.modelID ?? ""}`
+                    : null;
+                  store.recordTokenUsage({
+                    sessionId,
+                    timestamp: msg.info?.time?.created ?? Date.now(),
+                    inputTokens: t.input ?? 0,
+                    outputTokens: t.output ?? 0,
+                    reasoningTokens: t.reasoning ?? 0,
+                    cacheReadTokens: t.cache?.read ?? 0,
+                    cacheWriteTokens: t.cache?.write ?? 0,
+                    cost: msg.info?.cost ?? 0,
+                    turnIndex,
+                    agent: msg.info?.agent ?? null,
+                    model: modelStr,
+                  }).catch(() => {});
+                  turnIndex++;
+                }
+              }
               let totalSize = 0;
               const MAX_STORED = 12000;
 

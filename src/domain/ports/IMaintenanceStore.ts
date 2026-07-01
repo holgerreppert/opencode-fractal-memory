@@ -1,7 +1,7 @@
 import type { MemoryScope, MemoryNodeLevel, MemoryNode } from "./IMemoryStore";
 
 export interface IMaintenanceStore {
-  runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown, projectName?: string): Promise<{ compressed: number; created: number }>;
+  runCompression(scope: MemoryScope | "all", force?: boolean, client?: unknown, projectName?: string, sessionId?: string): Promise<{ compressed: number; created: number }>;
   runPatternExtraction(scope: MemoryScope | "all", minSourceCount?: number, projectName?: string): Promise<{ created: number; sources: number }>;
   getCompressionCandidates(scope: MemoryScope | "all", level: MemoryNodeLevel, maxAgeMs?: number, force?: boolean, projectName?: string): Promise<MemoryNode[]>;
   runScoreDecay(decayDays: number): Promise<number>;

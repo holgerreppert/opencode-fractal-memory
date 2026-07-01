@@ -5,7 +5,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 ## Architecture
 
 - **Storage**: SQLite (`~/.config/opencode/memory.db`), sqlite-vec (cosine sim), FTS5 (BM25)
-- **Hooks**: `tool.execute.before` (file summarization), `tool.execute.after` (memory + compression), `experimental.chat.system.transform` (rule injection), `event` (lifecycle)
+- **Hooks**: `tool.execute.before` (file summarization), `tool.execute.after` (memory + compression), `experimental.chat.system.transform` (rule injection), `experimental.chat.messages.transform` (auto-retrieve reranking + memory injection), `chat.message` (session ID tracking), `event` (lifecycle)
 - **Management app**: Served on `http://localhost:8787`, spawned as subprocess. HTML at `management/public/`, API routes at `src/management/routes.ts`
 - **Config**: `~/.config/opencode/opencode-mem.json`, validated with Zod schema (src/config.ts)
 - **Logging**: Dedicated per-feature log files at `~/.config/opencode/logs/` — `memory-plugin.log`, `filesum.log`, `compress.log`, `sessionlog.log` (see `src/logging.ts`)
@@ -350,3 +350,5 @@ Use `memory_drilldown(label="<label>")` to retrieve full context for these key n
 | `task:compress-before-after-stats-2026-06-23` | task | Before/after compression stats implementation details |
 | `task:context-dashboard-2026-06-23` | task | Context dashboard implementation details |
 | `output-token-control` | howto | Output token control feature — config, strategies, levels |
+| `sdk-llm-judge-auto-retrieve` | note | LLM judge scoring via client.session.prompt({noReply:true}) for auto-retrieve reranking |
+| `memory-llm-compress-session-fix` | note | sessionId threading fix for memory_llm_compress generateLLMSummary |

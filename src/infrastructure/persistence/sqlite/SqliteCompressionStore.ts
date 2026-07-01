@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ICompressionStore, CompressionStatsResult, ContextDashboardResult } from "../../../domain/ports/ICompressionStore";
+import type { ICompressionStore, CompressionStatsResult, ContextDashboardResult, TokenTrackingEntry, TokenHistoryResult } from "../../../domain/ports/ICompressionStore";
 import { queryInjectionMetrics } from "../../../storage/injection-events";
 
 export class SqliteCompressionStore implements ICompressionStore {
@@ -173,6 +173,80 @@ export class SqliteCompressionStore implements ICompressionStore {
         systemPromptTokens: 3000,
         toolDefTokens: 4000,
       },
+    };
+  }
+
+  async recordTokenUsage(entry: TokenTrackingEntry): Promise<void> {
+    const db = await this.getDb();
+    db.run(
+      `INSERT INTO token_tracking (session_id, timestamp, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, cost, turn_index, agent, model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entry.sessionId,
+        entry.timestamp,
+        entry.inputTokens,
+        entry.outputTokens,
+        entry.reasoningTokens,
+        entry.cacheReadTokens,
+        entry.cacheWriteTokens,
+        entry.cost,
+        entry.turnIndex,
+        entry.agent ?? null,
+        entry.model ?? null,
+      ]
+    );
+  }
+
+  async getTokenHistory(days: number = 7, limit: number = 100): Promise<TokenHistoryResult> {
+    const db = await this.getDb();
+    const since = Date.now() - days * 86400000;
+
+    const totals = db.query(
+      "SELECT COUNT(DISTINCT session_id) as sessions, COUNT(*) as turns, SUM(input_tokens) as inp, SUM(output_tokens) as out, SUM(reasoning_tokens) as reason, SUM(cost) as cost FROM token_tracking WHERE timestamp >= ?"
+    ).get(since) as { sessions: number; turns: number; inp: number | null; out: number | null; reason: number | null; cost: number | null };
+
+    const bySession = db.query(
+      "SELECT session_id, COUNT(*) as turns, SUM(input_tokens) as inp, SUM(output_tokens) as out, SUM(reasoning_tokens) as reason, SUM(cost) as cost FROM token_tracking WHERE timestamp >= ? GROUP BY session_id ORDER BY turns DESC LIMIT ?"
+    ).all(since, limit) as Array<{ session_id: string; turns: number; inp: number | null; out: number | null; reason: number | null; cost: number | null }>;
+
+    const recent = db.query(
+      "SELECT id, session_id, timestamp, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, cost, turn_index, agent, model FROM token_tracking WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 50"
+    ).all(since) as Array<{
+      id: number; session_id: string; timestamp: number;
+      input_tokens: number; output_tokens: number; reasoning_tokens: number;
+      cache_read_tokens: number; cache_write_tokens: number;
+      cost: number; turn_index: number; agent: string | null; model: string | null;
+    }>;
+
+    return {
+      totalSessions: totals?.sessions ?? 0,
+      totalTurns: totals?.turns ?? 0,
+      totalInputTokens: totals?.inp ?? 0,
+      totalOutputTokens: totals?.out ?? 0,
+      totalReasoningTokens: totals?.reason ?? 0,
+      totalCost: totals?.cost ?? 0,
+      bySession: (bySession ?? []).map(s => ({
+        sessionId: s.session_id,
+        turns: s.turns,
+        inputTokens: s.inp ?? 0,
+        outputTokens: s.out ?? 0,
+        reasoningTokens: s.reason ?? 0,
+        cost: s.cost ?? 0,
+      })),
+      recentTurns: (recent ?? []).map(r => ({
+        id: r.id,
+        sessionId: r.session_id,
+        timestamp: r.timestamp,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        reasoningTokens: r.reasoning_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+        cacheWriteTokens: r.cache_write_tokens,
+        cost: r.cost,
+        turnIndex: r.turn_index,
+        agent: r.agent,
+        model: r.model,
+      })),
     };
   }
 }

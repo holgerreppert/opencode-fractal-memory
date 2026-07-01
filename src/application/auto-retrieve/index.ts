@@ -1,4 +1,4 @@
-import { fallbackScore } from "./scoring";
+import { fallbackScore, llmJudgeScore } from "./scoring";
 import { rerankDocuments } from "../../infrastructure/llm/ollama";
 import type { MemConfig } from "../../infrastructure/config/config";
 import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
@@ -21,13 +21,15 @@ type MessagesHook = (input: unknown, output: { messages: Message[] }) => Promise
 export interface AutoRetrieveDeps {
   store: MemoryStore;
   config: MemConfig;
+  client?: unknown;
+  currentSessionId?: { value: string };
   log: (level: "debug" | "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => void;
 }
 
 const MEMORY_SEARCH_HEADER = /^### \[L(\d+)\](?: \[[^\]]+\])?\s+(.+?)\s*-\s*(\d+)%/;
 
 export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, MessagesHook> {
-  const { store, config, log } = deps;
+  const { store, config, client, currentSessionId, log } = deps;
   const ollamaConfig = config.ollama;
 
   if (!config.autoRetrieve?.enabled) {
@@ -111,8 +113,14 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
             originalCount: candidates.length,
             rerankedCount: ordered.length,
           });
+        } else if (config.autoRetrieve?.llmJudgeEnabled !== false && client && currentSessionId?.value) {
+          log("info", "memory-rerank: Using LLM judge via SDK prompt", {
+            candidateCount: candidates.length,
+            sessionId: currentSessionId.value,
+          });
+          ordered = await llmJudgeScore(client, currentSessionId.value, agentReasoning, candidates);
         } else {
-          log("info", "memory-rerank: Ollama not enabled, using fallback scoring");
+          log("info", "memory-rerank: No LLM client available, using fallback scoring");
           ordered = fallbackScore(candidates, agentReasoning);
         }
 

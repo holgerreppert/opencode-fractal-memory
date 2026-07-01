@@ -42,6 +42,9 @@ export function registerRoutes(router: Router, store: IMemoryStore): void {
   // ==================== Compression Stats ====================
   router.get(/^\/api\/compress-stats$/, (req) => handleCompressionStats(req, store));
 
+  // ==================== Token History ====================
+  router.get(/^\/api\/token-history$/, (req) => handleTokenHistory(req, store));
+
   // ==================== Injection Quality ====================
   router.get(/^\/api\/injection-quality$/, (req) => handleInjectionQuality(req, store));
 
@@ -252,6 +255,14 @@ async function handleCompressionStats(req: Request, store: IMemoryStore): Promis
   const days = parseInt(url.searchParams.get("days") ?? "7", 10);
   const stats = await store.getCompressionStats(days, limit);
   return jsonResponse(stats);
+}
+
+async function handleTokenHistory(req: Request, store: IMemoryStore): Promise<Response> {
+  const url = new URL(req.url);
+  const days = parseInt(url.searchParams.get("days") ?? "30", 10);
+  const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
+  const history = await store.getTokenHistory(days, limit);
+  return jsonResponse(history);
 }
 
 async function handleInjectionQuality(req: Request, store: IMemoryStore): Promise<Response> {

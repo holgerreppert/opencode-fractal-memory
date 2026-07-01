@@ -400,13 +400,14 @@ class SqliteMemoryStore implements IMemoryStore {
     scope: MemoryScope | "all",
     force?: boolean,
     client?: unknown,
-    projectName?: string
+    projectName?: string,
+    sessionId?: string,
   ): Promise<{ compressed: number; created: number }> {
     return runCompressionFn({
       getCompressionCandidates: (s, l, maxAge, f) => this.getCompressionCandidates(s, l, maxAge, f, projectName),
       createNode: (node) => this.createNode(node),
       updateNode: (id, updates) => this.updateNode(id, updates),
-    }, scope, force, client);
+    }, scope, force, client, sessionId);
   }
 
   async runPatternExtraction(
@@ -677,6 +678,14 @@ class SqliteMemoryStore implements IMemoryStore {
 
   async getContextDashboard(): Promise<import("../domain/ports/ICompressionStore").ContextDashboardResult> {
     return this.compressionStore.getContextDashboard();
+  }
+
+  async recordTokenUsage(entry: import("../domain/ports/ICompressionStore").TokenTrackingEntry): Promise<void> {
+    return this.compressionStore.recordTokenUsage(entry);
+  }
+
+  async getTokenHistory(days?: number, limit?: number): Promise<import("../domain/ports/ICompressionStore").TokenHistoryResult> {
+    return this.compressionStore.getTokenHistory(days, limit);
   }
 }
 

@@ -91,7 +91,7 @@ export class CompressionHelper {
     return generateStructuredSummary(nodes);
   }
 
-  static async generateLLMSummary(nodes: MemoryNode[], client: unknown, maxTokens: number = 500): Promise<string> {
+  static async generateLLMSummary(nodes: MemoryNode[], client: unknown, maxTokens: number = 500, sessionId?: string): Promise<string> {
     const allContent = nodes.map(n =>
       `---\nLabel: ${n.label ?? "unnamed"}\nLevel: ${n.level}\nImportance: ${n.importance}\n\n${n.content}`
     ).join('\n\n');
@@ -113,7 +113,7 @@ Structured summary:`;
     try {
       const sessionClient = client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } };
       const result = await sessionClient.session?.prompt({
-        path: { id: 'compression' },
+        path: { id: sessionId ?? 'compression' },
         body: {
           noReply: true,
           parts: [{ type: 'text', text: prompt }],

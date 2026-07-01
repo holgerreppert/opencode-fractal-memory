@@ -158,7 +158,8 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "maxInjectNodes": 5,
     "maxInjectPlaybooks": 3,
     "minQueryLength": 10,
-    "injectionCooldownMs": 30000
+    "injectionCooldownMs": 30000,
+    "llmJudgeEnabled": true
   },
   "ollama": {
     "enabled": false,
@@ -232,6 +233,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `autoRetrieve.maxInjectPlaybooks` | int | `3` | Max matching playbooks to list |
 | `autoRetrieve.minQueryLength` | int | `10` | Min user message length to trigger injection |
 | `autoRetrieve.injectionCooldownMs` | int | `30000` | Min ms between injections (rate limit) |
+| `autoRetrieve.llmJudgeEnabled` | bool | `true` | Use SDK `session.prompt({noReply:true})` for relevance scoring when Ollama is off |
 | `ollama.enabled` | bool | `false` | Use local LLM for reranking search results |
 | `ollama.baseUrl` | string | `http://localhost:11434` | Ollama server URL |
 | `ollama.model` | string | `qwen2.5-coder:1.5b` | Model for reranking |
@@ -328,6 +330,8 @@ Auto-retrieve results can be re-ranked for better relevance using one of two str
 **LLM judge** (`strategy: "llm"`, default) — scores candidates via Ollama chat API. In `"binary"` mode the LLM labels each as relevant or not; in `"score"` mode it assigns a 0-1 relevance rating.
 
 **Cross-encoder** (`strategy: "cross-encoder"`) — runs an in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`, ~23 MB) for deterministic relevance scoring without needing Ollama. The model auto-downloads on first use via `ensureModels()`. This bypasses Ollama's missing `/api/rerank` endpoint entirely.
+
+**SDK LLM judge** — when Ollama is disabled and `autoRetrieve.llmJudgeEnabled` is true (default), the plugin calls `client.session.prompt({noReply:true})` to have the session's LLM score memory relevance directly. Falls back to heuristic scoring if no session client is available. Configurable via `autoRetrieve.llmJudgeEnabled` in the management app Settings → Memory & Storage.
 
 ### Rerank Intent
 
@@ -780,7 +784,11 @@ MIT
 
 ## Changelog
 
-### v0.6.36 (current)
+### v0.6.37 (current)
+- **LLM judge scoring** — new `llmJudgeScore()` in auto-retrieve pipeline: calls `client.session.prompt({noReply:true})` to score memory candidates when Ollama is off. Falls back to heuristic `fallbackScore()` on error or when no session is available. Configurable via `autoRetrieve.llmJudgeEnabled` (default `true`). Tracks current session ID via `chat.message` hook.
+- **`memory_llm_compress` session ID fix** — `generateLLMSummary` was hardcoding session ID as `'compression'` (which doesn't exist), causing `session.prompt()` to silently fail and fall back to regex every time. Fixed by threading the real `toolCtx.sessionID` through `runCompression` → `generateLLMSummary`. Interface updated: `IMaintenanceStore.runCompression`, `SqliteMemoryStore.runCompression`, `runCompressionFn`, `generateLLMSummary` all accept optional `sessionId` param.
+
+### v0.6.36
 - **`chat.params` SDK hook** — adaptive pressure-based temperature/maxTokens clamping in the `chat.params` pipeline. Gated by `adaptivePressure.enabled`. Logged to compress.log when clamping is applied.
 - **`messages.transform` SDK hook** — alternative memory injection path via `experimental.chat.messages.transform`. Performs a drilldown query against top auto-retrieve candidates, injecting relevant context as additional messages. Falls through on empty results.
 - **`compaction.autocontinue` pipeline wiring** — `experimental.compaction.autocontinue` now calls through the handler chain (was a bare `{ enabled: true }`) so compaction hook logic integrates with the autocontinue flow.

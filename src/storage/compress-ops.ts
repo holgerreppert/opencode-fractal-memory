@@ -52,7 +52,8 @@ export async function runCompression(
   },
   scope: MemoryScope | "all",
   force?: boolean,
-  client?: unknown
+  client?: unknown,
+  sessionId?: string,
 ): Promise<{ compressed: number; created: number }> {
   let compressed = 0;
   let created = 0;
@@ -71,7 +72,7 @@ export async function runCompression(
       for (const cluster of clusters) {
         const useLlm = !!client;
         const summary = useLlm
-          ? await CompressionHelper.generateLLMSummary(cluster, client, 500)
+          ? await CompressionHelper.generateLLMSummary(cluster, client, 500, sessionId)
           : CompressionHelper.generateStructuredSummary(cluster);
 
         let summaryEmbedding: number[] | null = null;

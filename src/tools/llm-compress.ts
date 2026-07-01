@@ -12,7 +12,7 @@ export function MemoryLlmCompress(store: MemoryStore, client?: unknown) {
       dry_run: tool.schema.boolean().optional().default(false),
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
-    async execute(args) {
+    async execute(args, toolCtx) {
       const { scope, level, dry_run, project_name } = args;
       if (!client) {
         return "Error: No LLM client available. LLM compression requires an active session.";
@@ -27,7 +27,7 @@ export function MemoryLlmCompress(store: MemoryStore, client?: unknown) {
           candidates.map(c => `- ${c.id.slice(0, 8)}: ${c.content.slice(0, 50)}...`).join("\n");
       }
 
-      const result = await store.runCompression(scope ?? "all", false, client, project_name);
+      const result = await store.runCompression(scope ?? "all", false, client, project_name, toolCtx.sessionID);
       return `LLM compression completed: ${result.compressed} nodes compressed, ${result.created} summary nodes created.`;
     },
   });

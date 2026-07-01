@@ -345,6 +345,7 @@
       <button class="tab-btn" data-tab="backup">Backup</button>
       <button class="tab-btn" data-tab="quality">Quality</button>
       <button class="tab-btn" data-tab="compress">Compress</button>
+      <button class="tab-btn" data-tab="tokens">Tokens</button>
     </div>
 
     <!-- Visualize Panel -->
@@ -533,6 +534,14 @@
           <div class="config-field">
             <label>Injection Cooldown (ms)</label>
             <input type="number" id="autoRetrieve-injectionCooldownMs" min="1000" max="120000" step="1000">
+          </div>
+          <div class="config-field">
+            <label>LLM Judge Enabled</label>
+            <select id="autoRetrieve-llmJudgeEnabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <br><small style="opacity:0.6;font-size:11px;">Uses SDK session.prompt({noReply:true}) for memory relevance scoring</small>
           </div>
         </div>
       </div>
@@ -1006,6 +1015,22 @@
         <div id="compress-detail-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center;">
           <div id="compress-detail-modal" style="background:#111;border:1px solid #333;border-radius:8px;padding:24px;max-width:700px;max-height:80vh;overflow-y:auto;margin:auto;position:relative;top:10vh;"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Token Usage Panel -->
+    <div id="tokens-panel" class="settings-panel">
+      <div class="section">
+        <h3>Token Usage</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">
+          Per-turn token tracking from compaction data. Each assistant message's input, output, reasoning, and cache tokens are recorded during session compaction.
+          Data only appears after the next compaction cycle.
+        </p>
+        <div id="tokens-summary" style="margin-bottom:16px;">
+          <div class="stat-row"><span class="stat-label">Loading...</span></div>
+        </div>
+        <div id="tokens-breakdown"></div>
+        <div id="tokens-recent"></div>
       </div>
     </div>
 

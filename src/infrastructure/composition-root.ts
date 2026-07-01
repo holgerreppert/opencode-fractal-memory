@@ -93,12 +93,16 @@ export async function createApplication(directory: string, globalDbPath?: string
 
 export function createAutoRetrieve(
   store: MemoryStore,
-  memConfig: MemConfig
+  memConfig: MemConfig,
+  client?: unknown,
+  currentSessionId?: { value: string },
 ) {
   return memConfig?.autoRetrieve?.enabled
     ? createAutoRetrieveHook({
         store,
         config: memConfig,
+        client,
+        currentSessionId,
         log: (level: string, msg: string, data?: unknown) => memLog(level as "debug" | "info" | "warn" | "error", "auto-retrieve", msg, data as Record<string, unknown> | undefined),
       })
     : null;

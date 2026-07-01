@@ -29,7 +29,8 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   const journalTools = await setupJournal(directory, memConfig);
   memLog("info", "init", "Journal setup completed", { durationMs: perfNow() - t });
 
-  const autoRetrieveHook = createAutoRetrieve(store, memConfig);
+  const currentSessionId: { value: string } = { value: "" };
+  const autoRetrieveHook = createAutoRetrieve(store, memConfig, client, currentSessionId);
 
   t = perfNow();
   const handlers = createHookHandlers(
@@ -41,10 +42,21 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   memLog("info", "init", "Plugin initialization completed", { totalDurationMs: perfNow() - t0 });
 
+  const smallModelMap = ((memConfig as any).smallModel ?? {}) as Record<string, string>;
+
   return {
     ...handlers,
     ...(autoRetrieveHook || {}),
     tool: toolMap,
+    "chat.message": async (input: { sessionID: string }) => {
+      currentSessionId.value = input.sessionID;
+    },
+    "experimental.provider.small_model": async (input: { provider: string }, output: { model?: string }) => {
+      const configured = smallModelMap[input.provider];
+      if (configured) {
+        output.model = configured;
+      }
+    },
     dispose: async () => {
       stopManagementServer();
       await store.close();

@@ -1121,17 +1121,20 @@ function setupEventListeners() {
       const backupPanel = document.getElementById("backup-panel");
       const qualityPanel = document.getElementById("quality-panel");
       const compressPanel = document.getElementById("compress-panel");
+      const tokensPanel = document.getElementById("tokens-panel");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
       if (contextPanel) contextPanel.classList.toggle("active", tab === "context");
       if (backupPanel) backupPanel.classList.toggle("active", tab === "backup");
       if (qualityPanel) qualityPanel.classList.toggle("active", tab === "quality");
       if (compressPanel) compressPanel.classList.toggle("active", tab === "compress");
+      if (tokensPanel) tokensPanel.classList.toggle("active", tab === "tokens");
       if (tab === "settings") loadSettings();
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
       if (tab === "context") loadContextDashboard();
       if (tab === "quality") loadQuality();
       if (tab === "compress") loadCompressStats();
+      if (tab === "tokens") loadTokenHistory();
     });
   });
 }
@@ -2101,6 +2104,7 @@ async function loadSettings() {
     document.getElementById('autoRetrieve-maxInjectPlaybooks').value = config.autoRetrieve?.maxInjectPlaybooks ?? 3;
     document.getElementById('autoRetrieve-minQueryLength').value = config.autoRetrieve?.minQueryLength ?? 10;
     document.getElementById('autoRetrieve-injectionCooldownMs').value = config.autoRetrieve?.injectionCooldownMs ?? 30000;
+    document.getElementById('autoRetrieve-llmJudgeEnabled').value = String(config.autoRetrieve?.llmJudgeEnabled ?? true);
     document.getElementById('autoFileSummarization-enabled').value = String(config.autoFileSummarization?.enabled ?? false);
     document.getElementById('ollama-enabled').value = String(config.ollama?.enabled ?? false);
     document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
@@ -2202,6 +2206,7 @@ async function saveSettings() {
       maxInjectPlaybooks: parseInt(document.getElementById('autoRetrieve-maxInjectPlaybooks').value) || 3,
       minQueryLength: parseInt(document.getElementById('autoRetrieve-minQueryLength').value) || 10,
       injectionCooldownMs: parseInt(document.getElementById('autoRetrieve-injectionCooldownMs').value) || 30000,
+      llmJudgeEnabled: document.getElementById('autoRetrieve-llmJudgeEnabled').value === 'true',
     },
     autoFileSummarization: {
       enabled: document.getElementById('autoFileSummarization-enabled').value === 'true',
@@ -2774,6 +2779,120 @@ function showCompressDetail(event) {
 function escHtml(s) {
   if (!s) return "";
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ==================== Token History ====================
+
+async function loadTokenHistory() {
+  const summaryEl = document.getElementById("tokens-summary");
+  const breakdownEl = document.getElementById("tokens-breakdown");
+  const recentEl = document.getElementById("tokens-recent");
+  if (!summaryEl || !breakdownEl || !recentEl) return;
+
+  summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">Loading token history...</span></div>`;
+  breakdownEl.innerHTML = "";
+  recentEl.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/token-history?days=30&limit=100");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderTokenHistory(summaryEl, breakdownEl, recentEl, data);
+  } catch (e) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading token history</span></div>`;
+    console.error("Token history load failed:", e);
+  }
+}
+
+function renderTokenHistory(summaryEl, breakdownEl, recentEl, data) {
+  const fmt = (n) => {
+    if (!n && n !== 0) return "0";
+    if (n >= 1000000) return (n / 1000000).toFixed(2) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+    return String(n);
+  };
+
+  const fmtCost = (c) => {
+    if (!c || c === 0) return "$0";
+    return "$" + c.toFixed(c < 0.01 ? 6 : c < 1 ? 4 : 2);
+  };
+
+  if (data.totalTurns === 0) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">No token data yet. Run a session and trigger compaction to populate.</span></div>`;
+    return;
+  }
+
+  const cacheTotal = data.recentTurns.reduce((s, t) => s + t.cacheReadTokens + t.cacheWriteTokens, 0);
+  const totalIn = data.totalInputTokens + data.totalOutputTokens + data.totalReasoningTokens + cacheTotal;
+
+  summaryEl.innerHTML = `
+    <div class="stat-row"><span class="stat-label">Sessions Tracked</span><span class="stat-value">${data.totalSessions}</span></div>
+    <div class="stat-row"><span class="stat-label">Total Turns</span><span class="stat-value">${data.totalTurns}</span></div>
+    <div class="stat-row"><span class="stat-label">Input Tokens</span><span class="stat-value">${fmt(data.totalInputTokens)}</span></div>
+    <div class="stat-row"><span class="stat-label">Output Tokens</span><span class="stat-value">${fmt(data.totalOutputTokens)}</span></div>
+    <div class="stat-row"><span class="stat-label">Reasoning Tokens</span><span class="stat-value">${fmt(data.totalReasoningTokens)}</span></div>
+    <div class="stat-row"><span class="stat-label">Cache Tokens</span><span class="stat-value">${fmt(cacheTotal)}</span></div>
+    <div class="stat-row"><span class="stat-label">Total All Tokens</span><span class="stat-value"><strong>${fmt(totalIn)}</strong></span></div>
+    <div class="stat-row"><span class="stat-label">Total Cost</span><span class="stat-value" style="color:#fbbf24;">${fmtCost(data.totalCost)}</span></div>
+  `;
+
+  // Session breakdown
+  if (data.bySession && data.bySession.length > 0) {
+    let html = `<div class="section"><h3>By Session</h3>
+      <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Session</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Turns</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Input</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Output</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Reasoning</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Cost</th>
+      </tr></thead><tbody>`;
+    for (const s of data.bySession) {
+      html += `<tr>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;font-family:monospace;font-size:10px;color:#aaa">${s.sessionId.slice(0, 8)}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right">${s.turns}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right">${fmt(s.inputTokens)}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right">${fmt(s.outputTokens)}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right">${fmt(s.reasoningTokens)}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;text-align:right;color:#fbbf24">${fmtCost(s.cost)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+    breakdownEl.innerHTML = html;
+  }
+
+  // Recent turns
+  if (data.recentTurns && data.recentTurns.length > 0) {
+    let html = `<div class="section"><h3>Recent Turns</h3>
+      <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Time</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">In</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Out</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Rsn</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">CR</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">CW</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #333;color:#888">Cost</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Model</th>
+      </tr></thead><tbody>`;
+    for (const t of data.recentTurns.slice(0, 30)) {
+      const time = new Date(t.timestamp).toLocaleTimeString();
+      const model = t.model ? t.model.split("/").pop() || t.model : "—";
+      html += `<tr>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;font-size:10px;color:#888">${time}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;font-size:10px">${fmt(t.inputTokens)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;font-size:10px">${fmt(t.outputTokens)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;font-size:10px;color:${t.reasoningTokens > 0 ? '#a78bfa' : '#888'}">${fmt(t.reasoningTokens)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;font-size:10px">${fmt(t.cacheReadTokens)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;font-size:10px">${fmt(t.cacheWriteTokens)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;text-align:right;font-size:10px;color:#fbbf24">${fmtCost(t.cost)}</td>
+        <td style="padding:2px 8px;border-bottom:1px solid #222;font-size:10px;color:#aaa">${model}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+    recentEl.innerHTML = html;
+  }
 }
 
 // ==================== Start ====================

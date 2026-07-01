@@ -53,6 +53,7 @@ export interface MemConfig {
     minQueryLength: number;
     injectionCooldownMs: number;
     minInjectionScore: number;
+    llmJudgeEnabled: boolean;
   };
   ollama?: {
     enabled: boolean;
@@ -109,6 +110,7 @@ export interface MemConfig {
     enabled: boolean;
     thresholdChars: number;
   };
+  smallModel: Record<string, string>;
   outputTokenControl?: {
     enabled: boolean;
     mode: "off" | "always-on" | "adaptive";
@@ -143,6 +145,7 @@ const AutoRetrieveSchema = z.object({
   minQueryLength: z.number().int().default(10),
   injectionCooldownMs: z.number().int().default(30000),
   minInjectionScore: z.number().min(0).max(1).default(0.05),
+  llmJudgeEnabled: z.boolean().default(true),
 });
 
 const OllamaSchema = z.object({
@@ -293,6 +296,7 @@ const DEFAULT_CONFIG: MemConfig = {
     minQueryLength: 10,
     injectionCooldownMs: 30000,
     minInjectionScore: 0.05,
+    llmJudgeEnabled: true,
   },
   ollama: {
     enabled: false,
@@ -398,7 +402,10 @@ const DEFAULT_CONFIG: MemConfig = {
     minLines: 200,
     strategy: "ast+regex",
   },
+  smallModel: {},
 };
+
+const SmallModelSchema = z.record(z.string(), z.string()).default({});
 
 const MemConfigSchema = z.object({
   maxInjectionTokens: z.number().positive().int().default(8000),
@@ -427,6 +434,7 @@ const MemConfigSchema = z.object({
   reReadElimination: ReReadEliminationSchema.optional(),
   outputOffloading: OutputOffloadingSchema.optional(),
   outputTokenControl: OutputTokenControlSchema.optional(),
+  smallModel: SmallModelSchema,
   commandCompression: CommandCompressionSchema.optional(),
   fileSkeletonization: FileSkeletonizationSchema.optional(),
 }).default(DEFAULT_CONFIG);
