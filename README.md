@@ -68,6 +68,9 @@ if you find bugs or if you just want to suggest improvements
 - **Before/after compression statistics** — each compression event stores original_lines, compressed_lines, cmd_preview, and full content previews (up to 2K chars) in the DB. Management UI shows side-by-side before/after detail with expandable row modal
 - **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
 - **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely. Logged to filesum.log (RE-READ component)
+- **Code knowledge graph** — builds a directed graph of code symbols (functions, classes, interfaces, types) and their relationships (calls, imports, references, defined_in, extends) via tree-sitter WASM AST extraction. 32 supported languages. Louvain community detection clusters related code; god-node and surprising-connections analysis highlight architectural hotspots
+- **Always-on graph hooks** — `tool.before` for read/grep/glob triggers a background incremental build on plugin load (configurable maxFiles, default 5000). `system.transform` injects a rule reminding the agent to use graph tools before reading source files
+- **Graph usage tracking** — every graph action (build, search, path, explain, rule injection, background build) is counted in-memory and logged to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID for audit
 - **Dedicated log files** — separate `filesum.log` for file summarization/skeletonization events and `compress.log` for command compression events, auto-rotating
 - **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
@@ -211,6 +214,11 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "minLines": 200,
     "strategy": "ast+regex"
   },
+  "graph": {
+    "enabled": true,
+    "maxFiles": 5000,
+    "ruleEnabled": true
+  },
   "commandCompression": {
     "enabled": true,
     "maxLines": 50,
@@ -274,6 +282,9 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `fileSkeletonization.enabled` | bool | `true` | Inline AST skeleton for large file reads |
 | `fileSkeletonization.minLines` | int | `200` | Min file lines to trigger skeletonization |
 | `fileSkeletonization.strategy` | enum | `"ast+regex"` | `"ast+regex"` (tree-sitter + regex fallback) or `"regex"` only |
+| `graph.enabled` | bool | `true` | Enable code knowledge graph (AST extraction + MCP tools) |
+| `graph.maxFiles` | int | `5000` | Max files to extract in background build |
+| `graph.ruleEnabled` | bool | `true` | Inject graph-reminder rule into system prompt via `system.transform` |
 | `commandCompression.enabled` | bool | `true` | Compress bash tool output |
 | `commandCompression.maxLines` | int | `50` | Max lines for generic truncation |
 | `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
@@ -550,7 +561,15 @@ Playbooks are stored as `type: "playbook"` memory nodes with steps in `metadata`
 
 ### MCP tools
 
-When the MCP server is configured, the `memory_search`, `memory_get`, and related tools are available as MCP resources for IDE integration.
+When the MCP server is configured, the memory and graph tools are available as MCP resources for IDE integration.
+
+| Tool | Description |
+|---|---|
+| `graph_build(root=".", max_files=5000)` | Build or rebuild the code knowledge graph from AST extraction. Returns stats, top god nodes, and a report snippet |
+| `graph_search(query)` | Search graph nodes by symbol name or file path. Returns matching node IDs with metadata |
+| `graph_path(from, to)` | Find the shortest directed path between two nodes (dependency chain). Returns path as node array |
+| `graph_explain(id)` | Get full details on a node: attributes, degree, community, neighbors with relationship types |
+| `graph_usage` | Get usage counters for all graph tools (build, search, path, explain, rule injections, background builds) |
 
 ## Skills
 
@@ -705,6 +724,7 @@ All plugin logs are consolidated under `~/.config/opencode/logs/`:
 | Context dump | `logs/context-dump.log` | Full context snapshots for debugging |
 | File summarization | `logs/filesum.log` | Auto-file-summarization cache hit/miss/stale and skeletonization apply/skip/error (auto-rotated at 2 MB) |
 | Command compression | `logs/compress.log` | Compression events per command: strategy, original/compressed sizes, reduction pct, duration (auto-rotated at 2 MB) |
+| Graph usage | `logs/graph-usage.log` | Graph tool calls with source, action type, and session ID (auto-rotated at 2 MB) |
 | Session log | `logs/sessionlog.log` | Session lifecycle events (enabled via `sessionLog.enabled`) |
 | OpenCode | `~/.local/share/opencode/log/` | Application lifecycle, tool calls |
 
@@ -739,35 +759,44 @@ Use `--ignore-scripts` to avoid trust prompts. Models download automatically on 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  Plugin Layer (plugin/index.ts)                       │
-│  ┌──────────┬──────────┬──────────┬───────────────┐  │
-│  │ Memory    │ Skills   │ Journal  │ Auto-         │  │
-│  │ Store     │ (nodes)  │ Store    │ Retrieve      │  │
-│  └────┬─────┴────┬─────┴────┬─────┴───────┬───────┘  │
-│       │          │          │             │           │
-│  ┌────┴──────────┴──────────┴─────────────┴───────┐  │
-│  │ SQLite (~/.config/opencode/memory.db)           │  │
-│  │  - memory_nodes (labels, content, embeds)       │  │
-│  │    - scope: "global" | "project"                │  │
-│  │    - project_name (for project-scope nodes)     │  │
-│  │    - type: "note" / "skill" / "playbook"       │  │
-│  │    - sticky playbooks/skills never pruned       │  │
-│  │    - metadata.steps for playbook steps          │  │
-│  │  - memory_links (wiki-link crossrefs)           │  │
-│  │  - bm25_index (full-text search)               │  │
-│  │  - injection_metrics / session_metrics          │  │
-│  └─────────────────────────────────────────────────┘  │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐  │
-│  │ HNSW Vector Index (in-memory, 384-dim)          │  │
-│  └─────────────────────────────────────────────────┘  │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐  │
-│  │ ONNX Embedding Model (all-MiniLM-L6-v2)         │  │
-│  │ onnxruntime-web + @huggingface/tokenizers       │  │
-│  └─────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Plugin Layer (plugin/index.ts)                           │
+│  ┌──────────┬──────────┬──────────┬───────────┬──────┐  │
+│  │ Memory    │ Skills   │ Journal  │ Auto-     │ Code │  │
+│  │ Store     │ (nodes)  │ Store    │ Retrieve  │Graph │  │
+│  └────┬─────┴────┬─────┴────┬─────┴─────┬─────┴──────┘  │
+│       │          │          │           │               │
+│  ┌────┴──────────┴──────────┴───────────┴───────────┐  │
+│  │ SQLite (~/.config/opencode/memory.db)             │  │
+│  │  - memory_nodes (labels, content, embeds)         │  │
+│  │    - scope: "global" | "project"                  │  │
+│  │    - project_name (for project-scope nodes)       │  │
+│  │    - type: "note" / "skill" / "playbook"         │  │
+│  │    - sticky playbooks/skills never pruned         │  │
+│  │    - metadata.steps for playbook steps            │  │
+│  │  - memory_links (wiki-link crossrefs)             │  │
+│  │  - bm25_index (full-text search)                 │  │
+│  │  - injection_metrics / session_metrics            │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ HNSW Vector Index (in-memory, 384-dim)            │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ ONNX Embedding Model (all-MiniLM-L6-v2)           │  │
+│  │ onnxruntime-web + @huggingface/tokenizers         │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ Code Graph (in-memory graphology)                  │  │
+│  │  - Node types: file, function, class, interface    │  │
+│  │  - Edge types: calls, imports, references, extends │  │
+│  │  - Louvain community detection                     │  │
+│  │  - Incremental rebuild via file SHA-256 hashing    │  │
+│  │  - Thread-safe: plugin hooks + MCP + management    │  │
+│  └───────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## Storage
@@ -784,7 +813,15 @@ MIT
 
 ## Changelog
 
-### v0.6.37 (current)
+### v0.6.38 (current)
+- **Code knowledge graph** — new `src/application/graph/` module with `CodeGraph` class (graphology), tree-sitter WASM AST extraction via `process()` API (32 languages), Louvain community detection, god-node analysis, surprising-connections detection, shortest-path query. Edges: `calls`, `imports`, `defined_in`, `references`, `extends` with `EXTRACTED | INFERRED | AMBIGUOUS` confidence
+- **Always-on graph hooks** — `plugin/hooks/graph-tools.ts`: `ensureBackgroundGraph()` on plugin init and `tool.before` for read/grep/glob; graph stats rule injected via `system.transform` hook. Config via `graph.enabled`, `graph.maxFiles`, `graph.ruleEnabled`
+- **MCP graph tools** — `graph_build`, `graph_search`, `graph_path`, `graph_explain`, `graph_usage`. Each process (plugin, MCP, management server) builds its own graph independently — no inter-process dependency on the management server
+- **Management API + UI** — `POST /api/graph/build`, `GET /api/graph`, `GET /api/graph/search`, `POST /api/graph/path`, `POST /api/graph/explain`, `GET /api/graph/usage`, `GET /api/graph/export`. D3.js force-directed graph visualization tab with community colors, degree-sized nodes, tooltip, search highlight, focus animation
+- **Incremental builds** — file SHA-256 hashing tracks changes; subsequent builds only re-extract modified files. Community detection runs once (lazy). Background build uses config maxFiles (default 5000)
+- **Graph usage tracking** — every `track*()` call logs to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID. View via `graph_usage` MCP tool or `GET /api/graph/usage`
+
+### v0.6.37
 - **LLM judge scoring** — new `llmJudgeScore()` in auto-retrieve pipeline: calls `client.session.prompt({noReply:true})` to score memory candidates when Ollama is off. Falls back to heuristic `fallbackScore()` on error or when no session is available. Configurable via `autoRetrieve.llmJudgeEnabled` (default `true`). Tracks current session ID via `chat.message` hook.
 - **`memory_llm_compress` session ID fix** — `generateLLMSummary` was hardcoding session ID as `'compression'` (which doesn't exist), causing `session.prompt()` to silently fail and fall back to regex every time. Fixed by threading the real `toolCtx.sessionID` through `runCompression` → `generateLLMSummary`. Interface updated: `IMaintenanceStore.runCompression`, `SqliteMemoryStore.runCompression`, `runCompressionFn`, `generateLLMSummary` all accept optional `sessionId` param.
 
