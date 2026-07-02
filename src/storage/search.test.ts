@@ -6,7 +6,7 @@ import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import type { MemoryScope } from "./types";
 
 function makeEmbedding(...values: number[]): number[] {
-  const emb = new Array(384).fill(0);
+  const emb = Array.from({length: 384}).fill(0);
   for (let i = 0; i < Math.min(values.length, 384); i++) {
     emb[i] = values[i] ?? 0;
   }
@@ -119,7 +119,7 @@ describe("searchByEmbedding", () => {
 
   test("respects limit parameter", async () => {
     const { getDb, projectDb, insertNode } = setup();
-    const emb = makeEmbedding(0.1);
+    
     const nodes = Array.from({ length: 10 }, (_, i) => {
       const id = `n-${i}`;
       insertNode(projectDb, { id, embedding: makeEmbedding(0.1 + i * 0.01), scope: "project" });
@@ -306,9 +306,9 @@ describe("searchByEmbedding", () => {
 
   test("returns nodes from both global and project scope", async () => {
     const { getDb, globalDb, projectDb, insertNode } = setup();
-    const globalEmb = new Array(384).fill(0);
+    const globalEmb = Array.from({length: 384}).fill(0);
     globalEmb[0] = 1.0;
-    const projectEmb = new Array(384).fill(0);
+    const projectEmb = Array.from({length: 384}).fill(0);
     projectEmb[1] = 1.0;
 
     insertNode(globalDb, { id: "g-node", embedding: globalEmb, scope: "global" });
@@ -319,7 +319,7 @@ describe("searchByEmbedding", () => {
       { id: "p-node", embedding: projectEmb, scope: "project" },
     ]);
 
-    const query = new Array(384).fill(0);
+    const query = Array.from({length: 384}).fill(0);
     query[0] = 1.0;
     query[1] = 1.0;
     const results = await searchByEmbedding(getDb, query, 10);
@@ -502,7 +502,7 @@ describe("searchByEmbedding BM25 integration", () => {
     // Create embeddings with varied directions (different dimensions activated)
     // so cosine similarity varies meaningfully
     const nodes = Array.from({ length: 15 }, (_, i) => {
-      const emb = new Array(384).fill(0);
+      const emb = Array.from({length: 384}).fill(0);
       emb[i] = 1.0;
       return { id: `n-${i}`, embedding: emb, content: `item ${i}`, scope: "project" as const };
     });
@@ -512,7 +512,7 @@ describe("searchByEmbedding BM25 integration", () => {
     await getHNSWIndex().rebuild(nodes);
 
     // Query close to n-5's embedding dimension
-    const queryEmb = new Array(384).fill(0);
+    const queryEmb = Array.from({length: 384}).fill(0);
     queryEmb[5] = 1.0;
     const results = await searchByEmbedding(getDb, queryEmb, 10, {
       queryText: "item 5",

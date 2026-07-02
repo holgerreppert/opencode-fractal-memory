@@ -2,6 +2,7 @@ import { HNSW } from "hnsw";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { memLog } from "../../logging";
 
 const M = 16;
 const EF_CONSTRUCTION = 200;
@@ -265,8 +266,11 @@ export function loadHNSWIndexFromDisk(dimension: number = 384): HNSWIndex | null
     idx.loadState(state);
     hnswInstance = idx;
     return idx;
-  } catch {
-    try { fs.unlinkSync(PERSIST_PATH); } catch {}
+  } catch (e) {
+    memLog("error", "hnsw", "Failed to load HNSW index, clearing corrupt state", { error: String(e) });
+    if (fs.existsSync(PERSIST_PATH)) {
+      fs.unlinkSync(PERSIST_PATH);
+    }
     return null;
   }
 }

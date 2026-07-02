@@ -85,9 +85,9 @@ describe("distillRules", () => {
   });
 
   test("deduplicates identical fixes", async () => {
-    const { store, nodes } = makeMockStore({ lessons: 2, hasFixNodes: true });
+    const { store, } = makeMockStore({ lessons: 2, hasFixNodes: true });
 
-    const existingContent = nodes.find(n => n.label === "rule:mandatory:memory")?.content ?? "";
+    
 
     const result = await distillRules(store, { minLessons: 1, useLlm: false });
     expect(result).toContain("added");

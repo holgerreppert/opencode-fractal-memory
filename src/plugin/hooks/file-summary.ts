@@ -37,7 +37,7 @@ export function createFileSummaryHandler(store: MemoryStore, config: MemConfig):
           } else {
             (output as { output?: string }).output = cached.content;
             (output as { metadata?: Record<string, unknown> }).metadata = {
-              ...((output as { metadata?: Record<string, unknown> }).metadata ?? {}),
+              ...(output as { metadata?: Record<string, unknown> }).metadata,
               cached: true,
             };
             writeFileSumLog("FILE-SUMMARIZE", { action: "cache-hit", file: filePath, label: shortLabel, cached_chars: cached.content.length });
@@ -110,7 +110,7 @@ export function createFileSummaryHandler(store: MemoryStore, config: MemConfig):
             }
           }
         }
-      } catch (err) {
+      } catch  {
         /* best-effort */
       }
     },

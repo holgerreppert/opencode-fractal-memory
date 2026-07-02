@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getNodeDepth, retrieveFractal, getFractalStats } from "./navigation";
-import type { MemoryNode, MemoryScope, FractalStats } from "./types";
+import type { MemoryNode } from "./types";
 
 function makeNode(overrides: Partial<MemoryNode> = {}): MemoryNode {
   return {

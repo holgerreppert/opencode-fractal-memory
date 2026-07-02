@@ -100,7 +100,7 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                     turnIndex,
                     agent: msg.info?.agent ?? null,
                     model: modelStr,
-                  }).catch(() => {});
+                  }).catch(() => { /* empty */ });
                   turnIndex++;
                 }
               }

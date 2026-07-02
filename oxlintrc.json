@@ -1,0 +1,34 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "rules": {
+    "no-unused-vars": ["warn", {
+      "fix": {
+        "imports": "safe-fix",
+        "variables": "fix"
+      },
+      "varsIgnorePattern": "^_",
+      "argsIgnorePattern": "^_"
+    }],
+    "no-empty": "warn",
+    "no-empty-function": "warn",
+    "no-constant-condition": "off",
+    "unicorn/no-new-array": "off",
+    "unicorn/no-useless-fallback-in-spread": "off"
+  },
+  "overrides": [
+    {
+      "files": ["*.test.ts", "*.test.js", "scripts/**", "benchmark/**"],
+      "rules": {
+        "no-unused-vars": "off",
+        "no-empty-function": "off",
+        "no-empty": "off"
+      }
+    },
+    {
+      "files": ["management/public/**"],
+      "rules": {
+        "no-unused-vars": "warn"
+      }
+    }
+  ]
+}

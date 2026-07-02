@@ -117,8 +117,8 @@ export async function runPatternExtraction(
     updateNode: (id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "metadata" | "embedding" | "sticky" | "confidence" | "usefulnessScore" | "timesHelpful">>) => Promise<void>;
   },
   scope: MemoryScope | "all",
-  minSourceCount: number = 2,
-  projectName?: string
+  _minSourceCount: number = 2,
+  _projectName?: string
 ): Promise<{ created: number; sources: number }> {
   let created = 0;
   let sources = 0;

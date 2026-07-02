@@ -911,6 +911,10 @@ let currentScope = "project";
 let currentProject = "";
 let availableScopes = [];
 
+let graphViz = null;
+let graphData = null;
+let _graphAnalysis = null;
+
 // ==================== Init ====================
 
 function init() {
@@ -921,6 +925,9 @@ function init() {
   filterEngine.onUpdate = () => {
     sceneCtrl.updateVisibility(filterEngine);
   };
+
+  graphViz = new GraphViz("graph-viz-container");
+  setupGraphListeners();
 
   setupEventListeners();
   loadData();
@@ -1122,6 +1129,9 @@ function setupEventListeners() {
       const qualityPanel = document.getElementById("quality-panel");
       const compressPanel = document.getElementById("compress-panel");
       const tokensPanel = document.getElementById("tokens-panel");
+      const graphPanel = document.getElementById("graph-panel");
+      const canvasContainer = document.getElementById("canvas-container");
+      const graphVizContainer = document.getElementById("graph-viz-container");
       if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
       if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
       if (contextPanel) contextPanel.classList.toggle("active", tab === "context");
@@ -1129,12 +1139,16 @@ function setupEventListeners() {
       if (qualityPanel) qualityPanel.classList.toggle("active", tab === "quality");
       if (compressPanel) compressPanel.classList.toggle("active", tab === "compress");
       if (tokensPanel) tokensPanel.classList.toggle("active", tab === "tokens");
+      if (graphPanel) graphPanel.classList.toggle("active", tab === "graph");
+      if (canvasContainer) canvasContainer.style.display = tab === "graph" ? "none" : "block";
+      if (graphVizContainer) graphVizContainer.classList.toggle("active", tab === "graph");
       if (tab === "settings") loadSettings();
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
       if (tab === "context") loadContextDashboard();
       if (tab === "quality") loadQuality();
       if (tab === "compress") loadCompressStats();
       if (tab === "tokens") loadTokenHistory();
+      if (tab === "graph") loadGraphData();
     });
   });
 }
@@ -1433,8 +1447,8 @@ function buildNodeList() {
   });
 
   container.innerHTML = sorted.map(node => {
-    const color = LEVEL_COLORS[node.level] ?? 0x888888;
-    const hex = "#" + color.toString(16).padStart(6, "0");
+    
+    
     const isSelected = sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeId === node.id;
 
     let customIndicator = "";
@@ -1602,7 +1616,7 @@ function toggleEditMode(node) {
 }
 
 function showEditForm(node) {
-  const panel = document.getElementById("detail-panel");
+  
   const title = document.getElementById("detail-title");
   const content = document.getElementById("detail-content");
 
@@ -1970,7 +1984,7 @@ async function loadBackupList() {
     container.innerHTML = backups.map(b => {
       const date = new Date(b.date).toLocaleString();
       const size = formatFileSize(b.totalSize);
-      const sources = Object.entries(b.sources).map(([key, s]) =>
+      const sources = Object.entries(b.sources).map(([, s]) =>
         `${s.label} (${formatFileSize(s.totalSize)})`
       ).join(", ");
       return `
@@ -1996,7 +2010,7 @@ async function loadBackupList() {
     container.querySelectorAll(".backup-btn.delete").forEach(btn => {
       btn.addEventListener("click", () => handleDelete(btn.dataset.name));
     });
-  } catch (e) {
+  } catch  {
     container.innerHTML = `<div class="stat-row"><span class="stat-label">Error loading backups</span></div>`;
   }
 }
@@ -2160,6 +2174,10 @@ async function loadSettings() {
     document.getElementById('reReadElimination-maxCacheSize').value = config.reReadElimination?.maxCacheSize ?? 100;
     document.getElementById('outputOffloading-enabled').value = String(config.outputOffloading?.enabled ?? true);
     document.getElementById('outputOffloading-thresholdChars').value = config.outputOffloading?.thresholdChars ?? 8000;
+    const g = config.graph || {};
+    document.getElementById('graph-enabled').value = String(g.enabled ?? true);
+    document.getElementById('graph-maxFiles').value = g.maxFiles ?? 5000;
+    document.getElementById('graph-ruleEnabled').value = String(g.ruleEnabled ?? true);
     const otc = config.outputTokenControl || {};
     document.getElementById('outputTokenControl-enabled').value = String(otc.enabled ?? false);
     document.getElementById('outputTokenControl-mode').value = otc.mode ?? 'adaptive';
@@ -2292,6 +2310,11 @@ async function saveSettings() {
     outputOffloading: {
       enabled: document.getElementById('outputOffloading-enabled').value === 'true',
       thresholdChars: parseInt(document.getElementById('outputOffloading-thresholdChars').value) || 8000,
+    },
+    graph: {
+      enabled: document.getElementById('graph-enabled').value === 'true',
+      maxFiles: parseInt(document.getElementById('graph-maxFiles').value) || 5000,
+      ruleEnabled: document.getElementById('graph-ruleEnabled').value === 'true',
     },
     outputTokenControl: {
       enabled: document.getElementById('outputTokenControl-enabled').value === 'true',
@@ -2710,7 +2733,7 @@ function showCompressDetail(event) {
   if (!overlay || !modal) return;
 
   const pct = Math.round(event.savingsRatio * 100);
-  const time = new Date(event.timestamp).toLocaleString();
+  
   const savingsColor = pct > 50 ? '#4a4' : pct > 20 ? '#aa4' : '#888';
 
   const originalPreview = event.originalPreview || "(no preview stored — upgrade to schema v27)";
@@ -2892,6 +2915,306 @@ function renderTokenHistory(summaryEl, breakdownEl, recentEl, data) {
     }
     html += `</tbody></table></div></div>`;
     recentEl.innerHTML = html;
+  }
+}
+
+// ==================== Graph ====================
+
+async function loadGraphData() {
+  const statusEl = document.getElementById("graph-status");
+  const statsEl = document.getElementById("graph-stats");
+  try {
+    const res = await fetch("/api/graph");
+    const data = await res.json();
+    if (!data.built) {
+      statusEl.textContent = data.message || "No graph built yet. Click \"Build Code Graph\" to start.";
+      statsEl.innerHTML = "";
+      graphData = null;
+      _graphAnalysis = null;
+      graphViz.clear();
+      return;
+    }
+    _graphAnalysis = data;
+    renderGraphStats(data);
+    const exportRes = await fetch("/api/graph/export");
+    if (exportRes.ok) {
+      graphData = await exportRes.json();
+      graphViz.loadFromJSON(graphData);
+    }
+    statusEl.textContent = `Graph built: ${data.stats.symbols} symbols, ${data.stats.edges} edges, ${data.stats.communities} communities`;
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+  }
+}
+
+async function buildGraph() {
+  const btn = document.getElementById("graph-build-btn");
+  const statusEl = document.getElementById("graph-status");
+  btn.disabled = true;
+  btn.textContent = "Building...";
+  statusEl.textContent = "Building code graph...";
+  try {
+    const res = await fetch("/api/graph/build", { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      statusEl.textContent = `Graph built: ${data.stats.symbols} symbols, ${data.stats.edges} edges`;
+      await loadGraphData();
+    } else {
+      statusEl.textContent = "Error: " + (data.error || "Build failed");
+    }
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Build Code Graph";
+  }
+}
+
+function renderGraphStats(data) {
+  const statsEl = document.getElementById("graph-stats");
+  const s = data.stats;
+  const u = data.usage;
+  let usageHtml = "";
+  if (u) {
+    usageHtml = `
+      <h3 style="font-size:12px;color:#888;margin:10px 0 6px;text-transform:uppercase;">Usage</h3>
+      <div class="graph-stat-row"><span class="label">Search calls</span><span class="value">${u.search.count}</span></div>
+      <div class="graph-stat-row"><span class="label">Path queries</span><span class="value">${u.path.count}</span></div>
+      <div class="graph-stat-row"><span class="label">Explain calls</span><span class="value">${u.explain.count}</span></div>
+      <div class="graph-stat-row"><span class="label">Exports</span><span class="value">${u.exports.count}</span></div>
+      <div class="graph-stat-row"><span class="label">Rule injections</span><span class="value">${u.ruleInjections.count}</span></div>
+      <div class="graph-stat-row"><span class="label">Background builds</span><span class="value">${u.backgroundBuilds.count}</span></div>
+      ${u.build.lastBuild ? `<div class="graph-stat-row"><span class="label">Last build</span><span class="value">${new Date(u.build.lastBuild).toLocaleTimeString()}</span></div>` : ""}
+    `;
+  }
+  statsEl.innerHTML = `
+    <div class="graph-stat-row"><span class="label">Files</span><span class="value">${s.files}</span></div>
+    <div class="graph-stat-row"><span class="label">Symbols</span><span class="value">${s.symbols}</span></div>
+    <div class="graph-stat-row"><span class="label">Edges</span><span class="value">${s.edges}</span></div>
+    <div class="graph-stat-row"><span class="label">Communities</span><span class="value">${s.communities}</span></div>
+    ${usageHtml}
+  `;
+
+  renderGraphCommunities(data);
+  renderGraphGodNodes(data);
+  renderGraphSurprising(data);
+}
+
+function renderGraphCommunities(data) {
+  const body = document.getElementById("graph-communities-body");
+  const countEl = document.getElementById("graph-community-count");
+  if (!body) return;
+  const communities = data.godNodes.reduce((acc, g) => {
+    const c = g.community !== undefined ? String(g.community) : "0";
+    if (!acc[c]) acc[c] = { count: 0, nodes: [] };
+    acc[c].count++;
+    acc[c].nodes.push(g);
+    return acc;
+  }, {});
+  const keys = Object.keys(communities);
+  countEl.textContent = `(${keys.length})`;
+
+  const palette = GRAPH_COLORS;
+  body.innerHTML = keys.map((c, i) => {
+    const color = palette[i % palette.length];
+    return `<div class="graph-community-item" data-community="${c}">
+      <span class="graph-community-dot" style="background:${color}"></span>
+      Community ${c} <span style="color:#666;font-size:10px;">(${communities[c].count} god nodes)</span>
+    </div>`;
+  }).join("");
+
+  body.querySelectorAll(".graph-community-item").forEach(el => {
+    el.addEventListener("click", () => {
+      graphViz.highlightSearch("");
+      const c = el.dataset.community;
+      graphViz.nodeGroup.selectAll("g.node").attr("opacity", d => {
+        return String(d.community) === c ? 1 : 0.15;
+      });
+      graphViz.labelElements.attr("opacity", d => {
+        return String(d.community) === c ? 1 : 0.1;
+      });
+      graphViz.linkElements.attr("stroke-opacity", d => {
+        const s = graphViz.nodeMap.get(d.source.id || d.source);
+        const t = graphViz.nodeMap.get(d.target.id || d.target);
+        if (!s || !t) return 0.05;
+        return String(s.community) === c || String(t.community) === c
+          ? (EDGE_OPACITIES[d.confidence] || 0.3) : 0.05;
+      });
+    });
+  });
+}
+
+function renderGraphGodNodes(data) {
+  const body = document.getElementById("graph-god-body");
+  const countEl = document.getElementById("graph-god-count");
+  if (!body) return;
+  countEl.textContent = `(${data.godNodes.length})`;
+  body.innerHTML = data.godNodes.map(g => {
+    const label = g.label.length > 35 ? g.label.slice(0, 35) + "…" : g.label;
+    const fileParts = g.file ? g.file.split("/") : [];
+    const fileName = fileParts.length > 0 ? fileParts[fileParts.length - 1] : "";
+    return `<div class="graph-god-item" data-label="${g.label}">
+      <strong>${label}</strong> <span class="graph-god-degree">deg ${g.degree}</span><br>
+      <span style="color:#666;font-size:10px;">${fileName}${g.line ? ":" + g.line : ""}</span>
+    </div>`;
+  }).join("");
+
+  body.querySelectorAll(".graph-god-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const label = el.dataset.label;
+      const node = graphViz.nodes.find(n => n.label === label);
+      if (node) {
+        graphViz.focusOnNode(node.id);
+        showGraphNodeDetail(node);
+      }
+    });
+  });
+}
+
+function renderGraphSurprising(data) {
+  const body = document.getElementById("graph-surprising-body");
+  const countEl = document.getElementById("graph-surprising-count");
+  if (!body) return;
+  const connections = data.surprisingConnections || [];
+  countEl.textContent = `(${connections.length})`;
+  if (connections.length === 0) {
+    body.innerHTML = '<div style="font-size:11px;color:#666;">No surprising cross-community connections found</div>';
+    return;
+  }
+  body.innerHTML = connections.map(sc => `
+    <div class="graph-surprising-item">
+      <span style="color:#4a9eff;">${sc.source}</span>
+      <span style="color:#666;font-size:10px;"> ${sc.relation} </span>
+      <span style="color:#34d399;">${sc.target}</span>
+    </div>
+  `).join("");
+}
+
+async function showGraphNodeDetail(node) {
+  const panel = document.getElementById("graph-detail-panel");
+  const title = document.getElementById("graph-detail-title");
+  const content = document.getElementById("graph-detail-content");
+
+  title.textContent = node.label;
+
+  let html = `
+    <div class="graph-detail-section">
+      <h4>Type</h4>
+      <div class="detail-value">${node.type}${node.kind ? ` &middot; ${node.kind}` : ""}</div>
+    </div>
+  `;
+
+  if (node.file) {
+    html += `
+      <div class="graph-detail-section">
+        <h4>File</h4>
+        <div class="detail-value">${node.file}${node.line ? ":" + node.line : ""}</div>
+      </div>
+    `;
+  }
+
+  html += `
+    <div class="graph-detail-section">
+      <h4>Metrics</h4>
+      <div class="graph-stat-row"><span class="label">Degree</span><span class="value">${node.degree || 0}</span></div>
+      <div class="graph-stat-row"><span class="label">Community</span><span class="value">${node.community || "—"}</span></div>
+    </div>
+  `;
+
+  html += '<div class="graph-detail-section"><h4>Neighbors</h4>';
+
+  try {
+    const res = await fetch("/api/graph/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: node.id }),
+    });
+    if (res.ok) {
+      const explainData = await res.json();
+      html += `<div style="font-size:11px;color:#888;margin-bottom:4px;">${explainData.neighbors.length} connections</div>`;
+
+      const sorted = (explainData.neighbors || []).sort((a, b) => a.relation.localeCompare(b.relation));
+      if (sorted.length === 0) {
+        html += '<div class="graph-nb-none">No direct connections</div>';
+      } else {
+        html += sorted.slice(0, 30).map(nb => {
+          const relLabel = nb.relation.startsWith("inverse_") ? nb.relation.replace("inverse_", "← ") : nb.relation;
+          const relClass = nb.relation.startsWith("inverse_") ? "inverse" : "direct";
+          return `<div class="graph-neighbor-item" data-id="${nb.id}">
+            <span class="graph-neighbor-relation ${relClass}">${relLabel}</span>
+            <span>${nb.label}</span>
+            <span style="color:#666;font-size:10px;">${nb.file ? nb.file.split("/").pop() : ""}</span>
+          </div>`;
+        }).join("");
+      }
+
+      html += '</div>';
+
+      content.innerHTML = html;
+
+      content.querySelectorAll(".graph-neighbor-item").forEach(el => {
+        el.addEventListener("click", async () => {
+          const nid = el.dataset.id;
+          const neighborNode = graphViz.nodeMap.get(nid);
+          if (neighborNode) {
+            graphViz.focusOnNode(nid);
+            showGraphNodeDetail(neighborNode);
+          }
+        });
+      });
+    } else {
+      html += '<div class="graph-nb-none">Could not load neighbors</div></div>';
+      content.innerHTML = html;
+    }
+  } catch {
+    html += '<div class="graph-nb-none">Error loading neighbors</div></div>';
+    content.innerHTML = html;
+  }
+
+  panel.classList.add("open");
+}
+
+function graphSearch(query) {
+  const info = document.getElementById("graph-search-info");
+  if (!query || !query.trim()) {
+    graphViz.highlightSearch("");
+    info.textContent = "";
+    return;
+  }
+  graphViz.highlightSearch(query);
+  const matches = graphViz.nodes.filter(n =>
+    n.label.toLowerCase().includes(query.toLowerCase()) ||
+    (n.file && n.file.toLowerCase().includes(query.toLowerCase()))
+  );
+  if (matches.length === 0) {
+    info.textContent = "No matching nodes";
+  } else {
+    info.textContent = `${matches.length} matching node(s)`;
+  }
+}
+
+function setupGraphListeners() {
+  document.getElementById("graph-build-btn").addEventListener("click", buildGraph);
+
+  const searchInput = document.getElementById("graph-search-input");
+  let searchTimer;
+  searchInput.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => graphSearch(searchInput.value), 200);
+  });
+
+  document.getElementById("graph-detail-close").addEventListener("click", () => {
+    document.getElementById("graph-detail-panel").classList.remove("open");
+  });
+
+  if (graphViz) {
+    graphViz.onNodeClick = (node) => {
+      if (node) {
+        showGraphNodeDetail(node);
+      } else {
+        document.getElementById("graph-detail-panel").classList.remove("open");
+      }
+    };
   }
 }
 

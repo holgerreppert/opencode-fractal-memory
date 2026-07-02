@@ -63,7 +63,7 @@ function compressJson(raw: string, maxLines: number): string {
   }
 }
 
-function compressCsv(raw: string, maxLines: number): string {
+function compressCsv(raw: string, _maxLines: number): string {
   const lines = raw.split("\n").filter(Boolean);
   const header = lines[0] ?? "";
   const sep = (header.match(/,/g) || []).length >= (header.match(/\t/g) || []).length ? "," : "\t";
@@ -81,7 +81,7 @@ function compressCsv(raw: string, maxLines: number): string {
   return result;
 }
 
-function compressStackTrace(raw: string, maxLines: number): string {
+function compressStackTrace(raw: string, _maxLines: number): string {
   const lines = raw.split("\n");
   const uniqueFrames = new Set<string>();
   const errors: string[] = [];
@@ -112,7 +112,7 @@ function compressStackTrace(raw: string, maxLines: number): string {
   return result;
 }
 
-function compressTree(raw: string, maxLines: number): string {
+function compressTree(raw: string, _maxLines: number): string {
   const lines = raw.split("\n").filter(Boolean);
   const dirs: string[] = [];
   const files: string[] = [];
@@ -138,7 +138,7 @@ function compressTree(raw: string, maxLines: number): string {
   return result;
 }
 
-function compressTable(raw: string, maxLines: number): string {
+function compressTable(raw: string, _maxLines: number): string {
   const lines = raw.split("\n").filter(Boolean);
   const cols = (lines[0] ?? "").split(/\s{2,}/).length;
   const result = `${lines.length} rows, ~${cols} columns\n${lines.slice(0, 5).join("\n")}${lines.length > 5 ? `\n... +${lines.length - 5} more` : ""}`;

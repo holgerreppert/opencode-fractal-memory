@@ -212,21 +212,20 @@ async function parseCandidates(
   for (const label of labels) {
     let found = false;
     for (const scope of scopes) {
-      try {
-        const node = await store.getNodeByLabel(scope, label);
-        results.push({
-          id: node.id,
-          label: node.label ?? label,
-          content: node.content ?? "",
-          importance: node.importance,
-          confidence: node.confidence,
-          usefulnessScore: node.usefulnessScore,
-          accessCount: node.accessCount,
-          updatedAt: node.updatedAt,
-        });
-        found = true;
-        break;
-      } catch {}
+      const node = await store.getNodeByLabel(scope, label).catch(() => null);
+      if (!node) continue;
+      results.push({
+        id: node.id,
+        label: node.label ?? label,
+        content: node.content ?? "",
+        importance: node.importance,
+        confidence: node.confidence,
+        usefulnessScore: node.usefulnessScore,
+        accessCount: node.accessCount,
+        updatedAt: node.updatedAt,
+      });
+      found = true;
+      break;
     }
     if (!found) {
       results.push({

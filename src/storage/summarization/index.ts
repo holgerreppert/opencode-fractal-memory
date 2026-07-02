@@ -125,7 +125,7 @@ Structured summary:`;
         const trimmed = response.trim();
         if (trimmed) return trimmed;
       }
-    } catch (e) {
+    } catch  {
       // LLM failed, fall through to regex fallback
     }
 

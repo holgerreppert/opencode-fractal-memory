@@ -76,7 +76,7 @@ export function wrapWithTracking(toolDef: any, store: MemoryStore | undefined | 
       await store.logToolCall(toolName, tokens, contextWarning, true, durationMs);
     } catch (err) {
       const durationMs = performance.now() - startTime;
-      await store.logToolCall(toolName, 0, false, false, durationMs).catch(() => {});
+      await store.logToolCall(toolName, 0, false, false, durationMs).catch(() => { /* empty */ });
       throw err;
     }
 

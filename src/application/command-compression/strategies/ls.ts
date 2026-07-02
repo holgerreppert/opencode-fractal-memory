@@ -2,7 +2,7 @@ export function compressLs(raw: string): string {
   const lines = raw.split("\n").filter(Boolean);
   if (lines.length === 0) return raw;
 
-  const total = lines.length;
+  
   const dirs: string[] = [];
   const files: string[] = [];
 

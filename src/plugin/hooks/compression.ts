@@ -67,7 +67,7 @@ async function purgeOldScratch(): Promise<void> {
 }
 
 export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
-  purgeOldScratch().catch(() => {});
+  purgeOldScratch().catch(() => { /* empty */ });
   return {
     "tool.after": async (_input: unknown, output: unknown) => {
       const input = _input as { tool?: string; args?: { command?: string }; sessionID?: string };

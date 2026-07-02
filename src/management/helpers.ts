@@ -193,20 +193,21 @@ export function computeStats(nodes: any[]): StatsResult {
   };
 }
 
-export function getAvailableProjects(scope: string): string[] {
+export function getAvailableProjects(_scope: string): string[] {
   // This function is kept for compat; management routes now use store.listNodes()
   return [];
 }
 
 export function readProjectConfig(): Record<string, unknown> {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json");
+  if (!fs.existsSync(configPath)) return {};
   try {
-    if (fs.existsSync(configPath)) {
-      const raw = fs.readFileSync(configPath, "utf-8");
-      return JSON.parse(raw);
-    }
-  } catch { }
-  return {};
+    const raw = fs.readFileSync(configPath, "utf-8");
+    return JSON.parse(raw);
+  } catch (e) {
+    memLog("error", "config", "Failed to read config, using defaults", { error: String(e) });
+    return {};
+  }
 }
 
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
@@ -226,11 +227,13 @@ export function writeProjectConfig(config: Record<string, unknown>): string {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json");
   try {
     let existing: Record<string, unknown> = {};
-    try {
-      if (fs.existsSync(configPath)) {
+    if (fs.existsSync(configPath)) {
+      try {
         existing = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      } catch (e) {
+        memLog("error", "config", "Failed to merge existing config", { error: String(e) });
       }
-    } catch {}
+    }
     const merged = deepMerge(existing, config);
     fs.writeFileSync(configPath, JSON.stringify(merged, null, 2));
     memLog("info", "config", "[config] Saved to:", { configPath });

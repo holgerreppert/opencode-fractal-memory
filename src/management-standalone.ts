@@ -17,9 +17,13 @@ if (pidFile) {
   try {
     fs.writeFileSync(pidFile, String(process.pid));
     process.on("exit", () => {
-      try { fs.unlinkSync(pidFile); } catch { }
+      if (fs.existsSync(pidFile)) {
+        fs.unlinkSync(pidFile);
+      }
     });
-  } catch { }
+  } catch (e) {
+    memLog("warn", "management", "Failed to write PID file", { error: e instanceof Error ? e.message : e });
+  }
 }
 
 const store = createSqliteMemoryStore(projectDir);

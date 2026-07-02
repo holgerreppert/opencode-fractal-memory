@@ -108,7 +108,7 @@ describe("LoCoMo retrieval quality", () => {
           temporalHops: 2,
         } as any);
 
-        const nodeIds = new Map(retrieved.map(n => [n.id, n]));
+        
 
         for (const k of KS) {
           const metrics = computeMetrics(evidenceLabels, retrieved, k);

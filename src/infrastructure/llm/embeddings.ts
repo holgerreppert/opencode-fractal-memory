@@ -79,7 +79,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     if (mask[i] === BigInt(1)) count++;
   }
 
-  const pooled: number[] = new Array<number>(hiddenSize).fill(0);
+  const pooled: number[] = Array.from({length: hiddenSize}).fill(0) as number[];
   for (let i = 0; i < seqLen; i++) {
     if (mask[i] === BigInt(1)) {
       for (let j = 0; j < hiddenSize; j++) {

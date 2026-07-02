@@ -194,7 +194,7 @@ function nodeName(node: WasmNode, source: string): string {
   return "";
 }
 
-function collectDefNodes(node: WasmNode, source: string, depth: number, result: { depth: number; name: string; line: number }[], isRoot: boolean = false) {
+function collectDefNodes(node: WasmNode, source: string, depth: number, result: { depth: number; name: string; line: number }[], _isRoot: boolean = false) {
   const kind = node.kind();
   if (nodeKindIsImport(kind)) return;
 

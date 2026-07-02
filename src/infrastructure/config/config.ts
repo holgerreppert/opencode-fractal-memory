@@ -111,6 +111,11 @@ export interface MemConfig {
     thresholdChars: number;
   };
   smallModel: Record<string, string>;
+  graph?: {
+    enabled: boolean;
+    maxFiles: number;
+    ruleEnabled: boolean;
+  };
   outputTokenControl?: {
     enabled: boolean;
     mode: "off" | "always-on" | "adaptive";
@@ -201,7 +206,7 @@ const JournalSchema = z.object({
 });
 
 const ManagementSchema = z.object({
-  enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   port: z.number().positive().int().optional(),
 });
 
@@ -337,7 +342,7 @@ const DEFAULT_CONFIG: MemConfig = {
     enabled: false,
   },
   management: {
-    enabled: false,
+    enabled: true,
   },
   sessionLog: {
     enabled: false,
@@ -402,8 +407,19 @@ const DEFAULT_CONFIG: MemConfig = {
     minLines: 200,
     strategy: "ast+regex",
   },
+  graph: {
+    enabled: true,
+    maxFiles: 5000,
+    ruleEnabled: true,
+  },
   smallModel: {},
 };
+
+const GraphSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxFiles: z.number().positive().int().default(5000),
+  ruleEnabled: z.boolean().default(true),
+});
 
 const SmallModelSchema = z.record(z.string(), z.string()).default({});
 
@@ -435,6 +451,7 @@ const MemConfigSchema = z.object({
   outputOffloading: OutputOffloadingSchema.optional(),
   outputTokenControl: OutputTokenControlSchema.optional(),
   smallModel: SmallModelSchema,
+  graph: GraphSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),
   fileSkeletonization: FileSkeletonizationSchema.optional(),
 }).default(DEFAULT_CONFIG);

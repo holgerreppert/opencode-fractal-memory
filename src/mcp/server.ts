@@ -6,8 +6,17 @@ import type { MemoryNodeType } from "../storage/sqlite";
 import { withMcpLogging, mcpLog } from "./logging";
 import { nodeToPlain, ensureScope, resourceStats } from "./transform";
 import { VERSION } from "../version";
+import { CodeGraph } from "../application/graph/graph";
+import { buildGraph } from "../application/graph/build";
+import {
+  shortestPath,
+  explain,
+  searchNodes,
+} from "../application/graph/query";
+import { trackSearch, trackPath, trackExplain, getGraphUsageStats } from "../application/graph/usage";
 
 let store: MemoryStore;
+let graphCache: CodeGraph | null = null;
 
 export async function createMemoryMcpServer(projectDir: string, globalDbPath: string): Promise<McpServer> {
   mcpLog("info", "Creating memory store", { projectDir });
@@ -307,6 +316,110 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
           isError: true,
         };
       }
+    })
+  );
+
+  // ==================== Graph Tools ====================
+
+  server.registerTool(
+    "graph_build",
+    {
+      description: "Build a code knowledge graph from AST extraction on the current project. Returns stats, god nodes, and a report snippet.",
+      inputSchema: {
+        root: z.string().optional().default(".").describe("Project root directory to scan"),
+        max_files: z.number().int().positive().optional().default(5000).describe("Max files to process"),
+      },
+    },
+    withMcpLogging("graph_build", async (args) => {
+      try {
+        const root = args.root ?? ".";
+        const result = buildGraph(root, args.max_files);
+        graphCache = result.graph;
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              success: true,
+              stats: result.analysis.stats,
+              godNodes: result.analysis.godNodes.slice(0, 5).map(g => ({
+                label: g.node.label,
+                degree: g.degree,
+                file: g.node.file,
+              })),
+              report: result.report.slice(0, 3000),
+            }, null, 2),
+          }],
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
+          isError: true,
+        };
+      }
+    })
+  );
+
+  server.registerTool(
+    "graph_search",
+    {
+      description: "Search code graph nodes by name or file path",
+      inputSchema: {
+        query: z.string().describe("Search query (matches node label or file path)"),
+      },
+    },
+    withMcpLogging("graph_search", async (args) => {
+      if (!graphCache) return { content: [{ type: "text" as const, text: "No graph built yet. Run graph_build first." }], isError: true };
+      trackSearch("mcp");
+      const results = searchNodes(graphCache, args.query);
+      return { content: [{ type: "text" as const, text: JSON.stringify(results.slice(0, 50), null, 2) }] };
+    })
+  );
+
+  server.registerTool(
+    "graph_path",
+    {
+      description: "Find the shortest path between two code graph nodes by ID",
+      inputSchema: {
+        from: z.string().describe("Source node ID (use graph_search to find IDs)"),
+        to: z.string().describe("Target node ID"),
+      },
+    },
+    withMcpLogging("graph_path", async (args) => {
+      if (!graphCache) return { content: [{ type: "text" as const, text: "No graph built yet" }], isError: true };
+      trackPath("mcp");
+      const result = shortestPath(graphCache, args.from, args.to);
+      if (!result) return { content: [{ type: "text" as const, text: "No path found" }], isError: true };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    })
+  );
+
+  server.registerTool(
+    "graph_explain",
+    {
+      description: "Get detailed information about a code graph node including all its neighbors",
+      inputSchema: {
+        id: z.string().describe("Node ID to explain"),
+      },
+    },
+    withMcpLogging("graph_explain", async (args) => {
+      if (!graphCache) return { content: [{ type: "text" as const, text: "No graph built yet" }], isError: true };
+      trackExplain("mcp");
+      const result = explain(graphCache, args.id);
+      if (!result) return { content: [{ type: "text" as const, text: "Node not found" }], isError: true };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    })
+  );
+
+  server.registerTool(
+    "graph_usage",
+    {
+      description: "Get code graph usage statistics — how many times each graph tool has been called (build, search, path, explain), plus rule injections and background builds.",
+      inputSchema: {},
+    },
+    withMcpLogging("graph_usage", async () => {
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(getGraphUsageStats(), null, 2) }],
+      };
     })
   );
 

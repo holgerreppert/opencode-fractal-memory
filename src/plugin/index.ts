@@ -13,8 +13,19 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   memLog("info", "init", "Plugin initialization started", { directory, serverUrl: ctx.serverUrl.origin });
 
   let t = perfNow();
-  const { store, memConfig } = await createApplication(directory);
-  memLog("info", "init", "Application context created", { durationMs: perfNow() - t });
+  let store: any, memConfig: any;
+  try {
+    const app = await createApplication(directory);
+    store = app.store;
+    memConfig = app.memConfig;
+    memLog("info", "init", "Application context created", { durationMs: perfNow() - t, mgmtStarted: app.managementStarted });
+  } catch (err) {
+    memLog("error", "init", "createApplication failed", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    throw err;
+  }
 
   const ruleCache: Map<string, { content: string; type: string }> = new Map();
   const ruleCacheDirty = { value: true };
@@ -45,7 +56,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   return {
     ...handlers,
-    ...(autoRetrieveHook || {}),
+    ...autoRetrieveHook,
     tool: toolMap,
     "chat.message": async (input: { sessionID: string }) => {
       currentSessionId.value = input.sessionID;

@@ -76,11 +76,10 @@ async function resolveLabels(
   const resolved: string[] = [];
   for (const label of labels) {
     for (const scope of ["global", "project"] as const) {
-      try {
-        const node = await store.getNodeByLabel(scope, label);
+      const node = await store.getNodeByLabel(scope, label).catch(() => null);
+      if (node) {
         resolved.push(node.id);
         break;
-      } catch {
       }
     }
   }

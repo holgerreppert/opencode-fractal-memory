@@ -327,10 +327,50 @@
     #legend-popover { display: none; position: absolute; left: 0; right: 0; top: 28px; background: rgba(20,20,35,0.98); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; z-index: 200; box-shadow: 0 4px 24px rgba(0,0,0,0.6); }
     #legend-popover.open { display: block; }
     #legend-popover .legend-item { padding: 3px 0; }
+
+    /* Graph viz */
+    #graph-viz-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; display: none; }
+    #graph-viz-container.active { display: block; }
+    #graph-viz-container svg { display: block; cursor: grab; }
+    #graph-viz-container svg:active { cursor: grabbing; }
+    .graph-tooltip { pointer-events: none; }
+    #graph-panel .section .search-btn { width: 100%; padding: 6px; border-radius: 6px; border: 1px solid rgba(100,150,255,0.5); background: rgba(100,150,255,0.2); color: #fff; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+    #graph-panel .section .search-btn:hover { background: rgba(100,150,255,0.4); }
+    #graph-panel .section .search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .graph-stat-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+    .graph-stat-row .label { color: #888; }
+    .graph-stat-row .value { color: #e0e0e0; font-weight: 500; }
+    .graph-community-item, .graph-god-item, .graph-surprising-item { padding: 4px 8px; margin-bottom: 4px; border-radius: 4px; font-size: 11px; color: #ccc; background: rgba(255,255,255,0.03); cursor: pointer; transition: background 0.15s; }
+    .graph-community-item:hover, .graph-god-item:hover, .graph-surprising-item:hover { background: rgba(255,255,255,0.08); }
+    .graph-community-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .graph-god-degree { color: #666; font-size: 10px; margin-left: 4px; }
+    .graph-detail-section { margin-bottom: 12px; }
+    .graph-detail-section h4 { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+    .graph-detail-section .detail-value { font-size: 12px; color: #ccc; }
+    .graph-detail-section .content-full { background: rgba(255,255,255,0.03); border-radius: 4px; padding: 8px; font-size: 11px; color: #aaa; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
+    .graph-neighbor-item { padding: 3px 0; font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .graph-neighbor-item:hover { color: #4a9eff; }
+    .graph-neighbor-relation { color: #666; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.05); }
+    #graph-detail-panel {
+      position: fixed; top: 0; right: 0; width: 320px; height: 100vh;
+      background: rgba(15,15,25,0.95); border-left: 1px solid rgba(255,255,255,0.1);
+      padding: 20px; overflow-y: auto; z-index: 100;
+      backdrop-filter: blur(10px); transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
+    #graph-detail-panel.open { transform: translateX(0); }
+    #graph-detail-panel .close-btn {
+      position: absolute; top: 15px; right: 15px; background: none; border: none;
+      color: #888; font-size: 20px; cursor: pointer;
+    }
+    #graph-detail-panel .close-btn:hover { color: #fff; }
+    #graph-detail-panel h2 { font-size: 15px; margin-bottom: 12px; color: #fff; word-break: break-word; }
+    .graph-nb-none { font-size: 11px; color: #666; font-style: italic; }
   </style>
 </head>
 <body>
   <div id="canvas-container"></div>
+  <div id="graph-viz-container"></div>
   <div id="loading">Loading memory nodes...</div>
 
   <div id="resize-handle"></div>
@@ -346,6 +386,7 @@
       <button class="tab-btn" data-tab="quality">Quality</button>
       <button class="tab-btn" data-tab="compress">Compress</button>
       <button class="tab-btn" data-tab="tokens">Tokens</button>
+      <button class="tab-btn" data-tab="graph">Graph</button>
     </div>
 
     <!-- Visualize Panel -->
@@ -723,6 +764,33 @@
       </div>
 
       <div class="config-category">
+        <h3 class="category-header">Code Graph <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Auto-Build Graph</label>
+            <select id="graph-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Build AST knowledge graph on plugin load; inject graph tools rule into system prompt</p>
+          </div>
+          <div class="config-field">
+            <label>Max Files</label>
+            <input type="number" id="graph-maxFiles" min="100" max="50000" step="100">
+            <p class="config-hint">Files to scan during graph build (code files only, AST extraction)</p>
+          </div>
+          <div class="config-field">
+            <label>Inject Graph Rule</label>
+            <select id="graph-ruleEnabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Add "use graph_search before grep" instruction to system prompt</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-category">
         <h3 class="category-header">Output Token Control <span class="collapse-arrow">&#x25BC;</span></h3>
         <div class="category-body">
           <div class="config-field">
@@ -1050,6 +1118,47 @@
         </div>
       </div>
     </div>
+
+    <!-- Graph Panel -->
+    <div id="graph-panel" class="settings-panel">
+      <div class="section" style="margin-bottom:10px;">
+        <button class="search-btn" id="graph-build-btn" style="margin-bottom:8px;">Build Code Graph</button>
+        <div id="graph-status" style="font-size:11px;color:#888;min-height:16px;"></div>
+      </div>
+
+      <div class="section" style="margin-bottom:10px;">
+        <input type="text" id="graph-search-input" placeholder="Search graph nodes..." style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;outline:none;">
+        <div id="graph-search-info" style="font-size:11px;color:#666;margin-top:4px;min-height:16px;"></div>
+      </div>
+
+      <div class="section" style="margin-bottom:10px;">
+        <div id="graph-stats"></div>
+      </div>
+
+      <div class="config-category" style="margin-bottom:6px;">
+        <h3 class="category-header">
+          Communities <span id="graph-community-count"></span>
+          <span class="collapse-arrow">&#x25BC;</span>
+        </h3>
+        <div class="category-body" id="graph-communities-body"></div>
+      </div>
+
+      <div class="config-category" style="margin-bottom:6px;">
+        <h3 class="category-header">
+          God Nodes <span id="graph-god-count"></span>
+          <span class="collapse-arrow">&#x25BC;</span>
+        </h3>
+        <div class="category-body" id="graph-god-body"></div>
+      </div>
+
+      <div class="config-category" style="margin-bottom:0;">
+        <h3 class="category-header">
+          Surprising Connections <span id="graph-surprising-count"></span>
+          <span class="collapse-arrow">&#x25BC;</span>
+        </h3>
+        <div class="category-body" id="graph-surprising-body"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Confirmation Modal -->
@@ -1078,7 +1187,15 @@
 
   <div id="tooltip"></div>
 
+  <div id="graph-detail-panel">
+    <button class="close-btn" id="graph-detail-close">&times;</button>
+    <h2 id="graph-detail-title"></h2>
+    <div id="graph-detail-content"></div>
+  </div>
+
   <script src="three.min.js"></script>
+  <script src="d3.min.js"></script>
+  <script src="graph-viz.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@ import { classifyShape, applyShapeCompression } from "./command-compression/shap
 import { compressCommandOutput, type CompressConfig } from "./command-compression";
 import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 import { addContentDedup, trigramJaccard } from "./command-compression/dedup";
-import { smartFilter, scoreLine, extractQueryTerms } from "./command-compression/utils";
+import { smartFilter, scoreLine } from "./command-compression/utils";
 
 const defaultConfig: CompressConfig = {
   enabled: true,

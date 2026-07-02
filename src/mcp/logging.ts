@@ -6,21 +6,34 @@ const MCP_LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
 const MCP_LOG_FILE = path.join(MCP_LOG_DIR, "mcp-server.log");
 const MAX_LOG_SIZE = 1024 * 1024;
 
-try { fs.mkdirSync(MCP_LOG_DIR, { recursive: true }); } catch {}
+if (!fs.existsSync(MCP_LOG_DIR)) {
+  fs.mkdirSync(MCP_LOG_DIR, { recursive: true });
+}
+
+function mcpFallbackLog(e: unknown, context: string): void {
+  process.stderr.write(`[opencode-memory][mcp] ${context}: ${e}\n`);
+}
 
 export function mcpLog(level: string, msg: string, data?: Record<string, unknown>): void {
+  if (!fs.existsSync(MCP_LOG_DIR)) return;
   try {
+    if (fs.existsSync(MCP_LOG_FILE)) {
+      try {
+        const stat = fs.statSync(MCP_LOG_FILE);
+        if (stat.size > MAX_LOG_SIZE) {
+          fs.renameSync(MCP_LOG_FILE, MCP_LOG_FILE + ".old");
+        }
+      } catch (e) {
+        mcpFallbackLog(e, "rotate");
+      }
+    }
     const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
     const line = `[${ts}] [${level.padEnd(5)}] [mcp] ${msg}` +
       (data && Object.keys(data).length > 0 ? ` ${JSON.stringify(data)}` : "");
-    try {
-      const stat = fs.statSync(MCP_LOG_FILE);
-      if (stat.size > MAX_LOG_SIZE) {
-        fs.renameSync(MCP_LOG_FILE, MCP_LOG_FILE + ".old");
-      }
-    } catch { }
     fs.appendFileSync(MCP_LOG_FILE, line + "\n");
-  } catch { }
+  } catch (e) {
+    mcpFallbackLog(e, "write");
+  }
 }
 
 export function sanitizeArgs(args: Record<string, unknown>): Record<string, unknown> {

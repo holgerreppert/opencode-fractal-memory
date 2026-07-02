@@ -238,7 +238,7 @@ export function MemoryCheckContext(store: MemoryStore) {
           if (n.level === 0) rawTokens += estimateTokens(n.content);
         }
         
-        if (nodesByLevel[0] ?? 0 > 0) {
+        if ((nodesByLevel[0] ?? 0) > 0) {
           warningLines.push(`\n${nodesByLevel[0]} L0 nodes (~${rawTokens.toLocaleString()} tokens) could be compressed.`);
         }
         

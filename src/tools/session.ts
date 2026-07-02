@@ -151,7 +151,7 @@ export function MemoryTotalTokens(store: MemoryStore, client: unknown) {
           conversationTokens.total = conversationTokens.input + conversationTokens.output + 
             conversationTokens.reasoning + conversationTokens.cacheRead + conversationTokens.cacheWrite;
         }
-      } catch (err) {
+      } catch  {
         // If we can't fetch messages, just show memory tokens
       }
 

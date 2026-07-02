@@ -1,10 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createSqliteMemoryStore } from "../src/storage/sqlite";
-import type { MemoryStore, MemoryNode } from "../src/storage/types";
 import { generateEmbedding } from "../src/embeddings";
-import { CATEGORY_LABELS } from "./benchmark/datasets/locomo";
-import type { Conversation, QAPair } from "./benchmark/datasets/locomo";
+import type { Conversation } from "./benchmark/datasets/locomo";
 
 const DEFAULT_DATASET = "scripts/benchmark/data/locomo10.json";
 const DEFAULT_OUT = "tests/dbs/locomo-seeded";

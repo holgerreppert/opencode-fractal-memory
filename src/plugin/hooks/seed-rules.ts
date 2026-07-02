@@ -50,7 +50,7 @@ export function createSeedRulesHandler(
           ruleCacheDirty.value = false;
         }
 
-        for (const [label, cached] of ruleCache) {
+        for (const [_label, cached] of ruleCache) {
           const allowed = ["mandatory", "standard", "suggestion", "info"];
           if (allowed.includes(cached.type)) {
             reminders.push(`<system_reminder type="${cached.type}">\n${cached.content}\n</system_reminder>`);

@@ -79,7 +79,7 @@ export async function searchByEmbedding(
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
-  const bm25Weight = options?.bm25Weight ?? 0.4;
+  
   const doRerank = options?.rerank ?? false;
   const queryText = options?.queryText ?? "";
 
@@ -115,9 +115,9 @@ export async function searchByEmbedding(
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
         if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
 
-        let embedding = node.embedding;
+        let _embedding = node.embedding;
         if (row.embedding_blob) {
-          embedding = blobToEmbedding(row.embedding_blob);
+          _embedding = blobToEmbedding(row.embedding_blob);
         }
 
         const hnswScore = hnswScoreMap.get(node.id) ?? 0;

@@ -61,11 +61,11 @@ export async function createApplication(directory: string, globalDbPath?: string
   memLog("info", "init", "Ensuring models");
   await ensureModels();
   memLog("info", "init", "Ensuring agent files");
-  await ensureAgentFiles().catch(() => {});
+  await ensureAgentFiles().catch(() => { /* empty */ });
   memLog("info", "init", "Ensuring command files");
-  await ensureCommandFiles().catch(() => {});
+  await ensureCommandFiles().catch(() => { /* empty */ });
   memLog("info", "init", "Cleaning up old middle-term captures");
-  await cleanupMiddleTermCaptures(store).catch(() => {});
+  await cleanupMiddleTermCaptures(store).catch(() => { /* empty */ });
 
   memLog("info", "init", "Loading config");
   const memConfig = await loadMemConfig(directory);
@@ -79,11 +79,19 @@ export async function createApplication(directory: string, globalDbPath?: string
   const mgmtConfig = memConfig.management;
   let managementStarted = false;
   if (mgmtConfig?.enabled === true) {
-    memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787 });
-    startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
-    managementStarted = true;
+    memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787, directory });
+    try {
+      startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
+      managementStarted = true;
+      memLog("info", "init", "startManagementServer returned", { managementStarted });
+    } catch (err) {
+      memLog("error", "init", "startManagementServer threw", {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
   } else {
-    memLog("info", "init", "Management server disabled");
+    memLog("info", "init", "Management server disabled", { enabled: mgmtConfig?.enabled });
   }
 
   return { store, memConfig, managementStarted };

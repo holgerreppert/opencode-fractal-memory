@@ -2,7 +2,7 @@ import type { MemoryStore } from "../../storage/sqlite";
 import { addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
 
-export function createWorkingCacheHandler(store: MemoryStore): HookHandler {
+export function createWorkingCacheHandler(_store: MemoryStore): HookHandler {
   return {
     "tool.after": async (_input: unknown, output: unknown) => {
       const input = _input as { tool?: string; sessionID?: string; args?: Record<string, unknown> };

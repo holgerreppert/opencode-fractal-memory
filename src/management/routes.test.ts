@@ -1,12 +1,7 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { Database } from "bun:sqlite";
-import * as path from "node:path";
-import * as os from "node:os";
-import * as fs from "node:fs";
+import { describe, expect, test } from "bun:test";
 import { Router } from "./router";
 import { registerRoutes } from "./routes";
 import { rowToNode, computeStats, extractLinks, getAvailableScopes } from "./helpers";
-import { runMigrations } from "../storage/migrations";
 
 describe("rowToNode", () => {
   test("transforms raw DB row to MemoryNode shape", () => {
@@ -146,7 +141,7 @@ describe("getAvailableScopes", () => {
 
 describe("Router", () => {
   const router = new Router();
-  const ctx = { params: {}, scope: "project", url: new URL("http://localhost/"), pathname: "/" };
+  
 
   test("registers and matches GET route", async () => {
     router.get(/^\/api\/test$/, () => new Response(JSON.stringify({ ok: true }), { status: 200 }));

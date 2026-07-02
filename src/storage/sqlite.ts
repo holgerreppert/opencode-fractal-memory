@@ -43,16 +43,6 @@ function scopeDbPath(_projectDirectory: string, _scope: MemoryScope, globalDbPat
   return globalDbPath ?? path.join(os.homedir(), ".config", "opencode", "memory.db");
 }
 
-function validateLabel(label: string): string {
-  const trimmed = label.trim();
-  if (!/^[a-z0-9][a-z0-9-_:]{1,60}$/i.test(trimmed)) {
-    throw new Error(
-      `Invalid label "${label}". Use letters/numbers/dash/underscore/colon (2-61 chars).`,
-    );
-  }
-  return trimmed;
-}
-
 class SqliteMemoryStore implements IMemoryStore {
   private dbs: Map<string, Database> = new Map();
   private dbInitPromises: Map<string, Promise<Database>> = new Map();
@@ -189,7 +179,7 @@ class SqliteMemoryStore implements IMemoryStore {
         const docStats = oldDb.query("SELECT * FROM bm25_doc_stats WHERE node_id = ?").get(oldRow.id) as { node_id: string; token_count: number; scope: string } | null;
         if (docStats) {
           unifiedDb.run(
-            "INSERT OR IGNORE INTO bm25_doc_stats (node_id, token_count, scope, project_name) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO bm25_doc_stats (node_id, token_count, scope, project_name) VALUES (?, ?, ?, ?)",
             [docStats.node_id, docStats.token_count, docStats.scope, this.projectName],
           );
         }

@@ -39,7 +39,7 @@ export function addContentDedup(
     let bestSim = 0;
     let bestKey = "";
     let count = 0;
-    for (const [key, entry] of store) {
+    for (const [key, _entry] of store) {
       if (count++ >= fuzzy.maxComparisons) break;
       const sim = trigramJaccard(rawOutput, key);
       if (sim > bestSim) {

@@ -52,7 +52,7 @@ function extractFactsFromCluster(cluster: MemoryNode[], maxFacts: number): strin
   return facts;
 }
 
-function buildFactLabel(fact: string, cluster: MemoryNode[]): string {
+function buildFactLabel(fact: string, _cluster: MemoryNode[]): string {
   const shortFact = fact
     .replace(/[^\w\s]/g, "")
     .trim()
@@ -112,10 +112,7 @@ export async function runConsolidation(
 
     for (const fact of facts) {
       const label = buildFactLabel(fact, cluster);
-      let factEmbedding: number[] | null = null;
-      try {
-        factEmbedding = await generateEmbedding(fact);
-      } catch {}
+      const factEmbedding = await generateEmbedding(fact).catch(() => null);
 
       try {
         const parentIds = cluster.map((n: MemoryNode) => n.id);

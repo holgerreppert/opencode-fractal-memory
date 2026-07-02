@@ -221,7 +221,7 @@ export const MIGRATIONS: Migration[] = [
     up: (db) => {
       try {
         db.run(`ALTER TABLE agent_tool_calls ADD COLUMN duration_ms REAL`);
-      } catch (e) {
+      } catch  {
         // Column may already exist
       }
     },
@@ -235,7 +235,7 @@ export const MIGRATIONS: Migration[] = [
         db.run(`ALTER TABLE injection_metrics ADD COLUMN injection_downvotes INT DEFAULT 0`);
         db.run(`ALTER TABLE injection_metrics ADD COLUMN task_outcome TEXT`);
         db.run(`ALTER TABLE injection_metrics ADD COLUMN needed_nodes TEXT`);
-      } catch (e) {
+      } catch  {
         // Columns may already exist
       }
     },

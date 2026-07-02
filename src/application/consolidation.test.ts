@@ -1,9 +1,9 @@
-import { describe, expect, test, beforeAll } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { runConsolidation } from "./consolidation";
 import type { MemoryStore, MemoryNode } from "../storage/sqlite";
 
 function makeEmbedding(value: number): number[] {
-  const emb = new Array(128).fill(0);
+  const emb = Array.from({length: 128}).fill(0);
   emb[0] = value;
   return emb;
 }

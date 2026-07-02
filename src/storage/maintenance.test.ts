@@ -3,7 +3,6 @@ import { Database } from "bun:sqlite";
 import { runMigrations } from "./migrations";
 import { backfillBinaryEmbeddingsAndBM25, rebuildHNSWIndex, backfillLinks } from "./maintenance";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
-import type { MemoryScope } from "./types";
 
 type MemoryScopes = "global" | "project";
 
@@ -63,7 +62,7 @@ function insertNode(
 
 describe("backfillLinks", () => {
   test("creates memory_links for wiki-link content", async () => {
-    const { db, getDb } = setup();
+    const { db, } = setup();
     insertNode(db, { id: "source-1", content: "This links to [[target-node]]" });
     insertNode(db, { id: "target-node", label: "target-node", content: "I am the target" });
 
@@ -101,7 +100,7 @@ describe("backfillLinks", () => {
 
 describe("backfillBinaryEmbeddingsAndBM25", () => {
   test("skips when BM25 already populated and no blob conversion needed", async () => {
-    const { db, getDb } = setup();
+    const { db, } = setup();
     const id = insertNode(db, { content: "hello world" });
 
     // Pre-populate BM25
@@ -129,7 +128,7 @@ describe("backfillBinaryEmbeddingsAndBM25", () => {
 
   test("converts JSON embedding to blob when embedding_blob is null", async () => {
     const { db } = setup();
-    const emb = new Array(384).fill(0.1);
+    const emb = Array.from({length: 384}).fill(0.1);
     insertNode(db, { id: "convert-me", embedding: emb, embedding_blob: null });
 
     await backfillBinaryEmbeddingsAndBM25(db, "project");
@@ -173,7 +172,7 @@ describe("rebuildHNSWIndex", () => {
 
   test("skips when HNSW already matches DB node count", async () => {
     const { db, getDb } = setup();
-    const emb = new Array(384).fill(0.1);
+    const emb = Array.from({length: 384}).fill(0.1);
     insertNode(db, { id: "n1", embedding: emb });
 
     // Build HNSW first
@@ -193,7 +192,7 @@ describe("rebuildHNSWIndex", () => {
 
   test("rebuilds when HNSW count differs from DB", async () => {
     const { db, getDb } = setup();
-    const emb = new Array(384).fill(0.1);
+    const emb = Array.from({length: 384}).fill(0.1);
     insertNode(db, { id: "n1", embedding: emb });
 
     // Build HNSW with 1 node
@@ -212,7 +211,7 @@ describe("rebuildHNSWIndex", () => {
 
   test("handles both global and project scopes", async () => {
     const { db, getDb } = setup();
-    const emb = new Array(384).fill(0.1);
+    const emb = Array.from({length: 384}).fill(0.1);
     insertNode(db, { id: "g1", embedding: emb, scope: "global" });
     insertNode(db, { id: "p1", embedding: emb, scope: "project" });
 

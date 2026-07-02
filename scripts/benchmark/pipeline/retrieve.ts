@@ -224,7 +224,7 @@ export async function retrieveEvidence(
   // Build results with temporal context resolution
   const nodeIdToSession = new Map<string, SessionInfo>();
   if (turnIndex && sessions) {
-    for (const [label, info] of turnIndex) {
+    for (const [_label, info] of turnIndex) {
       const session = sessions.get(info.session);
       if (session) nodeIdToSession.set(info.nodeId, session);
     }

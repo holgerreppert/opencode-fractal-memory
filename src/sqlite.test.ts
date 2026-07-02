@@ -412,7 +412,7 @@ describe("sqlite store", () => {
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
 
-    const emb = new Array(384).fill(0.05);
+    const emb = Array.from({length: 384}).fill(0.05);
     await store.createNode({ scope: "project", content: "X".repeat(100), level: 0, parentIds: null, embedding: emb, projectName: "project-a" });
     await store.createNode({ scope: "project", content: "Y".repeat(100), level: 0, parentIds: null, embedding: emb, projectName: "project-b" });
 
@@ -426,7 +426,7 @@ describe("sqlite store", () => {
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
 
-    const embedding = new Array(384).fill(0.1);
+    const embedding = Array.from({length: 384}).fill(0.1);
     
     await store.createNode({ scope: "project", content: "Level 0", level: 0, parentIds: null, embedding });
     await store.createNode({ scope: "project", content: "Level 1", level: 1, parentIds: null, embedding });
@@ -444,8 +444,8 @@ describe("sqlite store", () => {
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
 
-    const embA = new Array(384).fill(0.1);
-    const embB = new Array(384).fill(0.5);
+    const embA = Array.from({length: 384}).fill(0.1);
+    const embB = Array.from({length: 384}).fill(0.5);
 
     await store.createNode({ scope: "project", content: "Project A node", level: 0, parentIds: null, embedding: embA, projectName: "project-a" });
     await store.createNode({ scope: "project", content: "Project B node", level: 0, parentIds: null, embedding: embB, projectName: "project-b" });
@@ -1367,14 +1367,14 @@ describe("sqlite store", () => {
       scope: "project",
       content: "Test search usage tracking",
       level: 0,
-      embedding: new Array(384).fill(0.1),
+      embedding: Array.from({length: 384}).fill(0.1),
     });
 
     const before = await store.getNode(node.id);
     expect(before.timesUsed).toBe(0);
 
     // Search should increment timesUsed
-    await store.searchByEmbedding(new Array(384).fill(0.1), 10);
+    await store.searchByEmbedding(Array.from({length: 384}).fill(0.1), 10);
 
     const after = await store.getNode(node.id);
     expect(after.timesUsed).toBeGreaterThanOrEqual(1);
@@ -1385,7 +1385,7 @@ describe("sqlite store", () => {
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
 
-    const embedding = new Array(384).fill(0.1);
+    const embedding = Array.from({length: 384}).fill(0.1);
 
     // Create nodes with different usefulness scores
     const lowUsefulness = await store.createNode({
@@ -1418,7 +1418,7 @@ describe("sqlite store", () => {
     await store.ensureSeed();
 
     // Use slightly different embeddings so semantic scores differ
-    const baseEmbedding = new Array(384).fill(0.1);
+    const baseEmbedding = Array.from({length: 384}).fill(0.1);
     const embedding1 = baseEmbedding.map((v, i) => i % 2 === 0 ? v + 0.01 : v);
     const embedding2 = baseEmbedding.map((v, i) => i % 2 === 0 ? v + 0.02 : v);
 

@@ -20,7 +20,7 @@ export function MemoryInject(store: MemoryStore) {
       projectName: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const { query, maxTokens, includeConfidential, costWeight, debug, fallbackMessage, maxNodes, maxLevel, minConfidence, budgetMode, projectName } = args as {
+      const { query, maxTokens, includeConfidential, costWeight, debug, fallbackMessage, maxNodes, maxLevel, minConfidence, projectName } = args as {
         query: string;
         maxTokens?: number;
         includeConfidential?: boolean;

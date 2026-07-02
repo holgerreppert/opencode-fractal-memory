@@ -40,7 +40,7 @@ export function MemoryDetectTopics(store: MemoryStore) {
     args: {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
     },
-    async execute(args) {
+    async execute(_args) {
       return "Topic detection not implemented in this build.";
     },
   });

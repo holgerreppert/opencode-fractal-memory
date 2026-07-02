@@ -14,7 +14,7 @@ export function MemoryInjectionDebug(store: MemoryStore) {
     args: {
       session_id: tool.schema.string().optional().describe("Session ID – defaults to current session"),
     },
-    async execute(args, toolCtx) {
+    async execute(_args, _toolCtx) {
       const nodes = await store.listNodes("all");
 
       const totalTokens = nodes.reduce((sum, n) => sum + estimateTokens(n.content), 0);

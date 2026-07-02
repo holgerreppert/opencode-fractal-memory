@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { MemoryRecallContext } from "./recall-context";
 
 function makeStore(nodes: any[] = []) {
-  let idCounter = 0;
+  
   return {
     async listNodes(_scope: "all" | "global" | "project") {
       return nodes;

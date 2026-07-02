@@ -3,7 +3,6 @@ import { Database } from "bun:sqlite";
 
 import {
   CURRENT_VERSION,
-  MIGRATIONS,
   runMigrations,
   getConfig,
   setConfig,

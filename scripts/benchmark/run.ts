@@ -1,11 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs, printHelp } from "./config";
-import { loadDataset, type Conversation, type QAPair } from "./datasets/locomo";
+import { loadDataset, type QAPair } from "./datasets/locomo";
 import { ingestConversation, cleanupIngested, type IngestedStore } from "./pipeline/ingest";
 import { retrieveEvidence } from "./pipeline/retrieve";
 import { getAnswer } from "./pipeline/answer";
-import { evaluateSample, buildReport, type SampleResult, type BenchmarkReport } from "./evaluators/qa";
+import { evaluateSample, buildReport, type SampleResult } from "./evaluators/qa";
 
 type CheckpointData = {
   conversationIndex: number;

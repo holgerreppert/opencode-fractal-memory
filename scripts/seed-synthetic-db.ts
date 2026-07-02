@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createSqliteMemoryStore } from "../src/storage/sqlite";
-import type { MemoryStore } from "../src/storage/types";
 import { generateEmbedding } from "../src/embeddings";
 import { NODES, QAS, TEMPORAL_EDGES } from "./benchmark/datasets/synthetic";
 
