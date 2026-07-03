@@ -947,10 +947,11 @@ MIT
 
 ## Changelog
 
-### v0.6.42 (current)
-- **Fix: management server won't spawn with wrong binary** — `process.execPath` in OpenCode's embedded bun returns the OpenCode binary path (not bare bun). Spawning `opencode script.js` doesn't run the script. Changed to `Bun.which("bun")` — if bun is in PATH, spawn with it; if not, log a warning and skip the management server gracefully
+### v0.6.43 (current)
+- **Fix: run management server in-process when bun not in PATH** — Instead of giving up or spawning with the wrong binary, `startInProcess()` dynamically creates the Router, registers routes, and calls `Bun.serve()` directly in the plugin process. Both subprocess (bun in PATH) and in-process (embedded bun) paths are supported. Falls through to in-process if subprocess spawn throws
 
-### v0.6.41
+### v0.6.42
+- **Fix: management server uses `Bun.which("bun")` instead of `process.execPath`** — `process.execPath` in OpenCode's embedded bun returns the OpenCode binary path (not bare bun). Spawning `opencode script.js` doesn't run the script. Changed to `Bun.which("bun")` — if bun is in PATH, spawn with it
 - **Fix: management server spawn on bun-less systems** — `src/management-server.ts` was hardcoding `["bun", standalonePath]` in `Bun.spawn()`. On fresh machines where bun is embedded in OpenCode's runtime but not in `$PATH`, this failed with `"Executable not found in $PATH: \"bun\""`. Changed to `process.execPath` which resolves to the current bun binary regardless of PATH
 
 ### v0.6.40

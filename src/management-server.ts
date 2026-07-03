@@ -2,6 +2,10 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { memLog } from "./logging";
+import { Router } from "./management/router";
+import { registerRoutes } from "./management/routes";
+import { serveFile } from "./management/helpers";
+import { createSqliteMemoryStore } from "./storage/sqlite";
 
 interface ManagementConfig {
   enabled: boolean;
@@ -9,6 +13,8 @@ interface ManagementConfig {
 }
 
 let activeProcess: import("bun").Subprocess | null = null;
+let activeServer: import("bun").Server<any> | null = null;
+let serverStore: ReturnType<typeof createSqliteMemoryStore> | null = null;
 
 let mgmtConfig: { enabled: boolean; port: number; directory: string } | null = null;
 
@@ -42,6 +48,48 @@ function killOrphanedServer(_port: number): void {
   }
 }
 
+function startInProcess(directory: string, port: number): void {
+  try {
+    const store = createSqliteMemoryStore(directory);
+    serverStore = store;
+
+    const router = new Router();
+    registerRoutes(router, store);
+
+    const publicDir = path.join(__dirname, "..", "management", "public");
+
+    const server = Bun.serve({
+      port,
+      hostname: "127.0.0.1",
+      async fetch(req) {
+        const result = await router.handle(req);
+        if (result) return result;
+
+        const url = new URL(req.url);
+        const pathname = url.pathname;
+
+        if (pathname === "/") {
+          return serveFile(path.join(publicDir, "index.html"));
+        }
+
+        const filePath = path.join(publicDir, pathname);
+        if (filePath.startsWith(publicDir)) {
+          return serveFile(filePath);
+        }
+
+        return new Response("Not found", { status: 404 });
+      },
+    });
+
+    activeServer = server;
+    memLog("info", "management", `Management server started in-process on http://localhost:${port}`);
+  } catch (err) {
+    memLog("error", "management", "Failed to start in-process management server", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export function ensureManagementServer(): void {
   memLog("info", "management", "ensureManagementServer called", { hasConfig: !!mgmtConfig, enabled: mgmtConfig?.enabled });
   if (mgmtConfig && mgmtConfig.enabled) {
@@ -56,8 +104,8 @@ export function startManagementServer(
 ): void {
   memLog("info", "management", "startManagementServer called", { port: config.port, dir: directory });
 
-  if (activeProcess) {
-    memLog("warn", "management", "Management server already running, killing old instance");
+  if (activeProcess || activeServer) {
+    memLog("warn", "management", "Management server already running, stopping old instance");
     stopManagementServer();
   }
 
@@ -88,7 +136,8 @@ export function startManagementServer(
   }
 
   if (!bunInPath) {
-    memLog("warn", "management", "bun not found in PATH — management server unavailable");
+    memLog("info", "management", "bun not in PATH, starting management server in-process");
+    startInProcess(directory, config.port);
     return;
   }
 
@@ -117,11 +166,10 @@ export function startManagementServer(
 
     memLog("info", "management", `Management server started on http://localhost:${config.port} (pid: ${proc.pid})`);
   } catch (err) {
-    memLog("error", "management", "Failed to start management server", {
+    memLog("error", "management", "Failed to spawn management server, trying in-process fallback", {
       error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-      standalonePath,
     });
+    startInProcess(directory, config.port);
   }
 }
 
@@ -136,6 +184,24 @@ export function stopManagementServer(): void {
       });
     }
     activeProcess = null;
+  }
+  if (activeServer) {
+    try {
+      activeServer.stop();
+      memLog("info", "management", "In-process management server stopped");
+    } catch (err) {
+      memLog("warn", "management", "Error stopping in-process management server", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    activeServer = null;
+  }
+  if (serverStore) {
+    try {
+      serverStore = null;
+    } catch {
+      // best-effort
+    }
   }
 }
 
