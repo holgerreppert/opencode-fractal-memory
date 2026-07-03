@@ -947,7 +947,10 @@ MIT
 
 ## Changelog
 
-### v0.6.40 (current)
+### v0.6.41 (current)
+- **Fix: management server spawn on bun-less systems** — `src/management-server.ts` was hardcoding `["bun", standalonePath]` in `Bun.spawn()`. On fresh machines where bun is embedded in OpenCode's runtime but not in `$PATH`, this failed with `"Executable not found in $PATH: \"bun\""`. Changed to `process.execPath` which resolves to the current bun binary regardless of PATH
+
+### v0.6.40
 - **ONNX runtime fallback** — new `src/infrastructure/llm/onnx-runtime.ts` adapter tries `onnxruntime-node` first, falls back to `onnxruntime-web` (WASM) when native bindings aren't available. Covers Alpine Linux, older glibc, and unsupported architectures. `onnxruntime-web` added to `package.json` dependencies. `getRuntimeInfo()` exported for management UI
 - **Graceful degradation** — `embeddings.ts` and `cross-encoder.ts` now call `ensureOnnxRuntime()` before first use instead of importing the onnxruntime package directly. If both runtimes fail, a descriptive error is thrown
 - **Management UI runtime indicator** — `GET /api/embeddings-status` now reports the actual runtime name (`"node"` or `"web"`) instead of a hardcoded string

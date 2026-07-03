@@ -87,8 +87,8 @@ export function startManagementServer(
   }
 
   try {
-    memLog("info", "management", "Calling Bun.spawn", { bunPath: standalonePath });
-    const proc = Bun.spawn(["bun", standalonePath], {
+    memLog("info", "management", "Calling Bun.spawn", { script: standalonePath, execPath: process.execPath });
+    const proc = Bun.spawn([process.execPath, standalonePath], {
       env: {
         ...process.env,
         MGMT_PORT: String(config.port),
