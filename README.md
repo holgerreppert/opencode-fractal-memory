@@ -42,6 +42,7 @@ if you find bugs or if you just want to suggest improvements
 
 - **Memory nodes** — structured persistent memory with labels, content, metadata, and type system
 - **Semantic search** — ONNX-powered embeddings (all-MiniLM-L6-v2) with HNSW vector index for fast ANN retrieval
+- **Native ONNX runtime** — `onnxruntime-node` with multi-threaded CPU execution (`intraOpNumThreads: 0`), full graph optimization (`graphOptimizationLevel: "all"`), CPU memory arena, and denormal/GELU approximation flags. 12-15× faster embedding inference vs WASM
 - **BM25 hybrid search** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching
 - **Multi-hop temporal expansion** — temporally adjacent nodes (NEXT / DURING_SESSION edges) expanded up to 3 hops with 0.7^depth score decay, configurable via `temporal_hops` arg
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
@@ -712,6 +713,139 @@ Every initialization step is logged with timing in `logs/memory-plugin.log`, mak
 
 All of this happens automatically — no manual intervention required.
 
+## Hook Timeline — Plugin x OpenCode SDK
+
+The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact per-turn lifecycle, from system prompt assembly through tool execution:
+
+### Per-Turn Cycle (each agent reasoning turn)
+
+```
+┌─ PHASE 1: SYSTEM PROMPT ───────────────────────────────────────────┐
+│  experimental.chat.system.transform                                  │
+│                                                                     │
+│  seed-rules        Loads rule:mandatory/*, rule:standard,            │
+│                    rule:suggestion, rule:feature/* from DB →         │
+│                    injects as <system_reminder> tags                  │
+│                                                                     │
+│  output-token-     If context pressure is high, injects a            │
+│  control           concise-output rule into the system prompt        │
+│                                                                     │
+│  graph-tools       If code knowledge graph is built, injects         │
+│                    graph tool usage instructions                     │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ PHASE 2: MESSAGES (before LLM) ───────────────────────────────────┐
+│  experimental.chat.messages.transform                                │
+│                                                                     │
+│  messages-         Calls drilldownQuery(userText) for raw memory     │
+│  transform         injection into the message list                   │
+│                                                                     │
+│  auto-retrieve     Finds memory_search tool results in pending       │
+│                    messages → re-ranks candidates via Ollama /       │
+│                    LLM judge / fallback scorer → rewrites order      │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ PHASE 3: CHAT PARAMS (before LLM) ────────────────────────────────┐
+│  chat.params                                                        │
+│                                                                     │
+│  adaptive-         If pressure phase is warn/aggressive/critical:    │
+│  pressure           → clamps temperature (0.5 → 0.1)                 │
+│                     → clamps maxOutputTokens (4096 → 1024)           │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+╔══════════════════════════════════════════════════════════════════╗
+║  PHASE 4: LLM CALL                                               ║
+║  ─ Agent reasoning happens here ─                                 ║
+║  ─ LLM decides which tools to call ─                              ║
+╚══════════════════════════════════════════════════════════════════╝
+        │
+        ▼  (for EACH tool the LLM calls)
+┌─ PHASE 5: TOOL BEFORE ───────────────────────────────────────────┐
+│  tool.execute.before                                               │
+│                                                                   │
+│  read tool:                                                       │
+│    re-read-elimination  If file cached + mtime unchanged →        │
+│                         serves cached content, **skips** read      │
+│    file-summary         If source code file → checks cached       │
+│                         summary, pre-fills output if found        │
+│    graph-tools          Triggers background graph build if not    │
+│                         already running                           │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ PHASE 6: TOOL EXECUTES ───────────────────────────────────────────┐
+│  (OpenCode runs the actual tool)                                    │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ PHASE 7: TOOL AFTER ────────────────────────────────────────────┐
+│  tool.execute.after                                                │
+│                                                                   │
+│  bash tool:                                                       │
+│    adaptive-           Records output size → prepends pressure     │
+│    pressure            warning if nearing context limit            │
+│    compression         Compresses output via delta / fuzzy-dedup / │
+│                        7 strategies (ls/test/grep/git-*) → may    │
+│                        offload >8KB to scratch dir                 │
+│                                                                   │
+│  read tool:                                                       │
+│    skeletonization    If >200 lines → tree-sitter AST skeleton    │
+│                       or regex fallback replaces full content      │
+│    file-summary       Stores/updates file summary as memory node  │
+│                       (label: file:path)                           │
+│    re-read-           Caches result + mtime for future re-read    │
+│    elimination        elimination checks                          │
+│                                                                   │
+│  memory_* tools:                                                  │
+│    recording          Logs memory tool calls to store +            │
+│                       predictive rating                            │
+│    working-cache      Feeds memory results into in-memory          │
+│                       working cache (used during compaction)      │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ PHASE 8: LOOP ───────────────────────────────────────────────────┐
+│  If there are pending tool results to send back to the LLM →       │
+│  go back to Phase 2 (messages.transform fires again with the       │
+│  new tool results added to the message list)                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Compaction (triggered by OpenCode when context is full)
+
+| Hook | Handler | What it does |
+|---|---|---|
+| `experimental.session.compacting` | compaction | Captures working cache → middle-term context node. Archives full conversation history → storedcontext node (with embedding for semantic recall). Records per-turn token usage stats |
+| `experimental.compaction.autocontinue` | compaction | Forces `output.enabled = true` so the agent auto-resumes after compaction |
+| `event('session.idle')` | events | Auto-distill (LLM extracts rules from lessons) + auto-consolidation + score decay |
+| `event('session.compacted')` | events | Cleanup middle-term captures + score decay + auto-consolidation |
+| `event('session.deleted')` | events | Stops management server if no active sessions remain |
+
+### Key Design Principles
+
+| Principle | Detail |
+|---|---|
+| **Everything runs before the LLM response** | All hooks fire before the LLM generates text — the plugin modifies inputs (system prompt, messages, params) and tool results, never the LLM's response |
+| **Tool execution can be skipped** | Only `tool.execute.before` handlers (re-read-elimination, file-summary) can short-circuit execution by pre-filling the output |
+| **Post-processing feeds the next turn** | `tool.execute.after` modifies tool results that will be sent back to the LLM on the *next* iteration of Phase 2 |
+| **Graceful degradation** | Every handler is wrapped in a try/catch in `hooks.ts` — a single handler failure never crashes the agent |
+| **No auto-injection for memory** | By default, memory retrieval is agent-driven (`memory_search`/`memory_get`). The `messages.transform` hook is an opt-in alternative |
+
+### Source Map
+
+| Hook point | Orchestrator | Individual handlers |
+|---|---|---|
+| `experimental.chat.system.transform` | `src/plugin/hooks.ts:61` | `seed-rules.ts`, `output-token-control.ts`, `graph-tools.ts` |
+| `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts` |
+| `chat.params` | `src/plugin/hooks.ts:73` | `chat-params.ts` |
+| `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts`, `file-summary.ts`, `graph-tools.ts` |
+| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `skeletonization.ts`, `file-summary.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
+| `experimental.session.compacting` | `src/plugin/hooks.ts:67` | `compaction.ts` |
+| `event` | `src/plugin/hooks.ts:77` | `events.ts` |
+
 ## Logs
 
 All plugin logs are consolidated under `~/.config/opencode/logs/`:
@@ -784,8 +918,8 @@ Use `--ignore-scripts` to avoid trust prompts. Models download automatically on 
 │  └───────────────────────────────────────────────────┘  │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
-│  │ ONNX Embedding Model (all-MiniLM-L6-v2)           │  │
-│  │ onnxruntime-web + @huggingface/tokenizers         │  │
+  │  │ ONNX Embedding Model (all-MiniLM-L6-v2)           │  │
+  │  │ onnxruntime-node + @huggingface/tokenizers        │  │
 │  └───────────────────────────────────────────────────┘  │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
@@ -813,7 +947,19 @@ MIT
 
 ## Changelog
 
-### v0.6.38 (current)
+### v0.6.40 (current)
+- **ONNX runtime fallback** — new `src/infrastructure/llm/onnx-runtime.ts` adapter tries `onnxruntime-node` first, falls back to `onnxruntime-web` (WASM) when native bindings aren't available. Covers Alpine Linux, older glibc, and unsupported architectures. `onnxruntime-web` added to `package.json` dependencies. `getRuntimeInfo()` exported for management UI
+- **Graceful degradation** — `embeddings.ts` and `cross-encoder.ts` now call `ensureOnnxRuntime()` before first use instead of importing the onnxruntime package directly. If both runtimes fail, a descriptive error is thrown
+- **Management UI runtime indicator** — `GET /api/embeddings-status` now reports the actual runtime name (`"node"` or `"web"`) instead of a hardcoded string
+- **Plugin hook timeline docs** — comprehensive per-turn lifecycle documentation in README.md covering all 8 phases (system.transform → messages.transform → chat.params → LLM → tool.before → tool.execute → tool.after → loop), compaction flow, design principles table, and source map linking each SDK hook point to its orchestrator and handlers
+
+### v0.6.39
+- **Native ONNX runtime** — switched from `onnxruntime-web` (WASM, single-threaded) to `onnxruntime-node` (native, multi-threaded). Session config: `executionProviders: ["cpu"]`, `graphOptimizationLevel: "all"`, `intraOpNumThreads: 0`, `enableCpuMemArena: true`, `extra: { session: { set_denormal_as_zero: "1" }, optimization: { enable_gelu_approximation: "1" } }`. Benchmarked 5 docs in 27ms (embed) and 3 pairs in 334ms (cross-encoder) after warmup
+- **`generateEmbeddings()` bulk path** — new exported function in `embeddings.ts` supporting batch embedding of multiple texts using a shared session instance; uses parallel execution for small batches (≤4) and sequential for larger sets
+- **Management app Embedding Engine status** — new `GET /api/embeddings-status` endpoint and context dashboard card showing runtime, backend, optimization level, threading, and model info
+- **AGENTS.md update** — quick iteration script now copies `onnxruntime-node` (with native binary) to cache `node_modules/`
+
+### v0.6.38
 - **Code knowledge graph** — new `src/application/graph/` module with `CodeGraph` class (graphology), tree-sitter WASM AST extraction via `process()` API (32 languages), Louvain community detection, god-node analysis, surprising-connections detection, shortest-path query. Edges: `calls`, `imports`, `defined_in`, `references`, `extends` with `EXTRACTED | INFERRED | AMBIGUOUS` confidence
 - **Always-on graph hooks** — `plugin/hooks/graph-tools.ts`: `ensureBackgroundGraph()` on plugin init and `tool.before` for read/grep/glob; graph stats rule injected via `system.transform` hook. Config via `graph.enabled`, `graph.maxFiles`, `graph.ruleEnabled`
 - **MCP graph tools** — `graph_build`, `graph_search`, `graph_path`, `graph_explain`, `graph_usage`. Each process (plugin, MCP, management server) builds its own graph independently — no inter-process dependency on the management server

@@ -2378,9 +2378,13 @@ async function loadContextDashboard() {
   tablesEl.innerHTML = "";
 
   try {
-    const res = await fetch("/api/context-dashboard");
+    const [res, embRes] = await Promise.all([
+      fetch("/api/context-dashboard"),
+      fetch("/api/embeddings-status"),
+    ]);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    const embStatus = embRes.ok ? await embRes.json() : null;
 
     const mem = data.memory;
     const comp = data.compression;
@@ -2401,6 +2405,17 @@ async function loadContextDashboard() {
       <div class="stat-row"><span class="stat-label">Compression Saved</span><span class="stat-value">${comp.savingsPercent}%</span></div>
       <div class="stat-row"><span class="stat-label">Recent Injections</span><span class="stat-value">${inj.length}</span></div>
       <div class="stat-row"><span class="stat-label">Est. Conversation Tokens</span><span class="stat-value">${estimatedConversationTokens.toLocaleString()}</span></div>
+      ${embStatus ? `
+      <div style="border-top:1px solid #333;padding-top:8px;margin-top:8px;">
+        <div style="color:#888;font-size:11px;margin-bottom:4px;">Embedding Engine</div>
+        <div class="stat-row"><span class="stat-label">Runtime</span><span class="stat-value" style="color:#34d399">${embStatus.runtime}</span></div>
+        <div class="stat-row"><span class="stat-label">Backend</span><span class="stat-value">${embStatus.backend}</span></div>
+        <div class="stat-row"><span class="stat-label">Optimization</span><span class="stat-value">${embStatus.graphOptimizationLevel}</span></div>
+        <div class="stat-row"><span class="stat-label">Threads</span><span class="stat-value">auto (${embStatus.intraOpNumThreads})</span></div>
+        <div class="stat-row"><span class="stat-label">Model</span><span class="stat-value">${embStatus.model}</span></div>
+        <div class="stat-row"><span class="stat-label">Dimensions</span><span class="stat-value">${embStatus.dimensions}</span></div>
+        <div class="stat-row"><span class="stat-label">Cross-Encoder</span><span class="stat-value" style="font-size:10px">${embStatus.crossEncoderModel}</span></div>
+      </div>` : ''}
       <div class="stat-row" style="border-top:1px solid #333;padding-top:8px;margin-top:8px;">
         <span class="stat-label"><strong>Est. Total in Context</strong></span>
         <span class="stat-value"><strong>${totalView.toLocaleString()} tokens</strong></span>

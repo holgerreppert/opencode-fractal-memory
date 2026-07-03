@@ -1,5 +1,6 @@
 import { memLog } from "../logging";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
+import { getRuntimeInfo } from "../infrastructure/llm/onnx-runtime";
 import { Router } from "./router";
 import type { IMemoryStore } from "../domain/ports/IMemoryStore";
 import type { MemoryScope } from "../domain/ports/IMemoryStore";
@@ -62,6 +63,9 @@ export function registerRoutes(router: Router, store: IMemoryStore): void {
   // ==================== Version ====================
   router.get(/^\/api\/version$/, () => handleVersion());
 
+  // ==================== Embeddings Status ====================
+  router.get(/^\/api\/embeddings-status$/, () => handleEmbeddingsStatus());
+
   // ==================== Shutdown ====================
   router.get(/^\/api\/shutdown$/, () => handleShutdown());
 
@@ -111,6 +115,12 @@ async function handleProjects(ctx: { scope: string }, store: IMemoryStore): Prom
 
 function handleVersion(): Response {
   return jsonResponse({ version: VERSION });
+}
+
+function handleEmbeddingsStatus(): Response {
+  return jsonResponse({
+    ...getRuntimeInfo(),
+  });
 }
 
 function handleShutdown(): Response {

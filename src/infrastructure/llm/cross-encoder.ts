@@ -1,5 +1,5 @@
-import { InferenceSession, Tensor } from "onnxruntime-web";
 import { Tokenizer } from "@huggingface/tokenizers";
+import { InferenceSession, Tensor, ensureOnnxRuntime } from "./onnx-runtime";
 import { readFile, access } from "node:fs/promises";
 import { join } from "path";
 import { homedir } from "os";
@@ -15,6 +15,7 @@ let tokenizer: Tokenizer | undefined;
 
 async function getSession(): Promise<InferenceSession> {
   if (!session) {
+    await ensureOnnxRuntime();
     try {
       await access(MODEL_PATH);
     } catch {
@@ -24,7 +25,14 @@ async function getSession(): Promise<InferenceSession> {
     memLog("info", "cross-encoder", "Loading cross-encoder model", { path: MODEL_PATH });
     const t = performance.now();
     session = await InferenceSession.create(MODEL_PATH, {
-      executionProviders: ["wasm"],
+      executionProviders: ["cpu"],
+      graphOptimizationLevel: "all",
+      intraOpNumThreads: 0,
+      enableCpuMemArena: true,
+      extra: {
+        session: { set_denormal_as_zero: "1" },
+        optimization: { enable_gelu_approximation: "1" },
+      },
     });
     memLog("info", "cross-encoder", "Cross-encoder model loaded", { durationMs: (performance.now() - t).toFixed(1) });
   }

@@ -39,7 +39,7 @@ Quick iteration (also copies graphology deps for management server):
 bun run build && \
 CACHE=~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory && \
 cp -r dist management package.json LICENSE README.md commands agent "$CACHE/" && \
-for pkg in graphology graphology-communities-louvain graphology-shortest-path graphology-traversal graphology-utils graphology-indices pandemonium @yomguithereal mnemonist obliterator mitt; do \
+for pkg in graphology graphology-communities-louvain graphology-shortest-path graphology-traversal graphology-utils graphology-indices pandemonium @yomguithereal mnemonist obliterator mitt onnxruntime-node onnxruntime-web; do \
   [ -d "node_modules/$pkg" ] && cp -r "node_modules/$pkg" "$CACHE/node_modules/" 2>/dev/null; \
 done
 ```
@@ -68,7 +68,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 ## Key Files
 
 | File | Purpose |
-|---|---|
+|---|---|---|
 | `src/config.ts` | MemConfig interface + Zod schema + defaults |
 | `src/plugin/hooks.ts` | Thin orchestration — calls 9 extracted handlers |
 | `src/plugin/hooks/compression.ts` | Compression handler + feature banner |
@@ -86,6 +86,9 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `src/hooks/output-token-control.ts` | Output token control — rule generation |
 | `src/hooks/re-read-elimination.ts` | Read cache + mtime check |
 | `src/hooks/adaptive-pressure.ts` | Token estimation + pressure phase tracking |
+| `src/infrastructure/llm/onnx-runtime.ts` | ONNX runtime adapter — tries onnxruntime-node first, falls back to onnxruntime-web |
+| `src/infrastructure/llm/embeddings.ts` | ONNX embedding model (all-MiniLM-L6-v2, 384d) |
+| `src/infrastructure/llm/cross-encoder.ts` | ONNX cross-encoder reranker (ms-marco-MiniLM-L-6-v2) |
 | `src/storage/sqlite.ts` | SqliteMemoryStore class |
 | `src/storage/migrations/definitions.ts` | DB migrations (increment version, never modify existing) |
 | `src/logging.ts` | Per-feature logging functions |
