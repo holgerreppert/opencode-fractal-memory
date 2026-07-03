@@ -79,16 +79,22 @@ export function startManagementServer(
 
   mgmtConfig = { enabled: config.enabled, port: config.port, directory };
 
-  memLog("info", "management", "Checking Bun availability", { hasBun: typeof Bun !== "undefined" });
+  const bunInPath = Bun.which("bun");
+  memLog("info", "management", "Checking Bun availability", { hasBun: typeof Bun !== "undefined", bunInPath: !!bunInPath });
 
   if (typeof Bun === "undefined") {
     memLog("error", "management", "Bun is not defined — cannot spawn management server");
     return;
   }
 
+  if (!bunInPath) {
+    memLog("warn", "management", "bun not found in PATH — management server unavailable");
+    return;
+  }
+
   try {
-    memLog("info", "management", "Calling Bun.spawn", { script: standalonePath, execPath: process.execPath });
-    const proc = Bun.spawn([process.execPath, standalonePath], {
+    memLog("info", "management", "Calling Bun.spawn", { script: standalonePath, bunPath: bunInPath });
+    const proc = Bun.spawn([bunInPath, standalonePath], {
       env: {
         ...process.env,
         MGMT_PORT: String(config.port),
