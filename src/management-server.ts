@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
+import * as http from "node:http";
 import * as os from "node:os";
 import { memLog } from "./logging";
 import { Router } from "./management/router";
@@ -13,7 +14,7 @@ interface ManagementConfig {
 }
 
 let activeProcess: import("bun").Subprocess | null = null;
-let activeServer: import("bun").Server<any> | null = null;
+let activeServer: http.Server | null = null;
 let serverStore: ReturnType<typeof createSqliteMemoryStore> | null = null;
 
 let mgmtConfig: { enabled: boolean; port: number; directory: string } | null = null;
@@ -48,6 +49,121 @@ function killOrphanedServer(_port: number): void {
   }
 }
 
+function findBunBinary(): string | null {
+  // 1. Standard PATH check
+  const fromPath = Bun.which("bun");
+  if (fromPath) return fromPath;
+
+  // 2. On Linux, /proc/self/exe may point to bun or a bun-adjacent binary
+  try {
+    if (process.platform === "linux") {
+      const selfExe = fs.readlinkSync("/proc/self/exe");
+      // If process IS bun, use it directly
+      if (selfExe.endsWith("/bun")) return selfExe;
+      // If it's another binary (e.g. opencode), look for bun alongside it
+      const dir = path.dirname(selfExe);
+      const sideBySide = path.join(dir, "bun");
+      if (fs.existsSync(sideBySide)) return sideBySide;
+      // Check parent bin directory
+      const parentBin = path.join(path.resolve(dir, ".."), "bin", "bun");
+      if (fs.existsSync(parentBin)) return parentBin;
+    }
+  } catch {
+    // /proc/self/exe unavailable
+  }
+
+  // 3. Check common installation paths
+  const commonPaths = [
+    "/usr/local/bin/bun",
+    "/usr/bin/bun",
+    path.join(os.homedir(), ".bun", "bin", "bun"),
+    path.join(os.homedir(), ".opencode", "bin", "bun"),
+    path.join(os.homedir(), ".nvm", "versions", "node", process.versions.node || "", "bin", "bun"),
+  ];
+  for (const p of commonPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  return null;
+}
+
+function findNodeBinary(): string | null {
+  const fromPath = Bun.which("node");
+  if (fromPath) return fromPath;
+
+  const commonPaths = [
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+    path.join(os.homedir(), ".nvm", "versions", "node", process.versions.node || "", "bin", "node"),
+  ];
+  for (const p of commonPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+async function toWebRequest(req: http.IncomingMessage): Promise<Request> {
+  const host = req.headers.host || "localhost";
+  const url = new URL(req.url || "/", `http://${host}`);
+  const method = req.method || "GET";
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value) {
+      if (Array.isArray(value)) {
+        for (const v of value) headers.append(key, v);
+      } else {
+        headers.set(key, value);
+      }
+    }
+  }
+
+  let body: Buffer | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    body = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => resolve(Buffer.concat(chunks)));
+      req.on("error", reject);
+    });
+  }
+
+  return new Request(url.toString(), {
+    method,
+    headers,
+    body: body?.length ? body : undefined,
+  });
+}
+
+async function sendWebResponse(res: http.ServerResponse, webRes: Response): Promise<void> {
+  res.statusCode = webRes.status;
+  webRes.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "content-length") {
+      res.setHeader(key, value);
+    }
+  });
+
+  if (webRes.body) {
+    try {
+      const reader = webRes.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            res.end();
+            return;
+          }
+          res.write(value);
+        }
+      };
+      await pump();
+    } catch (err) {
+      if (!res.destroyed) res.destroy(err instanceof Error ? err : new Error(String(err)));
+    }
+  } else {
+    res.end();
+  }
+}
+
 function startInProcess(directory: string, port: number): void {
   try {
     const store = createSqliteMemoryStore(directory);
@@ -58,35 +174,83 @@ function startInProcess(directory: string, port: number): void {
 
     const publicDir = path.join(__dirname, "..", "management", "public");
 
-    const server = Bun.serve({
-      port,
-      hostname: "127.0.0.1",
-      async fetch(req) {
-        const result = await router.handle(req);
-        if (result) return result;
+    const server = http.createServer(async (req, res) => {
+      try {
+        const webReq = await toWebRequest(req);
+        const result = await router.handle(webReq);
+        if (result) {
+          await sendWebResponse(res, result);
+          return;
+        }
 
-        const url = new URL(req.url);
+        const url = new URL(webReq.url);
         const pathname = url.pathname;
 
         if (pathname === "/") {
-          return serveFile(path.join(publicDir, "index.html"));
+          const fileRes = serveFile(path.join(publicDir, "index.html"));
+          await sendWebResponse(res, fileRes);
+          return;
         }
 
         const filePath = path.join(publicDir, pathname);
         if (filePath.startsWith(publicDir)) {
-          return serveFile(filePath);
+          const fileRes = serveFile(filePath);
+          await sendWebResponse(res, fileRes);
+          return;
         }
 
-        return new Response("Not found", { status: 404 });
-      },
+        res.statusCode = 404;
+        res.end("Not found");
+      } catch (err) {
+        memLog("error", "management", "Request error", { error: err instanceof Error ? err.message : String(err) });
+        res.statusCode = 500;
+        res.end("Internal server error");
+      }
+    });
+
+    server.listen(port, "127.0.0.1", () => {
+      memLog("info", "management", `Management server started in-process on http://localhost:${port}`);
     });
 
     activeServer = server;
-    memLog("info", "management", `Management server started in-process on http://localhost:${port}`);
   } catch (err) {
     memLog("error", "management", "Failed to start in-process management server", {
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+function trySpawnSubprocess(interpreterPath: string, standalonePath: string, directory: string, port: number, label: string): boolean {
+  try {
+    memLog("info", "management", `Spawning with ${label}`, { interpreter: interpreterPath, script: standalonePath });
+    const proc = Bun.spawn([interpreterPath, standalonePath], {
+      env: {
+        ...process.env,
+        MGMT_PORT: String(port),
+        MGMT_PROJECT_DIR: directory,
+        MGMT_PID_FILE: PID_FILE,
+      },
+      cwd: directory,
+      stdio: ["ignore", "pipe", "pipe"],
+      deathSignal: "SIGKILL" as any,
+    } as any);
+
+    activeProcess = proc;
+
+    memLog("info", "management", `${label} spawn succeeded`, { pid: proc.pid });
+
+    proc.exited.then((code: number) => {
+      memLog("info", "management", `Management server (${label}) exited (code: ${code})`);
+      if (activeProcess === proc) activeProcess = null;
+    });
+
+    memLog("info", "management", `Management server started on http://localhost:${port} (pid: ${proc.pid}, ${label})`);
+    return true;
+  } catch (err) {
+    memLog("warn", "management", `Failed to spawn with ${label}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
   }
 }
 
@@ -109,7 +273,6 @@ export function startManagementServer(
     stopManagementServer();
   }
 
-  // Kill any orphaned server from a previous session (PID file + graceful shutdown)
   killOrphanedServer(config.port);
   try {
     fetch(`http://127.0.0.1:${config.port}/api/shutdown`).catch(() => {
@@ -127,50 +290,20 @@ export function startManagementServer(
 
   mgmtConfig = { enabled: config.enabled, port: config.port, directory };
 
-  const bunInPath = Bun.which("bun");
-  memLog("info", "management", "Checking Bun availability", { hasBun: typeof Bun !== "undefined", bunInPath: !!bunInPath });
-
-  if (typeof Bun === "undefined") {
-    memLog("error", "management", "Bun is not defined — cannot spawn management server");
-    return;
+  // Spawn chain: bun → node → in-process
+  const bunPath = findBunBinary();
+  if (bunPath) {
+    if (trySpawnSubprocess(bunPath, standalonePath, directory, config.port, "bun")) return;
   }
 
-  if (!bunInPath) {
-    memLog("info", "management", "bun not in PATH, starting management server in-process");
-    startInProcess(directory, config.port);
-    return;
+  const nodePath = findNodeBinary();
+  if (nodePath) {
+    memLog("info", "management", "bun not available, trying node", { nodePath });
+    if (trySpawnSubprocess(nodePath, standalonePath, directory, config.port, "node")) return;
   }
 
-  try {
-    memLog("info", "management", "Calling Bun.spawn", { script: standalonePath, bunPath: bunInPath });
-    const proc = Bun.spawn([bunInPath, standalonePath], {
-      env: {
-        ...process.env,
-        MGMT_PORT: String(config.port),
-        MGMT_PROJECT_DIR: directory,
-        MGMT_PID_FILE: PID_FILE,
-      },
-      cwd: directory,
-      stdio: ["ignore", "pipe", "pipe"],
-      deathSignal: "SIGKILL" as any,
-    } as any);
-
-    activeProcess = proc;
-
-    memLog("info", "management", "Bun.spawn returned successfully", { pid: proc.pid });
-
-    proc.exited.then((code: number) => {
-      memLog("info", "management", `Management server exited (code: ${code})`);
-      if (activeProcess === proc) activeProcess = null;
-    });
-
-    memLog("info", "management", `Management server started on http://localhost:${config.port} (pid: ${proc.pid})`);
-  } catch (err) {
-    memLog("error", "management", "Failed to spawn management server, trying in-process fallback", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    startInProcess(directory, config.port);
-  }
+  memLog("info", "management", "Neither bun nor node available as subprocess, starting in-process");
+  startInProcess(directory, config.port);
 }
 
 export function stopManagementServer(): void {
@@ -187,7 +320,7 @@ export function stopManagementServer(): void {
   }
   if (activeServer) {
     try {
-      activeServer.stop();
+      activeServer.close();
       memLog("info", "management", "In-process management server stopped");
     } catch (err) {
       memLog("warn", "management", "Error stopping in-process management server", {

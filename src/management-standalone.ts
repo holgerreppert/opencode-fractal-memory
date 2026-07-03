@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import * as path from "node:path";
 import * as fs from "node:fs";
+import * as http from "node:http";
 import { memLog } from "./logging";
 import { Router } from "./management/router";
 import { registerRoutes } from "./management/routes";
@@ -18,7 +19,7 @@ if (pidFile) {
     fs.writeFileSync(pidFile, String(process.pid));
     process.on("exit", () => {
       if (fs.existsSync(pidFile)) {
-        fs.unlinkSync(pidFile);
+        try { fs.unlinkSync(pidFile); } catch { /* best-effort */ }
       }
     });
   } catch (e) {
@@ -31,28 +32,103 @@ const store = createSqliteMemoryStore(projectDir);
 const router = new Router();
 registerRoutes(router, store);
 
-Bun.serve({
-  port,
-  hostname: "127.0.0.1",
-  async fetch(req) {
-    const result = await router.handle(req);
-    if (result) return result;
+async function toWebRequest(req: http.IncomingMessage): Promise<Request> {
+  const host = req.headers.host || "localhost";
+  const url = new URL(req.url || "/", `http://${host}`);
+  const method = req.method || "GET";
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value) {
+      if (Array.isArray(value)) {
+        for (const v of value) headers.append(key, v);
+      } else {
+        headers.set(key, value);
+      }
+    }
+  }
 
-    const url = new URL(req.url);
+  let body: Buffer | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    body = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => resolve(Buffer.concat(chunks)));
+      req.on("error", reject);
+    });
+  }
+
+  return new Request(url.toString(), {
+    method,
+    headers,
+    body: body?.length ? body : undefined,
+  });
+}
+
+async function sendWebResponse(res: http.ServerResponse, webRes: Response): Promise<void> {
+  res.statusCode = webRes.status;
+  webRes.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "content-length") {
+      res.setHeader(key, value);
+    }
+  });
+
+  if (webRes.body) {
+    try {
+      const reader = webRes.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            res.end();
+            return;
+          }
+          res.write(value);
+        }
+      };
+      await pump();
+    } catch (err) {
+      if (!res.destroyed) res.destroy(err instanceof Error ? err : new Error(String(err)));
+    }
+  } else {
+    res.end();
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const webReq = await toWebRequest(req);
+    const result = await router.handle(webReq);
+    if (result) {
+      await sendWebResponse(res, result);
+      return;
+    }
+
+    const url = new URL(webReq.url);
     const pathname = url.pathname;
 
     if (pathname === "/") {
-      return serveFile(path.join(publicDir, "index.html"));
+      const fileRes = serveFile(path.join(publicDir, "index.html"));
+      await sendWebResponse(res, fileRes);
+      return;
     }
 
     const filePath = path.join(publicDir, pathname);
     if (filePath.startsWith(publicDir)) {
-      return serveFile(filePath);
+      const fileRes = serveFile(filePath);
+      await sendWebResponse(res, fileRes);
+      return;
     }
 
-    return new Response("Not found", { status: 404 });
-  },
+    res.statusCode = 404;
+    res.end("Not found");
+  } catch (err) {
+    memLog("error", "management", "Request error", { error: err instanceof Error ? err.message : String(err) });
+    res.statusCode = 500;
+    res.end("Internal server error");
+  }
 });
 
-console.log(`Management UI running at http://localhost:${port}`);
-memLog("info", "management", `Management UI started on http://localhost:${port}`);
+server.listen(port, "127.0.0.1", () => {
+  console.log(`Management UI running at http://localhost:${port}`);
+  memLog("info", "management", `Management UI started on http://localhost:${port}`);
+});

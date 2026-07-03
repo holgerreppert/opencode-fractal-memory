@@ -22,8 +22,8 @@ export function serveFile(filePath: string) {
   }
   const ext = path.extname(filePath);
   const mimeType = MIME_TYPES[ext] || "application/octet-stream";
-  const body = Bun.file(filePath);
-  return new Response(body, { headers: { "Content-Type": mimeType, "Cache-Control": "no-cache" } });
+  const content = fs.readFileSync(filePath);
+  return new Response(content, { headers: { "Content-Type": mimeType, "Cache-Control": "no-cache" } });
 }
 
 export function jsonResponse(data: unknown, status = 200) {
@@ -357,7 +357,8 @@ function mkdirSync(dir: string): void {
 }
 
 async function copyFile(src: string, dest: string): Promise<number> {
-  await Bun.write(dest, Bun.file(src));
+  const content = fs.readFileSync(src);
+  fs.writeFileSync(dest, content);
   const stat = fs.statSync(dest);
   return stat.size;
 }
@@ -454,7 +455,7 @@ export async function createBackup(
 
   // Write manifest
   const manifestPath = path.join(dir, "manifest.json");
-  await Bun.write(manifestPath, JSON.stringify(manifest, null, 2));
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
   memLog("info", "backup", `Backup created: ${name}`, {
     sources: sourceKeys,
