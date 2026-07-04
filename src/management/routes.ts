@@ -104,8 +104,10 @@ async function handleConfigSave(req: Request): Promise<Response> {
   return jsonResponse({ success: error === "ok", error: error === "ok" ? null : error });
 }
 
-async function handleProjects(ctx: { scope: string }, store: IMemoryStore): Promise<Response> {
-  const nodes = await store.listNodes(ctx.scope as MemoryScope);
+async function handleProjects(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+  const url = ctx.url;
+  const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
+  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit);
   const projects = new Set<string>();
   for (const n of nodes) {
     projects.add(n.projectName || "(default)");
@@ -131,14 +133,18 @@ function handleShutdown(): Response {
 // ==================== Store-based handlers ====================
 
 async function handleNodes(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
-  const projectName = ctx.url.searchParams.get("project_name") || undefined;
-  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, undefined, undefined, undefined, projectName);
+  const url = ctx.url;
+  const projectName = url.searchParams.get("project_name") || undefined;
+  const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
+  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit, undefined, undefined, projectName);
   return jsonResponse(nodes.map(mapNode));
 }
 
 async function handleLinks(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
-  const projectName = ctx.url.searchParams.get("project_name") || undefined;
-  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, undefined, undefined, undefined, projectName);
+  const url = ctx.url;
+  const projectName = url.searchParams.get("project_name") || undefined;
+  const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
+  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit, undefined, undefined, projectName);
   return jsonResponse(extractLinks(nodes.map(mapNode)));
 }
 
@@ -149,8 +155,10 @@ async function handleTemporalEdges(ctx: { scope: string; url: URL }, store: IMem
 }
 
 async function handleStats(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
-  const projectName = ctx.url.searchParams.get("project_name") || undefined;
-  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, undefined, undefined, undefined, projectName);
+  const url = ctx.url;
+  const projectName = url.searchParams.get("project_name") || undefined;
+  const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
+  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit, undefined, undefined, projectName);
   const stats = computeStats(nodes.map(mapNode));
 
   // Fetch token, compression, and injection efficiency data in parallel
