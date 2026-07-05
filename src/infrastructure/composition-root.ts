@@ -46,7 +46,7 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
   memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created, errors });
 }
 
-export async function createApplication(directory: string, globalDbPath?: string): Promise<ApplicationContext> {
+async function initializeStore(directory: string, globalDbPath?: string): Promise<MemoryStore> {
   memLog("info", "init", "Creating memory store", { directory });
   const store = createSqliteMemoryStore(directory, globalDbPath);
 
@@ -58,41 +58,60 @@ export async function createApplication(directory: string, globalDbPath?: string
   await store.ensureSeed();
   await ensureSeedRules(store);
 
+  return store;
+}
+
+async function ensureAssets(): Promise<void> {
   memLog("info", "init", "Ensuring models");
   await ensureModels();
   memLog("info", "init", "Ensuring agent files");
   await ensureAgentFiles().catch(() => { /* empty */ });
   memLog("info", "init", "Ensuring command files");
   await ensureCommandFiles().catch(() => { /* empty */ });
-  memLog("info", "init", "Cleaning up old middle-term captures");
-  await cleanupMiddleTermCaptures(store).catch(() => { /* empty */ });
+}
 
-  memLog("info", "init", "Loading config");
-  const memConfig = await loadMemConfig(directory);
+async function initializeConfig(directory: string, memConfig: MemConfig): Promise<void> {
   setHighContextThreshold(memConfig.highContextThreshold);
   setCriticalContextThreshold(memConfig.criticalContextThreshold);
   setMaxInjectionTokens(memConfig.maxInjectionTokens);
   setCoreInjectionTokens(memConfig.coreInjectionTokens);
   setAutoCompressThreshold(memConfig.autoCompressThreshold);
   setCacheConfig(memConfig.cacheSize, memConfig.cacheTTLHours);
+}
 
+function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, directory: string): boolean {
   const mgmtConfig = memConfig.management;
-  let managementStarted = false;
-  if (mgmtConfig?.enabled === true) {
-    memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787, directory });
-    try {
-      startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
-      managementStarted = true;
-      memLog("info", "init", "startManagementServer returned", { managementStarted });
-    } catch (err) {
-      memLog("error", "init", "startManagementServer threw", {
-        error: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-    }
-  } else {
+  if (mgmtConfig?.enabled !== true) {
     memLog("info", "init", "Management server disabled", { enabled: mgmtConfig?.enabled });
+    return false;
   }
+  memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787, directory });
+  try {
+    startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
+    memLog("info", "init", "startManagementServer returned");
+    return true;
+  } catch (err) {
+    memLog("error", "init", "startManagementServer threw", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return false;
+  }
+}
+
+export async function createApplication(directory: string, globalDbPath?: string): Promise<ApplicationContext> {
+  const store = await initializeStore(directory, globalDbPath);
+
+  await ensureAssets();
+
+  memLog("info", "init", "Cleaning up old middle-term captures");
+  await cleanupMiddleTermCaptures(store).catch(() => { /* empty */ });
+
+  memLog("info", "init", "Loading config");
+  const memConfig = await loadMemConfig(directory);
+  await initializeConfig(directory, memConfig);
+
+  const managementStarted = maybeStartManagement(store, memConfig, directory);
 
   return { store, memConfig, managementStarted };
 }

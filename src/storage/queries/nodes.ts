@@ -4,6 +4,28 @@ import type { SqliteNode } from "./base";
 import { embeddingToBlob, rowToNode } from "./base";
 import type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryCategory, CreateNodeInput } from "../types";
 import { getHNSWIndex } from "../../infrastructure/vector/hnsw-index";
+import { z } from "zod";
+
+const CreateNodeSchema = z.object({
+  scope: z.enum(["global", "project"]),
+  label: z.string().optional(),
+  content: z.string(),
+  summary: z.string().nullable().optional(),
+  level: z.number().int().min(0).max(5).optional(),
+  parentIds: z.array(z.string()).nullable().optional(),
+  embedding: z.array(z.number()).nullable().optional(),
+  importance: z.number().min(0).max(2).optional(),
+  type: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  sticky: z.boolean().optional(),
+  ttlDays: z.number().int().nullable().optional(),
+  confidence: z.number().min(0).max(2).optional(),
+  usefulnessScore: z.number().min(0).max(5).optional(),
+  timesUsed: z.number().int().min(0).optional(),
+  timesHelpful: z.number().int().min(0).optional(),
+  projectName: z.string().nullable().optional(),
+});
 
 const TYPE_METADATA: Record<string, Record<string, unknown>> = {
   note:                { tags: ["auto-generated"], customType: "note" },
@@ -180,6 +202,7 @@ export async function queryCreateNode(
   updateLinksForNewNode: (scope: MemoryScope, label: string, id: string) => Promise<void>,
   updateBM25Index: (db: Database, id: string, content: string, label: string | undefined, scope: MemoryScope) => void
 ): Promise<MemoryNode> {
+  CreateNodeSchema.parse(node);
   const now = Date.now();
   const id = randomUUID();
   const sticky = node.type === "skill" ? 1 : (node.sticky ? 1 : 0);
