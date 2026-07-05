@@ -16,13 +16,13 @@ export interface MemConfig {
   defaultTtlDays: number;
   autoFileSummarization?: {
     enabled: boolean;
-  };
+  } | undefined;
   adaptivePressure?: {
     enabled: boolean;
     warnThreshold: number;
     aggressiveThreshold: number;
     criticalThreshold: number;
-  };
+  } | undefined;
   commandCompression?: {
     enabled: boolean;
     maxLines: number;
@@ -39,12 +39,12 @@ export interface MemConfig {
     deltaCompressionEnabled: boolean;
     deltaMaxCacheSize: number;
     deltaMinSimilarity: number;
-  };
+  } | undefined;
   fileSkeletonization?: {
     enabled: boolean;
     minLines: number;
     strategy: string;
-  };
+  } | undefined;
   autoRetrieve?: {
     enabled: boolean;
     candidateCount: number;
@@ -54,68 +54,68 @@ export interface MemConfig {
     injectionCooldownMs: number;
     minInjectionScore: number;
     llmJudgeEnabled: boolean;
-  };
+  } | undefined;
   ollama?: {
     enabled: boolean;
     baseUrl: string;
     model: string;
     mode: "binary" | "score";
     strategy: "llm" | "cross-encoder";
-  };
+  } | undefined;
   llmCompression?: {
     enabled: boolean;
     model?: string;
     maxSummaryTokens: number;
-  };
+  } | undefined;
   autoDistill?: {
     enabled: boolean;
     minLessons: number;
     useLlm: boolean;
-  };
+  } | undefined;
   predictiveRating?: {
     enabled: boolean;
     decayDays: number;
     confidenceThreshold: number;
     positiveBoost: number;
     negativePenalty: number;
-  };
+  } | undefined;
   autoConsolidate?: {
     enabled: boolean;
     similarityThreshold: number;
     maxFactsPerCluster: number;
     minClusterSize: number;
-  };
+  } | undefined;
   autoDiscover?: {
     enabled: boolean;
     minSequenceLength: number;
     minRepeatCount: number;
     maxInjectPlaybooks: number;
-  };
+  } | undefined;
   journal?: {
     enabled: boolean;
     tags?: Array<{ name: string; description: string }>;
-  };
+  } | undefined;
   management?: {
     enabled: boolean;
-    port?: number;
-  };
+    port?: number | undefined;
+  } | undefined;
   sessionLog?: {
     enabled: boolean;
-  };
+  } | undefined;
   reReadElimination?: {
     enabled: boolean;
     maxCacheSize: number;
-  };
+  } | undefined;
   outputOffloading?: {
     enabled: boolean;
     thresholdChars: number;
-  };
+  } | undefined;
   smallModel: Record<string, string>;
   graph?: {
     enabled: boolean;
     maxFiles: number;
     ruleEnabled: boolean;
-  };
+  } | undefined;
   outputTokenControl?: {
     enabled: boolean;
     mode: "off" | "always-on" | "adaptive";
@@ -139,7 +139,7 @@ export interface MemConfig {
     aggressivePrompt: string;
     criticalPrompt: string;
     excludePatterns: string[];
-  };
+  } | undefined;
 }
 
 const AutoRetrieveSchema = z.object({
@@ -461,7 +461,7 @@ export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {
 
   try {
     const raw = await fs.promises.readFile(configPath, "utf-8");
-    const parsed = MemConfigSchema.parse(JSON.parse(raw));
+    const parsed = MemConfigSchema.parse(JSON.parse(raw)) as MemConfig;
     return parsed;
   } catch (err) {
     memLog("warn", "config", "Failed to load config, using defaults", { error: String(err), configPath });

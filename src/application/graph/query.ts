@@ -2,7 +2,7 @@ import { bidirectional } from "graphology-shortest-path";
 import type { CodeGraph, NodeData } from "./graph";
 
 export interface PathResult {
-  path: { id: string; label: string; file?: string; line?: number }[];
+  path: { id: string; label: string; file?: string | undefined; line?: number | undefined }[];
   length: number;
 }
 
@@ -31,8 +31,8 @@ export interface NeighborResult {
   id: string;
   label: string;
   relation: string;
-  file?: string;
-  line?: number;
+  file?: string | undefined;
+  line?: number | undefined;
 }
 
 export function getNeighbors(graph: CodeGraph, nodeId: string): NeighborResult[] {
@@ -57,7 +57,7 @@ export interface ExplainResult {
   node: NodeData;
   neighbors: NeighborResult[];
   degree: number;
-  community?: string;
+  community?: string | undefined;
 }
 
 export function explain(graph: CodeGraph, nodeId: string): ExplainResult | null {
@@ -75,9 +75,9 @@ export interface SearchResult {
   id: string;
   label: string;
   type: string;
-  kind?: string;
-  file?: string;
-  line?: number;
+  kind?: string | undefined;
+  file?: string | undefined;
+  line?: number | undefined;
 }
 
 export function searchNodes(graph: CodeGraph, query: string): SearchResult[] {

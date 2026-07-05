@@ -53,7 +53,7 @@ export function rowToNode(row: SqliteNode): MemoryNode {
   return {
     id: row.id,
     scope: row.scope as MemoryScope,
-    label: row.label || undefined,
+    label: row.label ?? null,
     content: row.content,
     summary: row.summary,
     level: row.level as MemoryNodeLevel,

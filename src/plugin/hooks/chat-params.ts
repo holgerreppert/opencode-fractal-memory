@@ -19,7 +19,7 @@ export function createChatParamsHandler(config: MemConfig): HookHandler {
         topP: number;
         topK: number;
         maxOutputTokens: number | undefined;
-        options: Record<string, any>;
+        options: Record<string, unknown>;
       };
 
       switch (phase) {

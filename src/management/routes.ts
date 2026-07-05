@@ -2,8 +2,8 @@ import { memLog } from "../logging";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { getRuntimeInfo } from "../infrastructure/llm/onnx-runtime";
 import { Router } from "./router";
-import type { IMemoryStore } from "../domain/ports/IMemoryStore";
-import type { MemoryScope } from "../domain/ports/IMemoryStore";
+import type { MemoryStore } from "../domain/ports/MemoryStore";
+import type { MemoryScope } from "../domain/ports/MemoryStore";
 import {
   readProjectConfig, writeProjectConfig,
   getAvailableScopes,
@@ -21,7 +21,7 @@ import type { BuildResult } from "../application/graph/build";
 let cachedGraph: CodeGraph | null = null;
 let cachedAnalysis: BuildResult | null = null;
 
-export function registerRoutes(router: Router, store: IMemoryStore): void {
+export function registerRoutes(router: Router, store: MemoryStore): void {
   // ==================== Scopes ====================
   router.get(/^\/api\/scopes$/, () => handleScopes());
 
@@ -104,7 +104,7 @@ async function handleConfigSave(req: Request): Promise<Response> {
   return jsonResponse({ success: error === "ok", error: error === "ok" ? null : error });
 }
 
-async function handleProjects(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+async function handleProjects(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const url = ctx.url;
   const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
   const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit);
@@ -132,7 +132,7 @@ function handleShutdown(): Response {
 
 // ==================== Store-based handlers ====================
 
-async function handleNodes(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+async function handleNodes(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const url = ctx.url;
   const projectName = url.searchParams.get("project_name") || undefined;
   const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
@@ -140,7 +140,7 @@ async function handleNodes(ctx: { scope: string; url: URL }, store: IMemoryStore
   return jsonResponse(nodes.map(mapNode));
 }
 
-async function handleLinks(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+async function handleLinks(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const url = ctx.url;
   const projectName = url.searchParams.get("project_name") || undefined;
   const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
@@ -148,13 +148,13 @@ async function handleLinks(ctx: { scope: string; url: URL }, store: IMemoryStore
   return jsonResponse(extractLinks(nodes.map(mapNode)));
 }
 
-async function handleTemporalEdges(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+async function handleTemporalEdges(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const nodeId = ctx.url.searchParams.get("node_id") || undefined;
   const edges = await store.getTemporalEdges(nodeId ?? "", undefined, undefined, ctx.scope as MemoryScope);
   return jsonResponse(edges);
 }
 
-async function handleStats(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+async function handleStats(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const url = ctx.url;
   const projectName = url.searchParams.get("project_name") || undefined;
   const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
@@ -182,9 +182,9 @@ async function handleStats(ctx: { scope: string; url: URL }, store: IMemoryStore
   if (injectionMetrics && injectionMetrics.length > 0) {
     stats.injectionCount = injectionMetrics.length;
     stats.avgInjectionTokens = Math.round(
-      injectionMetrics.reduce((s: number, m: any) => s + (m.injectedTokens || 0), 0) / injectionMetrics.length
+      injectionMetrics.reduce((s: number, m: { injectedTokens?: number }) => s + (m.injectedTokens || 0), 0) / injectionMetrics.length
     );
-    const helpful = injectionMetrics.filter((m: any) => m.usefulnessScore > 0).length;
+    const helpful = injectionMetrics.filter(m => (m.effectivenessScore ?? 0) > 0).length;
     stats.injectionHelpfulness = injectionMetrics.length > 0
       ? Math.round((helpful / injectionMetrics.length) * 100)
       : 0;
@@ -193,7 +193,7 @@ async function handleStats(ctx: { scope: string; url: URL }, store: IMemoryStore
   return jsonResponse(stats);
 }
 
-async function handleInject(req: Request, store: IMemoryStore): Promise<Response> {
+async function handleInject(req: Request, store: MemoryStore): Promise<Response> {
   const body = await req.json() as { nodeId?: string; scope?: string };
   if (!body.nodeId) return jsonResponse({ success: false, error: "Missing nodeId" }, 400);
   try {
@@ -206,7 +206,7 @@ async function handleInject(req: Request, store: IMemoryStore): Promise<Response
   }
 }
 
-async function handleSearch(ctx: { scope: string; url: URL }, store: IMemoryStore): Promise<Response> {
+async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const q = ctx.url.searchParams.get("q") || "";
   const mode = ctx.url.searchParams.get("mode") || "text";
   const scope = ctx.url.searchParams.get("scope") as MemoryScope | "all" | null;
@@ -237,7 +237,7 @@ async function handleSearch(ctx: { scope: string; url: URL }, store: IMemoryStor
   }
 }
 
-async function handleNodeUpdate(req: Request, ctx: { params: Record<string, string>; scope: string }, store: IMemoryStore): Promise<Response> {
+async function handleNodeUpdate(req: Request, ctx: { params: Record<string, string>; scope: string }, store: MemoryStore): Promise<Response> {
   const nodeId = ctx.params.id!;
   const body = await req.json() as Record<string, unknown>;
 
@@ -262,7 +262,7 @@ async function handleNodeUpdate(req: Request, ctx: { params: Record<string, stri
       updates.embedding = embedding;
     }
 
-    await store.updateNode(nodeId, updates as any);
+    await store.updateNode(nodeId, updates as Parameters<typeof store.updateNode>[1]);
     memLog("info", "management", `[api] Updated node ${nodeId}`);
     return jsonResponse({ success: true });
   } catch (e) {
@@ -271,7 +271,7 @@ async function handleNodeUpdate(req: Request, ctx: { params: Record<string, stri
   }
 }
 
-async function handleNodeDelete(ctx: { params: Record<string, string>; scope: string }, store: IMemoryStore): Promise<Response> {
+async function handleNodeDelete(ctx: { params: Record<string, string>; scope: string }, store: MemoryStore): Promise<Response> {
   const nodeId = ctx.params.id!;
   try {
     await store.getNode(nodeId); // verify exists
@@ -283,7 +283,7 @@ async function handleNodeDelete(ctx: { params: Record<string, string>; scope: st
   }
 }
 
-async function handleCompressionStats(req: Request, store: IMemoryStore): Promise<Response> {
+async function handleCompressionStats(req: Request, store: MemoryStore): Promise<Response> {
   const url = new URL(req.url);
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit ? Math.min(parseInt(rawLimit, 10), 500) : 100;
@@ -292,7 +292,7 @@ async function handleCompressionStats(req: Request, store: IMemoryStore): Promis
   return jsonResponse(stats);
 }
 
-async function handleTokenHistory(req: Request, store: IMemoryStore): Promise<Response> {
+async function handleTokenHistory(req: Request, store: MemoryStore): Promise<Response> {
   const url = new URL(req.url);
   const days = parseInt(url.searchParams.get("days") ?? "30", 10);
   const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
@@ -300,7 +300,7 @@ async function handleTokenHistory(req: Request, store: IMemoryStore): Promise<Re
   return jsonResponse(history);
 }
 
-async function handleInjectionQuality(req: Request, store: IMemoryStore): Promise<Response> {
+async function handleInjectionQuality(req: Request, store: MemoryStore): Promise<Response> {
   const url = new URL(req.url);
   const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
   try {
@@ -311,7 +311,7 @@ async function handleInjectionQuality(req: Request, store: IMemoryStore): Promis
   }
 }
 
-async function handleContextDashboard(store: IMemoryStore): Promise<Response> {
+async function handleContextDashboard(store: MemoryStore): Promise<Response> {
   return jsonResponse(await store.getContextDashboard());
 }
 
@@ -488,7 +488,16 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function mapNode(n: any) {
+function mapNode(n: {
+  id: string; label: string | null; content: string; summary: string | null;
+  level: number; type: string | null; importance: number;
+  usefulnessScore: number | null; timesUsed: number | null; timesHelpful: number | null;
+  accessCount: number | null; sticky: boolean; confidence: number | null;
+  createdAt: Date; updatedAt: Date;
+  parentIds: string[] | null;
+  metadata: Record<string, unknown> | null;
+  projectName: string | null;
+}) {
   return {
     id: n.id,
     label: n.label || "",

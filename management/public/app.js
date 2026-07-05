@@ -243,6 +243,7 @@ class SceneController {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById("canvas-container").appendChild(this.renderer.domElement);
 
+    this.layoutMode = "shell";
     this.nodeObjects = [];
     this.edgeObjects = [];
     this.nodePositions = new Map();
@@ -431,14 +432,29 @@ class SceneController {
     this.nodeVelocities.clear();
   }
 
-  buildFromData(data) {
+  buildFromData(data, layoutMode = "shell") {
     this.clear();
+    this.layoutMode = layoutMode;
 
     if (data.length === 0) {
       console.log("[scene] No data to build");
       return;
     }
 
+    if (layoutMode === "shell") {
+      this._computeShellPositions(data);
+    } else if (layoutMode === "type-cluster") {
+      this._computeTypeClusterPositions(data);
+    } else {
+      this._computeForcePositions(data);
+    }
+
+    this._createNodeMeshes(data);
+
+    console.log(`[scene] Built ${data.length} nodes → ${this.nodeObjects.filter(o => o.isMesh).length} meshes`);
+  }
+
+  _computeShellPositions(data) {
     const levelGroups = {};
     const levelCounters = {};
     const levelCounts = {};
@@ -455,7 +471,6 @@ class SceneController {
 
     for (const node of data) {
       if (!node) continue;
-
       const lvl = node.level ?? 3;
       const count = levelCounts[lvl];
       const idx = levelCounters[lvl]++;
@@ -464,6 +479,78 @@ class SceneController {
       const pos = fibonacciSphere(idx, count, radius);
       this.nodePositions.set(node.id, pos);
       this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
+    }
+  }
+
+  _computeTypeClusterPositions(data) {
+    const typeGroups = {};
+    const typeCounts = {};
+    for (const node of data) {
+      if (!node) continue;
+      const type = node.type || "unknown";
+      if (!typeGroups[type]) { typeGroups[type] = []; typeCounts[type] = 0; }
+      typeGroups[type].push(node);
+      typeCounts[type]++;
+    }
+
+    const types = Object.keys(typeGroups);
+    const typeSphereRadius = 180;
+
+    const typeCenters = {};
+    types.forEach((type, idx) => {
+      typeCenters[type] = fibonacciSphere(idx, types.length, typeSphereRadius);
+    });
+
+    for (const type of types) {
+      const nodes = typeGroups[type];
+      const center = typeCenters[type];
+
+      const levelGroups = {};
+      const levelCounts = {};
+      for (const node of nodes) {
+        const lvl = node.level ?? 3;
+        if (!levelGroups[lvl]) { levelGroups[lvl] = []; levelCounts[lvl] = 0; }
+        levelGroups[lvl].push(node);
+        levelCounts[lvl]++;
+      }
+
+      const sortedLevels = Object.keys(levelCounts).map(Number).sort((a, b) => a - b);
+      const maxCount = Math.max(...sortedLevels.map(l => levelCounts[l]));
+      const baseClusterRadius = Math.max(12, Math.sqrt(maxCount) * 5);
+
+      sortedLevels.forEach((lvl, i) => {
+        const levelNodes = levelGroups[lvl];
+        const count = levelCounts[lvl];
+        const radius = baseClusterRadius + i * 6;
+
+        levelNodes.forEach((node, idx) => {
+          const localPos = fibonacciSphere(idx, count, radius);
+          const pos = new THREE.Vector3().copy(center).add(localPos);
+          this.nodePositions.set(node.id, pos);
+          this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
+        });
+      });
+    }
+
+    this.shellRadii = {};
+  }
+
+  _computeForcePositions(data) {
+    const count = data.length;
+    data.forEach((node, idx) => {
+      if (!node) return;
+      const pos = fibonacciSphere(idx, count, 80);
+      this.nodePositions.set(node.id, pos);
+      this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
+    });
+    this.shellRadii = {};
+  }
+
+  _createNodeMeshes(data) {
+    for (const node of data) {
+      if (!node) continue;
+      const pos = this.nodePositions.get(node.id);
+      if (!pos) continue;
 
       const size = getNodeSize(node);
       const customType = node.metadata?.customType;
@@ -498,8 +585,6 @@ class SceneController {
       this.scene.add(label);
       this.nodeObjects.push(label);
     }
-
-    console.log(`[scene] Built ${data.length} nodes → ${this.nodeObjects.filter(o => o.isMesh).length} meshes`);
   }
 
   buildEdges(linkData) {
@@ -729,16 +814,18 @@ class SceneController {
       if (temporalEdgeData) applySpringForces(temporalEdgeData, "source_node_id", "target_node_id");
 
       // --- Shell constraint (gentle centering) ---
+      const shellMultiplier = this.layoutMode === "shell" ? 1.0 :
+                              this.layoutMode === "type-cluster" ? 0.15 : 0.03;
+      const forceTargetRadius = 400;
       for (const id of ids) {
         const pos = this.nodePositions.get(id);
         const vel = this.nodeVelocities.get(id);
         if (!pos || !vel) continue;
         const lvl = nodeLevels.get(id) ?? 3;
-        const targetRadius = radii[lvl] ?? 120;
+        const targetRadius = this.layoutMode === "shell" ? (radii[lvl] ?? 120) : forceTargetRadius;
         const curDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
 
-        // Gentle pull toward target radius
-        const shellForce = (targetRadius - curDist) * 0.008 * (0.5 + cooling * 0.5);
+        const shellForce = (targetRadius - curDist) * 0.008 * (0.5 + cooling * 0.5) * shellMultiplier;
         vel.x += (pos.x / curDist) * shellForce;
         vel.y += (pos.y / curDist) * shellForce;
         vel.z += (pos.z / curDist) * shellForce;
@@ -755,7 +842,9 @@ class SceneController {
         pos.add(vel);
 
         // Hard clamp to max radius
-        const maxRadius = Math.max(targetRadius + 80, targetRadius * 1.35);
+        const maxRadius = this.layoutMode === "shell"
+          ? Math.max(targetRadius + 80, targetRadius * 1.35)
+          : forceTargetRadius * 1.5;
         const newDist = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
         if (newDist > maxRadius) {
           const scale = maxRadius / newDist;
@@ -910,6 +999,7 @@ let editingNode = null;
 let currentScope = "project";
 let currentProject = "";
 let availableScopes = [];
+let currentLayoutMode = "shell";
 
 let graphViz = null;
 let graphData = null;
@@ -1093,6 +1183,18 @@ function setupEventListeners() {
     }
   });
 
+  // Layout buttons
+  document.getElementById("sidebar").addEventListener("click", (e) => {
+    const btn = e.target.closest(".layout-btn");
+    if (!btn) return;
+    const layout = btn.dataset.layout;
+    if (layout === currentLayoutMode) return;
+    currentLayoutMode = layout;
+    document.querySelectorAll(".layout-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    reLayout();
+  });
+
   // Legend popover toggle
   const legendToggle = document.getElementById("legend-toggle-btn");
   if (legendToggle) {
@@ -1153,6 +1255,18 @@ function setupEventListeners() {
   });
 }
 
+// ==================== Re-Layout ====================
+
+function reLayout() {
+  if (!nodeData || nodeData.length === 0) return;
+  sceneCtrl.clear();
+  sceneCtrl.buildFromData(nodeData, currentLayoutMode);
+  sceneCtrl.buildEdges(linkData);
+  sceneCtrl.buildTemporalEdges(temporalEdgeData);
+  sceneCtrl.runSimulation(200, linkData, temporalEdgeData);
+  sceneCtrl.updateVisibility(filterEngine);
+}
+
 // ==================== Data Loading ====================
 
 async function loadData() {
@@ -1187,7 +1301,7 @@ async function loadData() {
     }
 
     try {
-      sceneCtrl.buildFromData(nodeData);
+      sceneCtrl.buildFromData(nodeData, currentLayoutMode);
       sceneCtrl.buildEdges(linkData);
       sceneCtrl.buildTemporalEdges(temporalEdgeData);
       sceneCtrl.runSimulation(300, linkData, temporalEdgeData);

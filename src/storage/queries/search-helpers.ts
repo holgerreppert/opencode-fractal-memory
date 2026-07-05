@@ -252,13 +252,13 @@ export function computeBM25ScoresSQL(
 }
 
 export type SearchOptions = {
-  minLevel?: MemoryNodeLevel;
-  maxLevel?: MemoryNodeLevel;
-  bm25Weight?: number;
-  queryText?: string;
-  minUsefulness?: number;
-  rerank?: boolean;
-  bm25Scores?: Map<string, number>;
+  minLevel?: MemoryNodeLevel | undefined;
+  maxLevel?: MemoryNodeLevel | undefined;
+  bm25Weight?: number | undefined;
+  queryText?: string | undefined;
+  minUsefulness?: number | undefined;
+  rerank?: boolean | undefined;
+  bm25Scores?: Map<string, number> | undefined;
 };
 
 export function computeFinalScores(

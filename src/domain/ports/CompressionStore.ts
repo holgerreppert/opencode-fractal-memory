@@ -60,7 +60,7 @@ export type TokenHistoryResult = {
   recentTurns: Array<TokenTrackingEntry>;
 };
 
-export interface ICompressionStore {
+export interface CompressionStore {
   recordCompressionStat(stat: {
     sessionId?: string; command: string; strategy: string;
     originalChars: number; compressedChars: number;

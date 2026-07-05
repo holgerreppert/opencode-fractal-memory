@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { IInjectionStore } from "../../../domain/ports/IInjectionStore";
+import type { InjectionStore } from "../../../domain/ports/InjectionStore";
 import {
   insertInjectionMetrics, getPendingInjections as getPendingInjectionRows,
   markInjectionProcessed as markProcessed,
@@ -8,7 +8,7 @@ import {
   updateMemoryToolCall,
 } from "../../../storage/injection-events";
 
-export class SqliteInjectionStore implements IInjectionStore {
+export class SqliteInjectionStore implements InjectionStore {
   constructor(private getGlobalDb: () => Promise<Database>) {}
 
   async logInjectionMetrics(

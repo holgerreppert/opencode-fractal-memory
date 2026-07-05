@@ -9,7 +9,7 @@ export interface PredictiveRatingConfig {
 
 export async function predictiveRateToolCall(
   store: MemoryStore,
-  input: { tool: string; args?: Record<string, unknown>; sessionID?: string },
+  input: { tool: string; args?: Record<string, unknown> | undefined; sessionID?: string | undefined },
   output: { metadata?: { error?: unknown } },
   config: PredictiveRatingConfig
 ): Promise<void> {

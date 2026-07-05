@@ -12,7 +12,7 @@ export const lastSearchResults: Array<{ id: string; label: string | undefined; s
 
 export async function resolveNode(
   store: MemoryStore,
-  args: { id?: string; label?: string; scope?: string }
+  args: { id?: string | undefined; label?: string | undefined; scope?: string | undefined }
 ): Promise<MemoryNode> {
   if (args.id) {
     try {
@@ -43,6 +43,7 @@ export function wrapWithContextWarning(result: string, extraTokens = 0): string 
   return result;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function wrapWithTracking(toolDef: any, store: MemoryStore | undefined | null, toolName: string): typeof toolDef {
   if (!store) return toolDef;
   const originalExecute = toolDef.execute;

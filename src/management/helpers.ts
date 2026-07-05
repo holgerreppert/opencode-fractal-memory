@@ -3,6 +3,65 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { memLog } from "../logging";
 
+interface DbRow {
+  id: string;
+  label: string | null;
+  content: string;
+  summary: string | null;
+  level: number | null;
+  type: string | null;
+  importance: number | null;
+  usefulness_score: number | null;
+  times_used: number | null;
+  times_helpful: number | null;
+  access_count: number | null;
+  sticky: number;
+  confidence: number | null;
+  created_at: number;
+  updated_at: number;
+  parent_ids: string | null;
+  content_length: number;
+  metadata: string | null;
+  project_name: string | null;
+}
+
+interface MgmtNode {
+  id: string;
+  label: string;
+  content: string;
+  summary: string | null;
+  level: number;
+  type: string | null;
+  importance: number;
+  usefulnessScore: number | null;
+  timesUsed: number | null;
+  timesHelpful: number | null;
+  accessCount: number | null;
+  sticky: boolean;
+  confidence: number | null;
+  createdAt: number;
+  updatedAt: number;
+  parentIds: string[] | null;
+  contentLength: number;
+  metadata: Record<string, unknown> | null;
+  projectName: string | null;
+}
+
+interface NodeLike {
+  id: string;
+  label: string | null;
+  content: string;
+  type: string | null;
+  level: number;
+  importance: number;
+  usefulnessScore: number | null;
+  accessCount: number | null;
+  sticky: boolean;
+  projectName: string | null;
+  metadata: Record<string, unknown> | null;
+  parentIds: string[] | null;
+}
+
 function getDbPath(): string {
   return path.join(os.homedir(), ".config", "opencode", "memory.db");
 }
@@ -33,15 +92,15 @@ export function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-export function rowToNode(r: any) {
+export function rowToNode(r: DbRow): MgmtNode {
   return {
     id: r.id,
     label: r.label || "",
     content: r.content,
     summary: r.summary,
-    level: r.level,
+    level: r.level ?? 0,
     type: r.type,
-    importance: r.importance,
+    importance: r.importance ?? 0.5,
     usefulnessScore: r.usefulness_score,
     timesUsed: r.times_used,
     timesHelpful: r.times_helpful,
@@ -52,15 +111,15 @@ export function rowToNode(r: any) {
     updatedAt: r.updated_at,
     parentIds: r.parent_ids ? JSON.parse(r.parent_ids) : null,
     contentLength: r.content_length,
-    metadata: r.metadata ? JSON.parse(r.metadata) : null,
+    metadata: r.metadata ? JSON.parse(r.metadata) as Record<string, unknown> : null,
     projectName: r.project_name ?? null,
   };
 }
 
 
 
-export function extractLinks(nodes: any[]) {
-  const links: any[] = [];
+export function extractLinks(nodes: NodeLike[]) {
+  const links: Array<{ source: string; target: string; type: string }> = [];
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
   const seen = new Set<string>();
   for (const node of nodes) {
@@ -76,7 +135,7 @@ export function extractLinks(nodes: any[]) {
       }
     }
     const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = wikiLinkRegex.exec(node.content)) !== null) {
       const targetLabel = match[1];
       const target = nodes.find(n => n.label === targetLabel);
@@ -119,12 +178,12 @@ export const CUSTOM_TYPE_SHAPES: Record<string, string> = {
   "middle-term": "torus",
 };
 
-export function resolveNodeShape(node: any): string {
-  const customType = node.metadata?.customType;
+export function resolveNodeShape(node: { type?: string | null; metadata?: Record<string, unknown> | null }): string {
+  const customType = node.metadata?.customType as string | undefined;
   if (customType && CUSTOM_TYPE_SHAPES[customType]) {
     return CUSTOM_TYPE_SHAPES[customType];
   }
-  return TYPE_SHAPES[node.type] ?? "sphere";
+  return TYPE_SHAPES[node.type ?? ""] ?? "sphere";
 }
 
 export interface StatsResult {
@@ -151,7 +210,7 @@ export interface StatsResult {
   injectionHelpfulness?: number;
 }
 
-export function computeStats(nodes: any[]): StatsResult {
+export function computeStats(nodes: NodeLike[]): StatsResult {
   const nodesPerLevel: Record<number, number> = {};
   const nodesPerType: Record<string, number> = {};
   const nodesPerCustomType: Record<string, number> = {};
@@ -165,7 +224,7 @@ export function computeStats(nodes: any[]): StatsResult {
     nodesPerLevel[node.level] = (nodesPerLevel[node.level] ?? 0) + 1;
     const typeKey = node.type || "unknown";
     nodesPerType[typeKey] = (nodesPerType[typeKey] ?? 0) + 1;
-    const customType = node.metadata?.customType;
+    const customType = node.metadata?.customType as string | undefined;
     if (customType) {
       nodesPerCustomType[customType] = (nodesPerCustomType[customType] ?? 0) + 1;
     }
@@ -174,8 +233,8 @@ export function computeStats(nodes: any[]): StatsResult {
     const project = node.projectName || "(default)";
     nodesPerProject[project] = (nodesPerProject[project] ?? 0) + 1;
     totalImportance += node.importance;
-    totalUsefulness += node.usefulnessScore;
-    totalAccessCount += node.accessCount;
+    totalUsefulness += (node.usefulnessScore ?? 0);
+    totalAccessCount += (node.accessCount ?? 0);
     if (node.sticky) stickyCount++;
   }
   const n = nodes.length || 1;
@@ -257,7 +316,7 @@ export interface BackupSourceInfo {
 export interface BackupManifest {
   name: string;
   date: string;
-  label?: string;
+  label?: string | undefined;
   sources: Record<string, {
     label: string;
     files: Array<{ original: string; stored: string; size: number; }>;
@@ -269,7 +328,7 @@ export interface BackupManifest {
 export interface BackupEntry {
   name: string;
   date: string;
-  label?: string;
+  label?: string | undefined;
   totalSize: number;
   sources: Record<string, {
     label: string;
@@ -382,7 +441,7 @@ async function copyDir(src: string, dest: string): Promise<number> {
 export async function createBackup(
   sourceKeys: string[],
   label?: string,
-): Promise<{ name: string; date: string; label?: string; sources: string[]; error?: string }> {
+): Promise<{ name: string; date: string; label?: string | undefined; sources: string[]; error?: string | undefined }> {
   const allSources = getBackupSources();
   const selected = allSources.filter(s => sourceKeys.includes(s.key));
 

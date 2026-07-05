@@ -89,7 +89,7 @@ export function MemorySearch(store: MemoryStore) {
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 
       lastSearchResults.length = 0;
-      lastSearchResults.push(...nodes.map(n => ({ id: n.id, label: n.label, scope: n.scope })));
+      lastSearchResults.push(...nodes.map(n => ({ id: n.id, label: n.label ?? undefined, scope: n.scope })));
 
       if (args.expand_links !== false && nodes.length > 0) {
         const expandLimit = (args.limit ?? 10) + 5;

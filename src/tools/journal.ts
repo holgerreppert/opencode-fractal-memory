@@ -111,7 +111,7 @@ export function JournalSearch(store: JournalStore) {
           ? `\nTags in use: ${result.allTags.join(", ")}`
           : "";
 
-        const lines = result.entries.map((e: any) => {
+        const lines = result.entries.map((e: { id: string; title: string; tags: string[]; created: Date }) => {
         const tagStr = e.tags.length > 0 ? ` [${e.tags.join(", ")}]` : "";
         return `${e.id}\n  ${e.title}${tagStr}\n  ${e.created.toISOString()}`;
       });

@@ -10,6 +10,7 @@ import { trackBuild, trackBackgroundBuild } from "./usage";
 import { memLog } from "../../logging";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type WasmModule = any;
 
 let wasmMod: WasmModule | null = null;

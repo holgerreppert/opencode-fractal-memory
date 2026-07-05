@@ -1,4 +1,4 @@
-export interface IInjectionStore {
+export interface InjectionStore {
   logInjectionMetrics(sessionId: string, data: {
     injectedNodeCount: number; injectedTokens: number; injectionMode: string;
     queryText?: string; preRerankIds?: string[]; postRerankIds?: string[];

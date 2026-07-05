@@ -98,12 +98,12 @@ export function MemorySet(store: MemoryStore) {
           const embedding = args.no_embedding ? null : await tryGenerateEmbedding(args.content, "Failed to regenerate embedding on update");
           const updates: Parameters<typeof store.updateNode>[1] = {
             content: normalizeContent(args.content),
-            summary: args.summary ?? undefined,
-            level: args.level as 0 | 1 | 2 | 3 | 4 | 5 | undefined,
-            type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | undefined,
+            ...(args.summary !== undefined ? { summary: args.summary } : {}),
+            ...(args.level !== undefined ? { level: args.level as 0 | 1 | 2 | 3 | 4 | 5 } : {}),
+            ...(args.type !== undefined ? { type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" } : {}),
             sticky,
-            embedding,
-            metadata: metadata ?? undefined,
+            ...(embedding !== null ? { embedding } : {}),
+            ...(metadata !== null ? { metadata } : {}),
           };
           
           if (args.usefulness_score !== undefined) {

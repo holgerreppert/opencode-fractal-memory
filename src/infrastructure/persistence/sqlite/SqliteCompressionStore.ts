@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
-import type { ICompressionStore, CompressionStatsResult, ContextDashboardResult, TokenTrackingEntry, TokenHistoryResult } from "../../../domain/ports/ICompressionStore";
+import type { CompressionStore, CompressionStatsResult, ContextDashboardResult, TokenTrackingEntry, TokenHistoryResult } from "../../../domain/ports/CompressionStore";
 import { queryInjectionMetrics } from "../../../storage/injection-events";
 
-export class SqliteCompressionStore implements ICompressionStore {
+export class SqliteCompressionStore implements CompressionStore {
   constructor(private getDb: () => Promise<Database>) {}
 
   async recordCompressionStat(stat: {

@@ -63,19 +63,19 @@ export async function searchByEmbedding(
   query: number[],
   limit: number = 5,
   options?: {
-    minLevel?: MemoryNodeLevel;
-    maxLevel?: MemoryNodeLevel;
-    levelWeights?: Partial<Record<MemoryNodeLevel, number>>;
-    bm25Weight?: number;
-    queryText?: string;
-    minUsefulness?: number;
-    rerank?: boolean;
-    bm25Scores?: Map<string, number>;
-    projectName?: string;
-    temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number };
-    temporalHops?: number;
-    categoryFilter?: MemoryCategory;
-    typeFilter?: MemoryNodeType;
+    minLevel?: MemoryNodeLevel | undefined;
+    maxLevel?: MemoryNodeLevel | undefined;
+    levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
+    bm25Weight?: number | undefined;
+    queryText?: string | undefined;
+    minUsefulness?: number | undefined;
+    rerank?: boolean | undefined;
+    bm25Scores?: Map<string, number> | undefined;
+    projectName?: string | undefined;
+    temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
+    temporalHops?: number | undefined;
+    categoryFilter?: MemoryCategory | undefined;
+    typeFilter?: MemoryNodeType | undefined;
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
@@ -303,7 +303,7 @@ export async function getDrilldownPath(
 export async function drilldownQuery(
   deps: {
     getDb: (scope: MemoryScope) => Promise<Database>;
-    searchByEmbedding: (query: number[], limit: number, options?: any) => Promise<MemoryNode[]>;
+    searchByEmbedding: (query: number[], limit: number, options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; projectName?: string | undefined }) => Promise<MemoryNode[]>;
     getDrilldownPath: (nodeId: string, maxDepth: number) => Promise<MemoryNode[]>;
   },
   query: string,

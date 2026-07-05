@@ -22,7 +22,7 @@ export interface AutoRetrieveDeps {
   store: MemoryStore;
   config: MemConfig;
   client?: unknown;
-  currentSessionId?: { value: string };
+  currentSessionId?: { value: string } | undefined;
   log: (level: "debug" | "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => void;
 }
 

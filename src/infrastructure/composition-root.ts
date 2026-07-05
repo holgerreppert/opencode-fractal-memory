@@ -101,7 +101,7 @@ export function createAutoRetrieve(
   store: MemoryStore,
   memConfig: MemConfig,
   client?: unknown,
-  currentSessionId?: { value: string },
+  currentSessionId?: { value: string } | undefined,
 ) {
   return memConfig?.autoRetrieve?.enabled
     ? createAutoRetrieveHook({

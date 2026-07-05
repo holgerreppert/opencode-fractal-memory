@@ -2,9 +2,9 @@ import type {
   MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType,
   MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult,
   DrilldownResult, TemporalEdge,
-} from "./IMemoryStore";
+} from "./MemoryStore";
 
-export interface INodeRepository {
+export interface NodeRepository {
   readonly projectName: string;
   ensureSeed(): Promise<void>;
   listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string, category?: MemoryCategory): Promise<MemoryNode[]>;
@@ -12,17 +12,17 @@ export interface INodeRepository {
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
   getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode>;
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
-  updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void>;
+  updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
   deleteNode(id: string): Promise<void>;
-  searchByEmbedding(query: number[], limit?: number, options?: {
-    minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel;
-    levelWeights?: Partial<Record<MemoryNodeLevel, number>>;
-    bm25Weight?: number; queryText?: string; minUsefulness?: number;
-    bm25Scores?: Map<string, number>; projectName?: string;
-    temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number };
-    categoryFilter?: MemoryCategory; typeFilter?: MemoryNodeType;
+  searchByEmbedding(query: number[], limit?: number | undefined, options?: {
+    minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined;
+    levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
+    bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined;
+    bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined;
+    temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
+    categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined;
   }): Promise<MemoryNode[]>;
-  getFractalStats(scope: MemoryScope | "all", projectName?: string): Promise<FractalStats>;
+  getFractalStats(scope: MemoryScope | "all", projectName?: string | undefined): Promise<FractalStats>;
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;
   detectTopicBoundaries(scope: MemoryScope | "all", minSimilarity?: number, projectName?: string): Promise<MemoryNode[][]>;
   drilldownQuery(query: string, maxResults?: number, projectName?: string): Promise<DrilldownResult[]>;

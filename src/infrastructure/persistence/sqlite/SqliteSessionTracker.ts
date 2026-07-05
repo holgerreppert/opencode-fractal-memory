@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ISessionTracker } from "../../../domain/ports/ISessionTracker";
+import type { SessionTracker } from "../../../domain/ports/SessionTracker";
 import {
   insertToolUsageLog, queryToolPatterns, queryFrequentSequences, deleteUsageLog, getToolCategory,
 } from "../../../storage/tool-usage";
@@ -10,7 +10,7 @@ import {
 import { querySessionMetrics } from "../../../storage/injection-events";
 import { updateMemoryToolCall } from "../../../storage/injection-events";
 
-export class SqliteSessionTracker implements ISessionTracker {
+export class SqliteSessionTracker implements SessionTracker {
   constructor(private getGlobalDb: () => Promise<Database>) {}
 
   async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {

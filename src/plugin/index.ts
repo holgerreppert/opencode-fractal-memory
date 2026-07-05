@@ -13,7 +13,8 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   memLog("info", "init", "Plugin initialization started", { directory, serverUrl: ctx.serverUrl.origin });
 
   let t = perfNow();
-  let store: any, memConfig: any;
+  let store!: import("../storage/sqlite").MemoryStore;
+  let memConfig!: import("../infrastructure/config/config").MemConfig;
   try {
     const app = await createApplication(directory);
     store = app.store;
@@ -52,7 +53,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   memLog("info", "init", "Plugin initialization completed", { totalDurationMs: perfNow() - t0 });
 
-  const smallModelMap = ((memConfig as any).smallModel ?? {}) as Record<string, string>;
+  const smallModelMap = (memConfig.smallModel ?? {}) as Record<string, string>;
 
   return {
     ...handlers,

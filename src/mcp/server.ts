@@ -268,7 +268,7 @@ export async function createMemoryMcpServer(projectDir: string, globalDbPath: st
             level: args.level as 0 | 1 | 2 | 3 | 4 | 5,
             type: (args.type as MemoryNodeType | null) ?? null,
             importance: args.importance,
-            metadata: metadata ?? undefined,
+            metadata: metadata,
           });
           return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, id: existing.id, action: "updated" }) }] };
         }

@@ -55,12 +55,12 @@ export async function pruneNodes(
   },
   scope: MemoryScope | "all",
   options: {
-    minAccessCount?: number;
-    maxAgeDays?: number;
-    minImportance?: number;
-    excludeSticky?: boolean;
-    excludeCore?: boolean;
-    dryRun?: boolean;
+    minAccessCount?: number | undefined;
+    maxAgeDays?: number | undefined;
+    minImportance?: number | undefined;
+    excludeSticky?: boolean | undefined;
+    excludeCore?: boolean | undefined;
+    dryRun?: boolean | undefined;
   } = {},
   projectName?: string
 ): Promise<{ prunable: MemoryNode[]; pruned: number }> {

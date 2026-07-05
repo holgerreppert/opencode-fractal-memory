@@ -1,4 +1,4 @@
-export interface ISessionTracker {
+export interface SessionTracker {
   logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs?: number): Promise<void>;
   getToolPatterns(scope: "all" | "global" | "project"): Promise<Array<{ toolName: string; count: number; avgTokens: number; avgDurationMs: number; warningRate: number; successRate: number }>>;
   getFrequentSequences(scope: "all" | "global" | "project", minCount?: number): Promise<Array<{ prev: string; next: string; count: number }>>;

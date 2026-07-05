@@ -58,22 +58,22 @@ export function createHookHandlers(
   }
 
   return {
-    "experimental.chat.system.transform": (input: any, output: any) =>
+    "experimental.chat.system.transform": (input: unknown, output: unknown) =>
       callHooks("system.transform", input, output),
-    "tool.execute.before": (input: any, output: any) =>
+    "tool.execute.before": (input: unknown, output: unknown) =>
       callHooks("tool.before", input, output),
-    "tool.execute.after": (input: any, output: any) =>
+    "tool.execute.after": (input: unknown, output: unknown) =>
       callHooks("tool.after", input, output),
-    "experimental.session.compacting": (input: any, output: any) =>
+    "experimental.session.compacting": (input: unknown, output: unknown) =>
       callHooks("compacting", input, output),
-    "experimental.compaction.autocontinue": async (input: any, output: { enabled: boolean }) => {
+    "experimental.compaction.autocontinue": async (input: unknown, output: { enabled: boolean }) => {
       output.enabled = true;
       await callHooks("compaction.autocontinue", input, output);
     },
-    "chat.params": (input: any, output: any) =>
+    "chat.params": (input: unknown, output: unknown) =>
       callHooks("chat.params", input, output),
-    "experimental.chat.messages.transform": (input: any, output: any) =>
+    "experimental.chat.messages.transform": (input: unknown, output: unknown) =>
       callHooks("chat.messages.transform", input, output),
-    event: (input: any) => callHooks("event", input),
+    event: (input: unknown) => (callHooks as (...args: unknown[]) => Promise<void>)("event", input),
   };
 }

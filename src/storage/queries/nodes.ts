@@ -239,7 +239,7 @@ export async function queryCreateNode(
   return {
     id,
     scope: node.scope,
-    label: node.label,
+    label: node.label ?? null,
     content: node.content,
     summary: node.summary ?? null,
     level: node.level ?? 0,

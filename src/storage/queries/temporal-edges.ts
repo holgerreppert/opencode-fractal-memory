@@ -19,9 +19,9 @@ export function queryCreateTemporalEdge(
     sourceNodeId: string;
     targetNodeId: string;
     edgeType: string;
-    scope?: string;
-    confidence?: number;
-    metadata?: Record<string, unknown> | null;
+    scope?: string | undefined;
+    confidence?: number | undefined;
+    metadata?: Record<string, unknown> | null | undefined;
   },
 ): TemporalEdge {
   const id = crypto.randomUUID();

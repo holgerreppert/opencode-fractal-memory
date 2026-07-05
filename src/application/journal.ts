@@ -138,22 +138,22 @@ export type JournalStore = {
   write(entry: {
     title: string;
     body: string;
-    project?: string;
-    model?: string;
-    provider?: string;
-    agent?: string;
-    sessionId?: string;
-    tags?: string[];
+    project?: string | undefined;
+    model?: string | undefined;
+    provider?: string | undefined;
+    agent?: string | undefined;
+    sessionId?: string | undefined;
+    tags?: string[] | undefined;
   }): Promise<JournalEntry>;
 
   read(id: string): Promise<JournalEntry>;
 
   search(query: {
-    text?: string;
-    project?: string;
-    tags?: string[];
-    limit?: number;
-    offset?: number;
+    text?: string | undefined;
+    project?: string | undefined;
+    tags?: string[] | undefined;
+    limit?: number | undefined;
+    offset?: number | undefined;
   }): Promise<{ entries: JournalEntry[]; total: number; allTags: string[] }>;
 };
 

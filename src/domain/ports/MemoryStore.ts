@@ -12,7 +12,7 @@ export type MemoryCategory = "episodic" | "semantic";
 export type MemoryNode = {
   id: string;
   scope: MemoryScope;
-  label?: string;
+  label: string | null;
   content: string;
   summary: string | null;
   level: MemoryNodeLevel;
@@ -39,23 +39,23 @@ export type MemoryNode = {
 
 export type CreateNodeInput = {
   scope: MemoryScope;
-  label?: string;
+  label?: string | undefined;
   content: string;
-  summary?: string | null;
-  level?: MemoryNodeLevel;
-  parentIds?: string[] | null;
-  embedding?: number[] | null;
-  importance?: number;
-  type?: MemoryNodeType | null;
-  category?: MemoryCategory | null;
-  metadata?: Record<string, unknown> | null;
-  sticky?: boolean;
-  ttlDays?: number | null;
-  confidence?: number;
-  usefulnessScore?: number;
-  timesUsed?: number;
-  timesHelpful?: number;
-  projectName?: string | null;
+  summary?: string | null | undefined;
+  level?: MemoryNodeLevel | undefined;
+  parentIds?: string[] | null | undefined;
+  embedding?: number[] | null | undefined;
+  importance?: number | undefined;
+  type?: MemoryNodeType | null | undefined;
+  category?: MemoryCategory | null | undefined;
+  metadata?: Record<string, unknown> | null | undefined;
+  sticky?: boolean | undefined;
+  ttlDays?: number | null | undefined;
+  confidence?: number | undefined;
+  usefulnessScore?: number | undefined;
+  timesUsed?: number | undefined;
+  timesHelpful?: number | undefined;
+  projectName?: string | null | undefined;
 };
 
 export type TemporalEdge = {
@@ -102,18 +102,18 @@ export type MemoryChunk = {
   endToken: number;
 };
 
-import type { INodeRepository } from "./INodeRepository";
-import type { ISessionTracker } from "./ISessionTracker";
-import type { IInjectionStore } from "./IInjectionStore";
-import type { ICompressionStore } from "./ICompressionStore";
-import type { IMaintenanceStore } from "./IMaintenanceStore";
-import type { IConfigStore } from "./IConfigStore";
+import type { NodeRepository } from "./NodeRepository";
+import type { SessionTracker } from "./SessionTracker";
+import type { InjectionStore } from "./InjectionStore";
+import type { CompressionStore } from "./CompressionStore";
+import type { MaintenanceStore } from "./MaintenanceStore";
+import type { ConfigStore } from "./ConfigStore";
 
-export interface IMemoryStore extends
-  INodeRepository,
-  ISessionTracker,
-  IInjectionStore,
-  ICompressionStore,
-  IMaintenanceStore,
-  IConfigStore
+export interface MemoryStore extends
+  NodeRepository,
+  SessionTracker,
+  InjectionStore,
+  CompressionStore,
+  MaintenanceStore,
+  ConfigStore
 {}

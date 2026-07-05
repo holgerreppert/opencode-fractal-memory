@@ -10,7 +10,7 @@ import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
 import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
-import type { IMemoryStore } from "../domain/ports/IMemoryStore";
+import type { MemoryStore } from "../domain/ports/MemoryStore";
 import { queryListNodes, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode, querySearchText, querySearchBM25 } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
@@ -43,12 +43,12 @@ function scopeDbPath(_projectDirectory: string, _scope: MemoryScope, globalDbPat
   return globalDbPath ?? path.join(os.homedir(), ".config", "opencode", "memory.db");
 }
 
-class SqliteMemoryStore implements IMemoryStore {
+class SqliteMemoryStore implements MemoryStore {
   private dbs: Map<string, Database> = new Map();
   private dbInitPromises: Map<string, Promise<Database>> = new Map();
   private idScopeCache: Map<string, MemoryScope> = new Map();
   private projectDirectory: string;
-  private globalDbPath?: string;
+  private globalDbPath: string | undefined;
   private _projectName: string;
 
   private sessionTracker: SqliteSessionTracker;
@@ -346,7 +346,7 @@ class SqliteMemoryStore implements IMemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel; maxLevel?: MemoryNodeLevel; levelWeights?: Partial<Record<MemoryNodeLevel, number>>; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; bm25Scores?: Map<string, number>; projectName?: string; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number }; categoryFilter?: MemoryCategory; typeFilter?: MemoryNodeType }
+    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
   }
@@ -454,13 +454,13 @@ class SqliteMemoryStore implements IMemoryStore {
   async pruneNodes(
     scope: MemoryScope | "all",
     options: {
-      minAccessCount?: number;
-      maxAgeDays?: number;
-      minImportance?: number;
-      excludeSticky?: boolean;
-      excludeCore?: boolean;
-      dryRun?: boolean;
-      projectName?: string;
+      minAccessCount?: number | undefined;
+      maxAgeDays?: number | undefined;
+      minImportance?: number | undefined;
+      excludeSticky?: boolean | undefined;
+      excludeCore?: boolean | undefined;
+      dryRun?: boolean | undefined;
+      projectName?: string | undefined;
     } = {}
   ): Promise<{ prunable: MemoryNode[]; pruned: number }> {
     const { projectName, ...rest } = options;
@@ -550,7 +550,7 @@ class SqliteMemoryStore implements IMemoryStore {
       status: string;
     }>
   ): Promise<void> {
-    return this.sessionTracker.updateSessionMetrics(sessionId, updates as any);
+    return this.sessionTracker.updateSessionMetrics(sessionId, updates as Parameters<typeof this.sessionTracker.updateSessionMetrics>[1]);
   }
 
   async incrementSessionToolCall(
@@ -661,23 +661,23 @@ class SqliteMemoryStore implements IMemoryStore {
     return this.injectionStore.injectNode(nodeId, scope);
   }
 
-  async getCompressionStats(days: number = 7, limit: number = 100): Promise<import("../domain/ports/ICompressionStore").CompressionStatsResult> {
+  async getCompressionStats(days: number = 7, limit: number = 100): Promise<import("../domain/ports/CompressionStore").CompressionStatsResult> {
     return this.compressionStore.getCompressionStats(days, limit);
   }
 
-  async getContextDashboard(): Promise<import("../domain/ports/ICompressionStore").ContextDashboardResult> {
+  async getContextDashboard(): Promise<import("../domain/ports/CompressionStore").ContextDashboardResult> {
     return this.compressionStore.getContextDashboard();
   }
 
-  async recordTokenUsage(entry: import("../domain/ports/ICompressionStore").TokenTrackingEntry): Promise<void> {
+  async recordTokenUsage(entry: import("../domain/ports/CompressionStore").TokenTrackingEntry): Promise<void> {
     return this.compressionStore.recordTokenUsage(entry);
   }
 
-  async getTokenHistory(days?: number, limit?: number): Promise<import("../domain/ports/ICompressionStore").TokenHistoryResult> {
+  async getTokenHistory(days?: number, limit?: number): Promise<import("../domain/ports/CompressionStore").TokenHistoryResult> {
     return this.compressionStore.getTokenHistory(days, limit);
   }
 }
 
-export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): IMemoryStore {
+export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): MemoryStore {
   return new SqliteMemoryStore(projectDirectory, globalDbPath);
 }

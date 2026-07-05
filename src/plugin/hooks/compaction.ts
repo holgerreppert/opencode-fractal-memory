@@ -75,8 +75,19 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
           const typedClient = client as { session?: { messages: (opts: { path: { id: string }; query: { limit: number } }) => Promise<{ data?: Array<Record<string, unknown>>; [key: string]: unknown }> } };
           if (typedClient?.session?.messages) {
             const msgResponse = await typedClient.session.messages({ path: { id: sessionId }, query: { limit: 50 } });
-            const messages: Array<{ info: Record<string, any>; parts: Array<Record<string, any>> }> =
-              ((msgResponse?.data ?? msgResponse) as unknown as Array<{ info: Record<string, any>; parts: Array<Record<string, any>> }>) ?? [];
+            type ChatMessage = {
+              info?: {
+                role?: string;
+                tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } };
+                model?: { providerID?: string; modelID?: string };
+                cost?: number;
+                agent?: string | null;
+                time?: { created?: number };
+              };
+              parts?: Array<{ type?: string; text?: string; name?: string; input?: unknown; isError?: boolean }>;
+            };
+            const messages: ChatMessage[] =
+              ((msgResponse?.data ?? msgResponse) as unknown as ChatMessage[]) ?? [];
             if (Array.isArray(messages) && messages.length > 0) {
               const entries: string[] = [];
 
