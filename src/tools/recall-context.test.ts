@@ -1,20 +1,21 @@
+import type { MemoryStore } from "../domain/ports/MemoryStore";
 import { describe, expect, test } from "bun:test";
 import { MemoryRecallContext } from "./recall-context";
 
-function makeStore(nodes: any[] = []) {
+function makeStore(nodes: Record<string, unknown>[] = []) {
   
   return {
     async listNodes(_scope: "all" | "global" | "project") {
       return nodes;
     },
-    async searchByEmbedding(_query: number[], _limit?: number, _options?: any) {
+    async searchByEmbedding(_query: number[], _limit?: number, _options?: Record<string, unknown>) {
       return nodes.filter(n => n.type === "storedcontext").slice(0, _limit ?? 5);
     },
     getNode: async (id: string) => nodes.find(n => n.id === id),
-  } as any;
+  } as unknown as MemoryStore;
 }
 
-function makeNode(overrides: Record<string, any> = {}) {
+function makeNode(overrides: Record<string, unknown> = {}) {
   const id = `node-${++idCounter}`;
   const createdAt = overrides.createdAt != null ? new Date(overrides.createdAt) : new Date();
   return {
@@ -36,7 +37,7 @@ describe("MemoryRecallContext", () => {
   test("returns empty message when no storedcontext nodes exist", async () => {
     const store = makeStore([]);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("No stored context found");
   });
 
@@ -47,7 +48,7 @@ describe("MemoryRecallContext", () => {
     ];
     const store = makeStore(nodes);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("## Stored Context Recall");
     expect(result).toContain("storedcontext:new");
   });
@@ -56,7 +57,7 @@ describe("MemoryRecallContext", () => {
     const nodes = Array.from({ length: 10 }, (_, i) => makeNode({ createdAt: Date.now() - i * 1000 }));
     const store = makeStore(nodes);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     const matches = result.match(/Session:/g);
     expect(matches?.length).toBe(5);
   });
@@ -65,7 +66,7 @@ describe("MemoryRecallContext", () => {
     const nodes = Array.from({ length: 10 }, (_, i) => makeNode({ createdAt: Date.now() - i * 1000 }));
     const store = makeStore(nodes);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({ limit: 2 });
+    const result = await tool.execute({ limit: 2 });
     const matches = result.match(/Session:/g);
     expect(matches?.length).toBe(2);
   });
@@ -77,7 +78,7 @@ describe("MemoryRecallContext", () => {
     ];
     const store = makeStore(nodes);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({ sessionId: "ses_abc" });
+    const result = await tool.execute({ sessionId: "ses_abc" });
     expect(result).toContain("ses_abc");
     expect(result).not.toContain("ses_xyz");
   });
@@ -89,7 +90,7 @@ describe("MemoryRecallContext", () => {
     ];
     const store = makeStore(nodes);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({ sessionId: "ses_target" });
+    const result = await tool.execute({ sessionId: "ses_target" });
     expect(result).toContain("ses_target");
     expect(result).not.toContain("ses_other");
   });
@@ -97,7 +98,7 @@ describe("MemoryRecallContext", () => {
   test("returns session-not-found message for unknown sessionId", async () => {
     const store = makeStore([]);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({ sessionId: "ses_nonexistent" });
+    const result = await tool.execute({ sessionId: "ses_nonexistent" });
     expect(result).toContain('No stored context found for session "ses_nonexistent"');
   });
 
@@ -105,7 +106,7 @@ describe("MemoryRecallContext", () => {
     const matching = makeNode({ content: "authentication module with JWT tokens" });
     const store = makeStore([matching]);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({ query: "JWT authentication" });
+    const result = await tool.execute({ query: "JWT authentication" });
     expect(result).toContain("## Stored Context Recall");
   });
 
@@ -114,7 +115,7 @@ describe("MemoryRecallContext", () => {
     const node = makeNode({ content: longContent });
     const store = makeStore([node]);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("content truncated");
     expect(result).toContain("2500 total chars");
   });
@@ -123,7 +124,7 @@ describe("MemoryRecallContext", () => {
     const node = makeNode({ metadata: { customType: "storedcontext", sessionId: "my-session-id" } });
     const store = makeStore([node]);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("my-session-id");
   });
 
@@ -131,7 +132,7 @@ describe("MemoryRecallContext", () => {
     const node = makeNode();
     const store = makeStore([node]);
     const tool = MemoryRecallContext(store);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("memory_search type:storedcontext");
   });
 });

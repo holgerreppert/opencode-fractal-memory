@@ -20,6 +20,7 @@ export interface NodeRepository {
     bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined;
     bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined;
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
+    temporalHops?: number | undefined;
     categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined;
   }): Promise<MemoryNode[]>;
   getFractalStats(scope: MemoryScope | "all", projectName?: string | undefined): Promise<FractalStats>;

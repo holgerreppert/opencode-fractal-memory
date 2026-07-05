@@ -106,7 +106,7 @@ describe("LoCoMo retrieval quality", () => {
           queryText: entry.question,
           rerank: true,
           temporalHops: 2,
-        } as any);
+        });
 
         
 

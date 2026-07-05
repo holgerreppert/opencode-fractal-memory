@@ -1,3 +1,4 @@
+import type { MemoryNode, MemoryScope } from "../domain/ports/MemoryStore";
 import { describe, expect, test } from "bun:test";
 import { nodeToPlain, ensureScope } from "./transform";
 import { sanitizeArgs } from "./logging";
@@ -72,7 +73,7 @@ describe("nodeToPlain", () => {
 
   test("handles Date as number (already converted)", () => {
     const numNode = { ...node, createdAt: 1000, updatedAt: 2000 };
-    const plain = nodeToPlain(numNode as any);
+    const plain = nodeToPlain(numNode as unknown as MemoryNode);
     expect(plain.createdAt).toBe(1000);
     expect(plain.updatedAt).toBe(2000);
   });
@@ -92,7 +93,7 @@ describe("ensureScope", () => {
   });
 
   test("defaults to project for invalid scope", () => {
-    expect(ensureScope("invalid" as any)).toBe("project");
+    expect(ensureScope("invalid" as MemoryScope)).toBe("project");
   });
 });
 

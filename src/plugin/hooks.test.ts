@@ -9,7 +9,7 @@ function makeStore() {
 
   const store = {
     async listNodes(_scope: "all" | "global" | "project") {
-      return db.query("SELECT id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, confidence, last_verified, usefulness_score, times_used, times_helpful, category, expires_at, project_name FROM memory_nodes").all().map((row: any) => ({
+      return db.query("SELECT id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, confidence, last_verified, usefulness_score, times_used, times_helpful, category, expires_at, project_name FROM memory_nodes").all().map((row: Record<string, unknown>) => ({
         id: row.id,
         scope: row.scope,
         label: row.label,
@@ -36,7 +36,7 @@ function makeStore() {
     async deleteNode(id: string) {
       db.run("DELETE FROM memory_nodes WHERE id = ?", [id]);
     },
-    async createNode(node: any) {
+    async createNode(node: Record<string, unknown>) {
       const now = Date.now();
       const metadata = node.metadata ? JSON.stringify(node.metadata) : null;
       const createdAt = (node.metadata?.timestamp as number | undefined) ?? now;

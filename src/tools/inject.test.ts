@@ -3,7 +3,7 @@ import type { MemoryStore, MemoryNode } from "../storage/sqlite";
 import { describe, it, expect } from "@jest/globals";
 
 const mockStore = {
-  async searchByEmbedding(_embedding: number[], limit?: number, _options?: any): Promise<MemoryNode[]> {
+  async searchByEmbedding(_embedding: number[], limit?: number, _options?: Record<string, unknown>): Promise<MemoryNode[]> {
     const nodes: MemoryNode[] = [];
     for (let i = 1; i <= 5; i++) {
       nodes.push({
@@ -44,10 +44,10 @@ const mockStore = {
   async runPatternExtraction() { return { created: 0, sources: 0 }; },
   async getCompressionCandidates() { return []; },
   async getFractalStats() { return { totalNodes: 0, nodesPerLevel: {0:0,1:0,2:0,3:0,4:0,5:0}, compressionRatios: {}, fractalDimension: 0, avgChildrenPerNode: 0, treeDepth: 0, hasEmbeddings: 0, scopes: {global:0, project:0} }; },
-  async retrieveFractal() { return { node: null as any, path: [], depth: 0, relevanceScore: 0 }; },
+  async retrieveFractal() { return { node: null, path: [], depth: 0, relevanceScore: 0 }; },
   async detectTopicBoundaries() { return []; },
   async drilldownQuery() { return []; },
-  async verifyNode() { return null as any; },
+  async verifyNode() { return null; },
   async calculateNodeConfidence() { return 0; },
   async getConfig() { return ""; },
   async setConfig() { /* empty */ },
@@ -82,7 +82,7 @@ const mockStore = {
 describe("MemoryInject greedy token‑budget selector", () => {
   it("respects maxTokens and prefers high relevance‑per‑token nodes", async () => {
     const tool = MemoryInject(mockStore);
-    const result = await (tool as any).execute({ query: "test", maxTokens: 350, includeConfidential: false });
+    const result = await tool.execute({ query: "test", maxTokens: 350, includeConfidential: false });
     expect(result).toContain("Content 1");
     expect(result).toContain("Content 2");
     expect(result).not.toContain("Content 3");
@@ -93,7 +93,7 @@ describe("MemoryInject greedy token‑budget selector", () => {
 
   it("injects fallback when no nodes fit the token budget", async () => {
     const tool = MemoryInject(mockStore);
-    const result = await (tool as any).execute({
+    const result = await tool.execute({
       query: "test query",
       maxTokens: 10,
       includeConfidential: false,

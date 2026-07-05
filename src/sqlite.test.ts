@@ -1,3 +1,4 @@
+import type { MemoryScope } from "./domain/ports/MemoryStore";
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -181,7 +182,7 @@ describe("sqlite store", () => {
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
 
-    const nodes = await store.listNodes("nonexistent-scope" as any);
+    const nodes = await store.listNodes("nonexistent-scope" as MemoryScope);
     expect(nodes).toEqual([]);
   });
 

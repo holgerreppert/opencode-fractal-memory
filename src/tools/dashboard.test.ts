@@ -51,7 +51,7 @@ function makeMockStore(nodes: Record<string, unknown>[], stats?: Partial<Fractal
     runCompression: async () => ({ compressed: 0, created: 0 }),
     runPatternExtraction: async () => ({ created: 0, sources: 0 }),
     getCompressionCandidates: async () => [],
-    retrieveFractal: async () => ({ node: null as any, path: [], depth: 0, relevanceScore: 0 }),
+    retrieveFractal: async () => ({ node: null, path: [], depth: 0, relevanceScore: 0 }),
     detectTopicBoundaries: async () => [],
     drilldownQuery: async () => [],
     verifyNode: async () => { throw new Error("not used"); },
@@ -97,7 +97,7 @@ const defaultStats = {
 describe("MemoryDashboard", () => {
   test("empty scope returns no nodes message", async () => {
     const tool = MemoryDashboard(makeMockStore([]));
-    const result = await (tool as any).execute({ scope: "project", limit: 10 });
+    const result = await tool.execute({ scope: "project", limit: 10 });
     expect(result).toContain("No nodes found");
   });
 
@@ -107,7 +107,7 @@ describe("MemoryDashboard", () => {
       accessCount: 20 - i,
     }));
     const tool = MemoryDashboard(makeMockStore(nodes, defaultStats));
-    const result = await (tool as any).execute({ scope: "all", limit: 5 });
+    const result = await tool.execute({ scope: "all", limit: 5 });
     const rows = result.match(/\| \d+ \| Node/g);
     expect(rows).toHaveLength(5);
   });
@@ -120,7 +120,7 @@ describe("MemoryDashboard", () => {
       { type: "summary", accessCount: 1 },
     ];
     const tool = MemoryDashboard(makeMockStore(nodes, defaultStats));
-    const result = await (tool as any).execute({ scope: "all" });
+    const result = await tool.execute({ scope: "all" });
     expect(result).toContain("| note | 2 |");
     expect(result).toContain("| core | 1 |");
     expect(result).toContain("| summary | 1 |");
@@ -129,7 +129,7 @@ describe("MemoryDashboard", () => {
   test("show_tree_depth: false omits tree depth line", async () => {
     const nodes = [{ label: "test", accessCount: 1 }];
     const tool = MemoryDashboard(makeMockStore(nodes, defaultStats));
-    const result = await (tool as any).execute({ show_tree_depth: false });
+    const result = await tool.execute({ show_tree_depth: false });
     expect(result).not.toContain("Tree depth");
     expect(result).toContain("Fractal dimension");
   });
@@ -137,7 +137,7 @@ describe("MemoryDashboard", () => {
   test("show_embedding_coverage: false omits embeddings line", async () => {
     const nodes = [{ label: "test", accessCount: 1 }];
     const tool = MemoryDashboard(makeMockStore(nodes, defaultStats));
-    const result = await (tool as any).execute({ show_embedding_coverage: false });
+    const result = await tool.execute({ show_embedding_coverage: false });
     expect(result).not.toContain("Nodes with embeddings");
   });
 
@@ -148,7 +148,7 @@ describe("MemoryDashboard", () => {
       { label: "useless", accessCount: 3, usefulnessScore: 0, timesUsed: 0, timesHelpful: 0 },
     ];
     const tool = MemoryDashboard(makeMockStore(nodes, defaultStats));
-    const result = await (tool as any).execute({ scope: "all" });
+    const result = await tool.execute({ scope: "all" });
     expect(result).toContain("useful");
     expect(result).not.toContain("| neutral | 0.0 | 3 | 0 |");
   });
@@ -160,7 +160,7 @@ describe("MemoryDashboard", () => {
       compressionRatios: { 0: 12.5, 1: 3.2, 2: 0, 3: 0, 4: 0 },
     };
     const tool = MemoryDashboard(makeMockStore(nodes, stats));
-    const result = await (tool as any).execute({ scope: "all" });
+    const result = await tool.execute({ scope: "all" });
     expect(result).toContain("12.5x");
     expect(result).toContain("3.2x");
   });

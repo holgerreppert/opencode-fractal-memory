@@ -1,3 +1,4 @@
+import type { MemoryNodeLevel } from "../domain/ports/MemoryStore";
 import { describe, expect, test } from "bun:test";
 import { CompressionHelper } from "./summarization";
 import type { MemoryNode } from "./types";
@@ -103,7 +104,7 @@ describe("CompressionHelper.findCompressionCandidates", () => {
   test("returns empty for unknown level", async () => {
     const candidates = await CompressionHelper.findCompressionCandidates(
       [makeNode()],
-      99 as any
+      99 as MemoryNodeLevel
     );
     expect(candidates).toEqual([]);
   });

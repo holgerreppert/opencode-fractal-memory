@@ -105,7 +105,7 @@ describe("Synthetic retrieval quality", () => {
             queryText: entry.question,
             rerank: true,
             temporalHops: 2,
-          } as any);
+          });
           for (const k of KS) {
             const metrics = computeMetrics(evidenceLabels, retrieved, k);
             const acc = byK.get(k)!;
@@ -123,7 +123,7 @@ describe("Synthetic retrieval quality", () => {
           queryText: entry.question,
           rerank: true,
           temporalHops: 2,
-        } as any);
+        });
 
         for (const k of KS) {
           const metrics = computeMetrics(evidenceLabels, retrieved, k);

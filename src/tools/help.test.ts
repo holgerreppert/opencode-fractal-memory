@@ -4,13 +4,13 @@ import { MemoryHelp } from "./help";
 describe("MemoryHelp", () => {
   test("output contains header", async () => {
     const tool = MemoryHelp();
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("## Memory Plugin Commands");
   });
 
   test("lists all registered commands", async () => {
     const tool = MemoryHelp();
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("memory_dashboard");
     expect(result).toContain("memory_stats");
     expect(result).toContain("memory_search");
@@ -20,7 +20,7 @@ describe("MemoryHelp", () => {
 
   test("contains fractal levels section", async () => {
     const tool = MemoryHelp();
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("L0 (raw)");
     expect(result).toContain("L1 (weekly)");
     expect(result).toContain("L2 (monthly)");

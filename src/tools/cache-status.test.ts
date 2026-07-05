@@ -21,7 +21,7 @@ const dummyStore = {
   runCompression: async () => ({ compressed: 0, created: 0 }),
   runPatternExtraction: async () => ({ created: 0, sources: 0 }),
   getCompressionCandidates: async () => [],
-  retrieveFractal: async () => ({ node: null as any, path: [], depth: 0, relevanceScore: 0 }),
+  retrieveFractal: async () => ({ node: null, path: [], depth: 0, relevanceScore: 0 }),
   detectTopicBoundaries: async () => [],
   drilldownQuery: async () => [],
   verifyNode: async () => { throw new Error("not used"); },
@@ -60,19 +60,19 @@ const dummyStore = {
 describe("MemoryCacheStatus", () => {
   test("empty cache shows empty message", async () => {
     const tool = MemoryCacheStatus(dummyStore);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("Cache is empty");
   });
 
   test("output contains cache size info", async () => {
     const tool = MemoryCacheStatus(dummyStore);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toMatch(/Current size: \d+ \/ \d+/);
   });
 
   test("reports TTL hours", async () => {
     const tool = MemoryCacheStatus(dummyStore);
-    const result = await (tool as any).execute({});
+    const result = await tool.execute({});
     expect(result).toContain("TTL:");
     expect(result).toContain("hours");
   });

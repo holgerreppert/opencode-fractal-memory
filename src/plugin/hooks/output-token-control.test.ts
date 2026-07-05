@@ -1,3 +1,4 @@
+import type { MemConfig } from "../../infrastructure/config/config";
 import { describe, expect, test } from "bun:test";
 import { createOutputTokenControlHandler } from "./output-token-control";
 
@@ -28,7 +29,7 @@ describe("createOutputTokenControlHandler", () => {
       excludePatterns: [],
     },
     adaptivePressure: { enabled: false, warnThreshold: 0.7, aggressiveThreshold: 0.85, criticalThreshold: 0.95 },
-  } as any;
+  } as unknown as MemConfig;
 
   test("injects rule into system array at position 1", async () => {
     const handler = createOutputTokenControlHandler(baseConfig);
@@ -40,7 +41,7 @@ describe("createOutputTokenControlHandler", () => {
   });
 
   test("does not inject when config is not present", () => {
-    const handler = createOutputTokenControlHandler({} as any);
+    const handler = createOutputTokenControlHandler({} as unknown as MemConfig);
     expect(handler["system.transform"]).toBeUndefined();
   });
 

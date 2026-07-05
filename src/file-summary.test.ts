@@ -7,9 +7,9 @@ import { fileSummarization, type SummaryEvent } from "./application/file-summari
 const tempDir = "/tmp/opencode-mem-test-file-summary";
 
 function makeMockStore(): MemoryStore {
-  const nodes: Map<string, any> = new Map();
+  const nodes: Map<string, Record<string, unknown>> = new Map();
   return {
-    async createNode(input: any) {
+    async createNode(input: Record<string, unknown>) {
       const id = `node_${Math.random().toString(36).slice(2)}`;
       const node = {
         ...input,
@@ -48,17 +48,17 @@ function makeMockStore(): MemoryStore {
       }
       throw new Error("not found");
     },
-    async updateNode(id: string, updates: any) {
+    async updateNode(id: string, updates: Record<string, unknown>) {
       const node = nodes.get(id);
       if (!node) throw new Error("not found");
       Object.assign(node, updates);
       return node;
     },
-    async listNodes(_scope: string, _filter?: any) { return Array.from(nodes.values()); },
-    async searchByEmbedding(_query: number[], _limit?: number, _options?: any): Promise<FractalRetrievalResult[]> { return []; },
-    async pruneNodes(_scope: string, _options: any) { return { prunable: [], pruned: 0 }; },
+    async listNodes(_scope: string, _filter?: unknown) { return Array.from(nodes.values()); },
+    async searchByEmbedding(_query: number[], _limit?: number, _options?: Record<string, unknown>): Promise<FractalRetrievalResult[]> { return []; },
+    async pruneNodes(_scope: string, _options: Record<string, unknown>) { return { prunable: [], pruned: 0 }; },
     async close() {},
-    async runCompression(_opts?: any) { return { compressed: 0, created: 0 }; },
+    async runCompression(_opts?: Record<string, unknown>) { return { compressed: 0, created: 0 }; },
     logToolCall: async () => {},
     getToolPatterns: async () => [],
     pruneUsageLog: async () => 0,

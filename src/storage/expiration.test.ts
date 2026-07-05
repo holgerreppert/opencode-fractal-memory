@@ -195,28 +195,28 @@ describe("pruneNodes", () => {
   test("does not prune high importance nodes", async () => {
     const listNodes = async () => [makeNode({ id: "important", importance: 0.95, accessCount: 0, scope: "project", sticky: false })];
 
-    const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true, maxAgeDays: 1 });
+    const result = await pruneNodes({ getDb: async () => new Database(":memory:"), listNodes }, "project", { dryRun: true, maxAgeDays: 1 });
     expect(result.prunable).toHaveLength(0);
   });
 
   test("skips sticky nodes when excludeSticky is true", async () => {
     const listNodes = async () => [makeNode({ id: "sticky", importance: 0.1, accessCount: 0, scope: "project", sticky: true })];
 
-    const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true });
+    const result = await pruneNodes({ getDb: async () => new Database(":memory:"), listNodes }, "project", { dryRun: true });
     expect(result.prunable).toHaveLength(0);
   });
 
   test("skips core label nodes", async () => {
     const listNodes = async () => [makeNode({ id: "core", label: "persona", importance: 0.1, accessCount: 0, scope: "project", sticky: false })];
 
-    const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true });
+    const result = await pruneNodes({ getDb: async () => new Database(":memory:"), listNodes }, "project", { dryRun: true });
     expect(result.prunable).toHaveLength(0);
   });
 
   test("includes sticky nodes when excludeSticky is false", async () => {
     const listNodes = async () => [makeNode({ id: "sticky-included", importance: 0.1, accessCount: 0, scope: "project", sticky: true })];
 
-    const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true, excludeSticky: false, minImportance: 0.5 });
+    const result = await pruneNodes({ getDb: async () => new Database(":memory:"), listNodes }, "project", { dryRun: true, excludeSticky: false, minImportance: 0.5 });
     expect(result.prunable.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -225,10 +225,10 @@ describe("pruneNodes", () => {
       makeNode({ id: "a-low", projectName: "project-a", importance: 0.1, accessCount: 0, scope: "project", sticky: false }),
       makeNode({ id: "b-low", projectName: "project-b", importance: 0.1, accessCount: 0, scope: "project", sticky: false }),
     ];
-    const listNodes = async (_s: any, _l?: any, _lim?: any, _off?: any, _ie?: any, projectName?: string) =>
+    const listNodes = async (_s: unknown, _l?: unknown, _lim?: unknown, _off?: unknown, _ie?: unknown, projectName?: string) =>
       projectName ? nodes.filter(n => n.projectName === projectName) : nodes;
 
-    const result = await pruneNodes({ getDb: async () => new Database(":memory:") as any, listNodes }, "project", { dryRun: true, minImportance: 0.5 }, "project-a");
+    const result = await pruneNodes({ getDb: async () => new Database(":memory:"), listNodes }, "project", { dryRun: true, minImportance: 0.5 }, "project-a");
     expect(result.prunable.length).toBe(1);
     expect(result.prunable[0].projectName).toBe("project-a");
   });

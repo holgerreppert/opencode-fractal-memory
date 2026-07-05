@@ -53,7 +53,7 @@ describe("computeStats", () => {
       { id: "2", type: "concept", level: 1, importance: 0.8, usefulnessScore: 4, accessCount: 2, metadata: null, projectName: "proj-a" },
       { id: "3", type: "note", level: 0, importance: 0.3, usefulnessScore: 2, accessCount: 5, metadata: null, projectName: null },
       { id: "4", type: "howto", level: 2, importance: 0.9, usefulnessScore: 5, accessCount: 1, metadata: { customType: "playbook" }, projectName: "proj-b" },
-    ] as any[];
+    ];
     const stats = computeStats(nodes);
     expect(stats.totalNodes).toBe(4);
     expect(stats.nodesPerLevel).toEqual({ 0: 2, 1: 1, 2: 1 });
@@ -75,7 +75,7 @@ describe("computeStats", () => {
     const nodes = [
       { id: "1", type: "note", level: 0, importance: 0.5, usefulnessScore: 0, metadata: { customType: "middle-term" }, projectName: null },
       { id: "2", type: "event", level: 0, importance: 0.5, usefulnessScore: 0, metadata: null, projectName: null },
-    ] as any[];
+    ];
     const stats = computeStats(nodes);
     expect(stats.nodesPerShape).toEqual({ torus: 1, box: 1 });
     expect(stats.nodesPerCustomType).toEqual({ "middle-term": 1 });
@@ -200,7 +200,7 @@ describe("Router", () => {
 
   test("registerRoutes binds all API routes", async () => {
     const fullRouter = new Router();
-    registerRoutes(fullRouter, null as any);
+    registerRoutes(fullRouter, null);
 
     const routes: Array<{ path: string; method: string }> = [
       { path: "/api/scopes", method: "GET" },
