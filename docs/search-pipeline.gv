@@ -29,21 +29,24 @@ digraph search_pipeline {
   }
 
   subgraph cluster_keyword {
-    label="Keyword Path";
+    label="Keyword Path (Dual Retrieval)";
     style=filled;
     fillcolor="#FFF3E0";
     fontname="monospace";
     fontsize=10;
     bm25_db [label="BM25 Index\nbm25_index\nbm25_doc_stats"];
-    bm25_score [label="computeBM25ScoresSQL()\nbatched SQL queries\nk1=1.2, b=0.75"];
+    all_nodes [label="All scope node IDs\nSELECT id FROM memory_nodes\nWHERE not expired"];
+    bm25_score [label="computeBM25ScoresSQL()\non ALL scope nodes\nbatched SQL queries\nk1=1.2, b=0.75"];
+    bm25_only [label="BM25-only candidates\n(top limit*3)\nnot in HNSW results\n+ options filters\n+ weighted importance"];
   }
 
   subgraph cluster_hybrid {
-    label="Hybrid Scoring";
+    label="Hybrid Scoring + Merge";
     style=filled;
     fillcolor="#E8F5E9";
     fontname="monospace";
     fontsize=10;
+    merge [label="Merge candidates\nHNSW semantic + BM25 keyword\ndeduplicate by id"];
     weight [label="calculateDynamicBm25Weight()\nbase: 0.4\ncode queries: >= 0.7\nlong queries: decays to 0.3"];
     final [label="computeFinalScores()\nfinalScore = (semantic * (1-dynW)\n           + bm25 * dynW)\n           * (1 + recency*0.2)\nrecency = exp(-hrs/24)"];
   }
@@ -64,11 +67,15 @@ digraph search_pipeline {
   // Edges
   query -> embed;
   query -> bm25_score [label="if queryText", style=dashed];
+  query -> all_nodes [label="if queryText", style=dashed];
+  all_nodes -> bm25_score;
+  bm25_score -> bm25_only [label="top limit*3\nnot in HNSW"];
   embed -> hnsw;
   hnsw -> cosine;
-  cosine -> final;
+  cosine -> merge;
+  bm25_only -> merge [label="keyword candidates"];
+  merge -> final;
   bm25_db -> bm25_score;
-  bm25_score -> final [label="if bm25Weight > 0", style=dashed];
   weight -> final [label="provides dynW", style=dotted];
   final -> rerank [label="if rerank && candidates > limit", style=dashed];
   final -> temporal [label="if temporalHops > 0", style=dashed];
