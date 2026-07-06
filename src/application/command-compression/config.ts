@@ -13,6 +13,15 @@ export interface CompressConfig {
   deltaCompressionEnabled?: boolean;
   deltaMaxCacheSize?: number;
   deltaMinSimilarity?: number;
+  ollamaExtraction?: OllamaExtractionConfig | undefined;
+}
+
+export interface OllamaExtractionConfig {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  minOutputChars: number;
+  timeoutMs: number;
 }
 
 export interface FuzzyDedupConfig {
@@ -22,3 +31,11 @@ export interface FuzzyDedupConfig {
 }
 
 export const DEFAULT_FUZZY: FuzzyDedupConfig = { enabled: true, similarityThreshold: 0.85, maxComparisons: 50 };
+
+export const DEFAULT_OLLAMA_EXTRACTION: OllamaExtractionConfig = {
+  enabled: false,
+  baseUrl: "http://localhost:11434",
+  model: "qwen3.5:3b",
+  minOutputChars: 2000,
+  timeoutMs: 10000,
+};

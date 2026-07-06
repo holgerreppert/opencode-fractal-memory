@@ -2260,6 +2260,11 @@ async function loadSettings() {
     document.getElementById('commandCompression-deltaCompressionEnabled').value = String(config.commandCompression?.deltaCompressionEnabled ?? true);
     document.getElementById('commandCompression-deltaMaxCacheSize').value = config.commandCompression?.deltaMaxCacheSize ?? 50;
     document.getElementById('commandCompression-deltaMinSimilarity').value = config.commandCompression?.deltaMinSimilarity ?? 0.5;
+    document.getElementById('commandCompression-ollamaExtraction-enabled').value = String(config.commandCompression?.ollamaExtraction?.enabled ?? false);
+    document.getElementById('commandCompression-ollamaExtraction-baseUrl').value = config.commandCompression?.ollamaExtraction?.baseUrl ?? 'http://localhost:11434';
+    document.getElementById('commandCompression-ollamaExtraction-model').value = config.commandCompression?.ollamaExtraction?.model ?? 'qwen3.5:3b';
+    document.getElementById('commandCompression-ollamaExtraction-minOutputChars').value = config.commandCompression?.ollamaExtraction?.minOutputChars ?? 2000;
+    document.getElementById('commandCompression-ollamaExtraction-timeoutMs').value = config.commandCompression?.ollamaExtraction?.timeoutMs ?? 10000;
     document.getElementById('adaptivePressure-enabled').value = String(config.adaptivePressure?.enabled ?? false);
     document.getElementById('adaptivePressure-warnThreshold').value = config.adaptivePressure?.warnThreshold ?? 0.7;
     document.getElementById('adaptivePressure-aggressiveThreshold').value = config.adaptivePressure?.aggressiveThreshold ?? 0.85;
@@ -2376,6 +2381,13 @@ async function saveSettings() {
       deltaCompressionEnabled: document.getElementById('commandCompression-deltaCompressionEnabled').value === 'true',
       deltaMaxCacheSize: parseInt(document.getElementById('commandCompression-deltaMaxCacheSize').value) || 50,
       deltaMinSimilarity: parseFloat(document.getElementById('commandCompression-deltaMinSimilarity').value) || 0.5,
+      ollamaExtraction: {
+        enabled: document.getElementById('commandCompression-ollamaExtraction-enabled').value === 'true',
+        baseUrl: document.getElementById('commandCompression-ollamaExtraction-baseUrl').value || 'http://localhost:11434',
+        model: document.getElementById('commandCompression-ollamaExtraction-model').value || 'qwen3.5:3b',
+        minOutputChars: parseInt(document.getElementById('commandCompression-ollamaExtraction-minOutputChars').value) || 2000,
+        timeoutMs: parseInt(document.getElementById('commandCompression-ollamaExtraction-timeoutMs').value) || 10000,
+      },
     },
     adaptivePressure: {
       enabled: document.getElementById('adaptivePressure-enabled').value === 'true',

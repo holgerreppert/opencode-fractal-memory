@@ -6,7 +6,7 @@ import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
-import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type FuzzyDedupConfig } from "../../application/command-compression";
+import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, type FuzzyDedupConfig } from "../../application/command-compression";
 import { stashOriginal } from "../../application/tool-compression";
 import type { HookHandler } from "./types";
 
@@ -126,7 +126,20 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       const cmdTerms = cmd.split(/\s+/).filter(t => !t.startsWith("-") && t.length >= 3).map(t => t.toLowerCase().replace(/["'`()]/g, ""));
       const intentTerms = [...new Set(cmdTerms)];
 
-      const compressed = compressCommandOutput(cmd, raw, failed, compressConfig, intentTerms.length > 0 ? intentTerms : undefined);
+      let compressed = compressCommandOutput(cmd, raw, failed, compressConfig, intentTerms.length > 0 ? intentTerms : undefined);
+
+      // Try Ollama extraction as last-resort when sync strategies don't match
+      if (!compressed && compressConfig?.ollamaExtraction?.enabled) {
+        try {
+          const extracted = await ollamaExtract(raw, cmd, compressConfig.ollamaExtraction);
+          if (extracted) {
+            compressed = { output: extracted, strategy: "ollama-extract" };
+          }
+        } catch {
+          // Best-effort — fall through to no compression
+        }
+      }
+
       const durationMs = performance.now() - t0;
 
       if (compressed) {

@@ -9,10 +9,11 @@ import { applyShapeCompression } from "./command-compression/shape";
 import { trimByRelevance } from "./command-compression/relevance";
 import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix, applyWordAbbreviations } from "./command-compression/utils";
 
-export type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";
+export type { CompressConfig, FuzzyDedupConfig, OllamaExtractionConfig } from "./command-compression/config";
 export { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 export { addContentDedup } from "./command-compression/dedup";
 export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff, compressGitPush, compressGitCommit, compressGitAdd } from "./command-compression/strategies";
+export { ollamaExtract } from "./command-compression/ollama-extract";
 
 export function compressCommandOutput(
   command: string,

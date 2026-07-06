@@ -55,7 +55,7 @@ if you find bugs or if you just want to suggest improvements
 - **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
 - **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
 - **Consolidation** — extracts semantic facts from episodic node clusters on session idle
-- **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Stats tracked in `compression_stats` table. View via management app Compress tab
+- **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Optional Ollama extraction via small local model as last-resort. Stats tracked in `compression_stats` table. View via management app Compress tab
 - **Context dashboard** — new management app tab showing memory node count/tokens by level, active rules, compression stats, recent injection history, and estimated total context usage with overhead breakdown
 - **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count). Falls through to generic if shape is unknown
 - **SmartFilter** — noise-stripping preprocessor in shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines before shape classification. Logged as `shape-json`, `shape-csv`, etc. with noise counts
@@ -947,7 +947,16 @@ MIT
 
 ## Changelog
 
-### v0.6.46 (current)
+### v0.6.48 (current)
+- **Ollama output extraction** — when heuristic compression strategies don't match, fires a small Ollama model (default `qwen3.5:3b`) to extract only the relevant lines from tool output. Zero-shot extraction with ~0.55 recall at 50-90% compression. Configurable via `commandCompression.ollamaExtraction` in `opencode-mem.json`. Last-resort fallback, enabled by default with `enabled: false` (opt-in)
+- New file: `src/application/command-compression/ollama-extract.ts`
+- Added `OllamaExtractionConfig` to CompressConfig, MemConfig, Zod schema with defaults
+
+### v0.6.47
+- **Tool output compression** — read/glob/edit tool output compression (structural summarization, grouping, trimming), improved git-quick strategies (push/commit/add/pull), word abbreviations (45 long→short forms), grouped grep output by extension, context-aware relevance trimming with intent terms from command args, reversible compression with stash to scratch + `cat <path>` marker
+- See `src/application/tool-compression.ts`, `src/application/command-compression/strategies/git.ts` and `src/application/command-compression/utils.ts` for details
+
+### v0.6.46
 - **Dual retrieval** — BM25 now runs independently across ALL scope nodes (not just HNSW candidates). Top BM25-only candidates (keyword matches outside the vector neighborhood) are fetched and merged with HNSW results. Catches nodes without embeddings that match via keywords. Changes in `src/storage/search.ts:181-228`. 60 tests pass (22 search, 38 search-helpers)
 - **Usefulness scoring fix** — `memory_inject` boosts `usefulnessScore` + `timesHelpful` for each injected node; `memory_search` boosts `usefulnessScore` for each retrieved node; recording hook rates follow-up tools (edit/bash/write) on success, no longer skipping `memory_*` tool results
 - **Storedcontext default scores lowered** — defaults reduced from `usefulnessScore: 0.5` + `importance: 3.0` to `0.1` + `0.5`, matching normal note baselines so search-driven scoring determines actual usefulness

@@ -1,4 +1,5 @@
-export type { CompressConfig, FuzzyDedupConfig } from "./config";
+export type { CompressConfig, FuzzyDedupConfig, OllamaExtractionConfig } from "./config";
+export { DEFAULT_OLLAMA_EXTRACTION } from "./config";
 export { compressLs } from "./strategies/ls";
 export { compressTestOutput } from "./strategies/test";
 export { compressGrep } from "./strategies/grep";
@@ -9,3 +10,4 @@ export { trimByRelevance } from "./relevance";
 export { tryDeltaCompression, updateDeltaCache } from "./delta";
 export { addContentDedup, trigramJaccard } from "./dedup";
 export { isSignalOutput, stripAnsi, contentPreview, getCommandPrefix, smartFilter, scoreLine, extractQueryTerms, SIGNAL_WORDS } from "./utils";
+export { ollamaExtract } from "./ollama-extract";

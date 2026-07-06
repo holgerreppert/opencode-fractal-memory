@@ -39,6 +39,13 @@ export interface MemConfig {
     deltaCompressionEnabled: boolean;
     deltaMaxCacheSize: number;
     deltaMinSimilarity: number;
+    ollamaExtraction?: {
+      enabled: boolean;
+      baseUrl: string;
+      model: string;
+      minOutputChars: number;
+      timeoutMs: number;
+    } | undefined;
   } | undefined;
   fileSkeletonization?: {
     enabled: boolean;
@@ -210,6 +217,14 @@ const ManagementSchema = z.object({
   port: z.number().positive().int().optional(),
 });
 
+const OllamaExtractionSchema = z.object({
+  enabled: z.boolean().default(false),
+  baseUrl: z.string().default("http://localhost:11434"),
+  model: z.string().default("qwen3.5:3b"),
+  minOutputChars: z.number().positive().int().default(2000),
+  timeoutMs: z.number().positive().int().default(10000),
+});
+
 const CommandCompressionSchema = z.object({
   enabled: z.boolean().default(true),
   maxLines: z.number().positive().int().default(50),
@@ -226,6 +241,7 @@ const CommandCompressionSchema = z.object({
   deltaCompressionEnabled: z.boolean().default(true),
   deltaMaxCacheSize: z.number().positive().int().default(50),
   deltaMinSimilarity: z.number().min(0).max(1).default(0.5),
+  ollamaExtraction: OllamaExtractionSchema.optional(),
 });
 
 const FileSkeletonizationSchema = z.object({

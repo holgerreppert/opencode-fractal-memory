@@ -205,6 +205,11 @@
     .save-btn:hover { background: rgba(100, 150, 255, 0.5); }
     .save-message { font-size: 11px; color: #4f4; margin-top: 8px; text-align: center; }
     .config-hint { font-size: 10px; color: #666; margin: 0; line-height: 1.4; }
+    .config-section-subheader {
+      font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4);
+      text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
 
     /* Backup / Restore styles */
     .backup-source-item {
@@ -724,6 +729,33 @@
           <div class="config-field">
             <label>Delta Min Similarity</label>
             <input type="number" id="commandCompression-deltaMinSimilarity" min="0.1" max="1" step="0.05">
+          </div>
+          <div class="config-section-subheader">Ollama Extraction (Last-Resort)</div>
+          <div class="config-field">
+            <label>OE Enabled</label>
+            <select id="commandCompression-ollamaExtraction-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Use small Ollama model as fallback when no strategy matches</p>
+          </div>
+          <div class="config-field">
+            <label>OE Base URL</label>
+            <input type="text" id="commandCompression-ollamaExtraction-baseUrl" placeholder="http://localhost:11434">
+          </div>
+          <div class="config-field">
+            <label>OE Model</label>
+            <input type="text" id="commandCompression-ollamaExtraction-model" placeholder="qwen3.5:3b">
+            <p class="config-hint">Small model for extracting relevant lines from output</p>
+          </div>
+          <div class="config-field">
+            <label>OE Min Output Chars</label>
+            <input type="number" id="commandCompression-ollamaExtraction-minOutputChars" min="500" max="50000" step="500">
+            <p class="config-hint">Minimum output size to trigger extraction</p>
+          </div>
+          <div class="config-field">
+            <label>OE Timeout (ms)</label>
+            <input type="number" id="commandCompression-ollamaExtraction-timeoutMs" min="1000" max="60000" step="1000">
           </div>
           <div class="config-field">
             <label>Adaptive Pressure</label>
