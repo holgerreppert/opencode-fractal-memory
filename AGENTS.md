@@ -54,6 +54,18 @@ npm install --no-save graphology graphology-communities-louvain graphology-short
 
 Then restart OpenCode.
 
+## Coding Paradigms
+
+- **No `I` prefix on interfaces** — `MemoryStore`, `NodeRepository`, `SessionTracker` (not `IMemoryStore`)
+- **`exactOptionalPropertyTypes: true`** — optional params use `param?: Type | undefined`; callers omit, don't pass `undefined`
+- **Zod v4 at external boundaries only** — parse at I/O edges (`CreateNodeInput`), not on internal calls (trusted code)
+- **`Record<string, unknown>` over `any`** — for dynamic objects; `unknown` for catch clauses, callback params. Exceptions: `wrapWithTracking(toolDef: any)` (inherently generic), `Bun.spawn` flags in `management-server.ts` (no viable type)
+- **Hexagonal architecture** — domain ports (`src/domain/ports/`), infrastructure implementations (`src/storage/`, `src/infrastructure/`), application layer (`src/application/`)
+- **Composition-root** — `src/infrastructure/composition-root.ts`: split by concern (`initializeStore`, `ensureAssets`, `initializeConfig`, `maybeStartManagement`)
+- **Interfaces + free functions over abstract classes** — `interface MemoryStore`, not `abstract class MemoryStore`
+- **Test mocks: typed partials, no `as any`** — use `as unknown as Type` or `Record<string, unknown>`; avoid `as any`
+- **`noUncheckedIndexedAccess` skipped** — would require `!` on every `arr[i]` with no real safety gain
+
 ## Linting (oxlint)
 
 Uses [oxlint](https://oxc.rs/docs/guide/usage/linter) instead of ESLint — ~100× faster, native TS support, auto-fixes unused imports + variables.

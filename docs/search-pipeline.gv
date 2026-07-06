@@ -1,0 +1,87 @@
+digraph search_pipeline {
+  rankdir=LR;
+  splines=ortho;
+  nodesep=0.5;
+  ranksep=0.6;
+  fontname="monospace";
+  fontsize=11;
+
+  node [shape=box, style=rounded, fontname="monospace", fontsize=10];
+  edge [fontname="monospace", fontsize=9];
+
+  subgraph cluster_input {
+    label="Input";
+    style=dashed;
+    fontname="monospace";
+    fontsize=10;
+    query [label="User Query\n(string)"];
+  }
+
+  subgraph cluster_semantic {
+    label="Semantic Path";
+    style=filled;
+    fillcolor="#E3F2FD";
+    fontname="monospace";
+    fontsize=10;
+    embed [label="generateEmbedding()\nONNX all-MiniLM-L6-v2\n384-dim"];
+    hnsw [label="HNSW Index\nsearch(query_embedding)\ntop limit*5"];
+    cosine [label="Cosine Similarity\nimportance = hnswScore\n* levelWeight\n* confidenceWeight\n* categoryWeight\n* (1 + usefulness*0.1)"];
+  }
+
+  subgraph cluster_keyword {
+    label="Keyword Path";
+    style=filled;
+    fillcolor="#FFF3E0";
+    fontname="monospace";
+    fontsize=10;
+    bm25_db [label="BM25 Index\nbm25_index\nbm25_doc_stats"];
+    bm25_score [label="computeBM25ScoresSQL()\nbatched SQL queries\nk1=1.2, b=0.75"];
+  }
+
+  subgraph cluster_hybrid {
+    label="Hybrid Scoring";
+    style=filled;
+    fillcolor="#E8F5E9";
+    fontname="monospace";
+    fontsize=10;
+    weight [label="calculateDynamicBm25Weight()\nbase: 0.4\ncode queries: >= 0.7\nlong queries: decays to 0.3"];
+    final [label="computeFinalScores()\nfinalScore = (semantic * (1-dynW)\n           + bm25 * dynW)\n           * (1 + recency*0.2)\nrecency = exp(-hrs/24)"];
+  }
+
+  subgraph cluster_post {
+    label="Post-Processing";
+    style=filled;
+    fillcolor="#F3E5F5";
+    fontname="monospace";
+    fontsize=10;
+    rerank [label="rerankResults()\nkeyword overlap (40%)\nfirst-line match\nterm density\nblend: orig*0.7 + rerank*0.3"];
+    temporal [label="Temporal Expansion\ntemporal_edges\n(NEXT, DURING_SESSION,\nCAUSAL, REFERENCES)\ndecay: conf * 0.8 / hop"];
+    sort [label="Sort by importance\nSlice to limit"];
+  }
+
+  result [label="MemoryNode[]\nranked results", shape=doublecircle, style=filled, fillcolor="#C8E6C9"];
+
+  // Edges
+  query -> embed;
+  query -> bm25_score [label="if queryText", style=dashed];
+  embed -> hnsw;
+  hnsw -> cosine;
+  cosine -> final;
+  bm25_db -> bm25_score;
+  bm25_score -> final [label="if bm25Weight > 0", style=dashed];
+  weight -> final [label="provides dynW", style=dotted];
+  final -> rerank [label="if rerank && candidates > limit", style=dashed];
+  final -> temporal [label="if temporalHops > 0", style=dashed];
+  rerank -> temporal [style=dashed];
+  temporal -> sort;
+  sort -> result;
+
+  // Configurable options box
+  config [label="Configurable via options:\nbm25Weight | minLevel/maxLevel\nlevelWeights | rerank\nminUsefulness | temporalHops\ncategoryFilter | typeFilter\nprojectName", shape=note, style=filled, fillcolor="#F5F5F5"];
+
+  // Limitations note
+  limits [label="Limitations:\n• BM25 only on HNSW candidates\n• No auto-tuning bm25Weight\n• Recency bias vs old nodes\n• No query expansion\n• No cascading fallback", shape=note, style=filled, fillcolor="#FFEBEE"];
+
+  config -> weight [style=dotted, constraint=false];
+  limits -> sort [style=dotted, constraint=false];
+}
