@@ -181,13 +181,63 @@ export async function searchByEmbedding(
   if (queryText) {
     const queryTerms = tokenize(queryText);
     const bm25Scores = new Map<string, number>();
-    for (const scope of ["global", "project"] as MemoryScope[]) {
+
+    // Dual retrieval: compute BM25 across ALL scope nodes, not just HNSW candidates
+    // This catches keyword matches outside the vector neighborhood
+    const existingIds = new Set(scoredNodes.map(n => n.id));
+    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+
+    for (const scope of scopes) {
       const db = await getDb(scope);
-      const scopeNodeIds = scoredNodes.filter(n => n.scope === scope).map(n => n.id);
-      if (scopeNodeIds.length === 0) continue;
-      const scopeScores = computeBM25ScoresSQL(db, scope, queryTerms, scopeNodeIds);
+
+      // Get all non-expired node IDs for this scope
+      const projectFilter = options?.projectName !== undefined && scope === "project";
+      let idSql = "SELECT id FROM memory_nodes WHERE (expires_at IS NULL OR expires_at > ?)";
+      if (projectFilter) idSql += " AND project_name = ?";
+      const idParams: (string | number)[] = [Date.now()];
+      if (projectFilter) idParams.push(options!.projectName!);
+      const allRows = db.query(idSql).all(...idParams) as { id: string }[];
+      const allNodeIds = allRows.map(r => r.id);
+
+      if (allNodeIds.length === 0) continue;
+
+      // Compute BM25 scores for all scope nodes
+      const scopeScores = computeBM25ScoresSQL(db, scope, queryTerms, allNodeIds);
       for (const [id, score] of scopeScores) {
         bm25Scores.set(id, score);
+      }
+
+      // Fetch BM25-only candidates (not already in HNSW results) and add to pool
+      const bm25OnlyIds = allNodeIds
+        .filter(id => !existingIds.has(id) && bm25Scores.has(id) && (bm25Scores.get(id) ?? 0) > 0)
+        .sort((a, b) => (bm25Scores.get(b) ?? 0) - (bm25Scores.get(a) ?? 0))
+        .slice(0, limit * 3);
+
+      if (bm25OnlyIds.length > 0) {
+        const placeholders = bm25OnlyIds.map(() => "?").join(",");
+        const bm25Sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (expires_at IS NULL OR expires_at > ?)`;
+        const bm25Rows = db.query(bm25Sql).all(...bm25OnlyIds, Date.now()) as SqliteNode[];
+
+        for (const row of bm25Rows) {
+          const node = rowToNode(row);
+          const level = row.level as MemoryNodeLevel;
+          if (options?.minLevel !== undefined && level < options.minLevel) continue;
+          if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
+          if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
+          if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
+          if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+
+          const levelWeight = weights[level] ?? 1;
+          const confidence = node.confidence ?? 0.5;
+          const confidenceWeight = 0.5 + 0.5 * confidence;
+          const categoryWeight = node.category === "episodic" ? 0.5 : 1.0;
+
+          scoredNodes.push({
+            ...node,
+            importance: levelWeight * confidenceWeight * categoryWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          });
+          existingIds.add(node.id);
+        }
       }
     }
     options = { ...options, bm25Scores };
