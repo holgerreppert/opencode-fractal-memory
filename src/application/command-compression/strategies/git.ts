@@ -58,7 +58,10 @@ export function compressGitLog(raw: string): string {
   return result.length > 0 ? result.join("\n") : raw;
 }
 
+const GIT_QUICK_MIN_CHARS = 300;
+
 export function compressGitPush(raw: string): string {
+  if (raw.length < GIT_QUICK_MIN_CHARS) return raw;
   const lines = raw.split("\n").filter(Boolean);
   const branch = lines.find(l => /^To\s/.test(l) || l.includes("->"));
   const summary = lines.find(l => /\d+\s+files?\s+changed/i.test(l) || /\.\./.test(l));
@@ -73,6 +76,7 @@ export function compressGitPush(raw: string): string {
 }
 
 export function compressGitCommit(raw: string): string {
+  if (raw.length < GIT_QUICK_MIN_CHARS) return raw;
   const lines = raw.split("\n").filter(Boolean);
   const hash = lines.find(l => /^\[[\w-]+\s+[a-f0-9]+/.test(l));
   const summary = lines.find(l => /^\d+\s+files?\s+changed/i.test(l) || /create mode|delete mode/.test(l));
@@ -84,6 +88,7 @@ export function compressGitCommit(raw: string): string {
 }
 
 export function compressGitAdd(raw: string): string {
+  if (raw.length < GIT_QUICK_MIN_CHARS) return raw;
   const lines = raw.split("\n").filter(Boolean);
   // "git add ." or "git add src/file.ts"
   const fileCount = lines.length;

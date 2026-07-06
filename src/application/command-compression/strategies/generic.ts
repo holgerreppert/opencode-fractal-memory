@@ -1,36 +1,21 @@
 import { scoreLine, extractQueryTerms } from "../utils";
+import { compressByType } from "../output-types";
 
 export function compressGeneric(raw: string, maxLines: number): string {
-  const lines = raw.split("\n");
-  const deduped: string[] = [];
-  let dupCount = 1;
-  for (let i = 0; i < lines.length; i++) {
-    const prev = i > 0 ? lines[i - 1] : null;
-    if (prev !== null && lines[i] === prev) {
-      dupCount++;
-      continue;
-    }
-    if (dupCount > 1 && deduped.length > 0) {
-      deduped[deduped.length - 1] += ` (×${dupCount})`;
-      dupCount = 1;
-    }
-    deduped.push(lines[i] ?? "");
-  }
-  if (dupCount > 1 && deduped.length > 0) {
-    deduped[deduped.length - 1] += ` (×${dupCount})`;
-  }
+  if (!raw || raw.length < 80) return raw;
 
-  if (deduped.length <= maxLines) return deduped.join("\n");
-  const remaining = deduped.length - maxLines;
-  const mid = Math.floor(maxLines / 2);
-  const head = deduped.slice(0, mid);
-  const tail = deduped.slice(-mid);
-  head.push(`... truncated: ${remaining} lines omitted, showing head + tail ...`);
-  head.push(...tail);
-  return head.join("\n");
+  const typeResult = compressByType(raw, maxLines);
+  if (typeResult) return typeResult.compressed;
+
+  return raw;
 }
 
 export function compressRelevantGeneric(raw: string, maxLines: number, cmd: string): string {
+  if (!raw || raw.length < 80) return raw;
+
+  const typeResult = compressByType(raw, maxLines);
+  if (typeResult) return typeResult.compressed;
+
   const lines = raw.split("\n");
   if (lines.length <= maxLines) return raw;
 
@@ -49,14 +34,12 @@ export function compressRelevantGeneric(raw: string, maxLines: number, cmd: stri
   const result: string[] = [];
   const dropped = lines.length - kept.size;
 
-  // Keep head for context, then high-score lines in order, then tail
   for (let i = 0; i < total; i++) {
     if (i < 2 || kept.has(i) || i + 2 >= total) {
       result.push(lines[i]!);
     }
   }
 
-  // If everything kept, return raw
   if (result.length >= lines.length) return raw;
 
   const truncated = result.join("\n");

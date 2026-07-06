@@ -14,6 +14,7 @@ export { tryDeltaCompression, updateDeltaCache } from "./command-compression/del
 export { addContentDedup } from "./command-compression/dedup";
 export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff, compressGitPush, compressGitCommit, compressGitAdd } from "./command-compression/strategies";
 export { ollamaExtract } from "./command-compression/ollama-extract";
+export { compressByType, detectOutputType } from "./command-compression/output-types";
 
 export function compressCommandOutput(
   command: string,
@@ -63,9 +64,17 @@ export function compressCommandOutput(
   } else if (/^git add\b/.test(prefix)) {
     result = compressGitAdd(out); strategy = "git-quick";
   } else if (/^git pull\b/.test(prefix)) {
-    const clean = out.trim();
-    if (clean) result = clean.split("\n").slice(0, 3).join("\n");
-    strategy = "git-quick";
+    if (/Already up to date|Already up-to-date/i.test(out)) {
+      result = "up to date"; strategy = "git-quick";
+    } else if (/Fast-forward/i.test(out)) {
+      const summary = out.split("\n").filter(l => /^\s+\d+\s+files?\s+changed/i.test(l) || /Fast-forward/i.test(l));
+      result = summary.join(" | ") || out.split("\n").slice(0, 3).join("\n");
+      strategy = "git-quick";
+    } else {
+      const clean = out.trim();
+      if (clean) result = clean.split("\n").slice(0, 3).join("\n");
+      strategy = "git-quick";
+    }
   } else if (prefix.startsWith("cat ") || prefix.startsWith("head ")) {
     result = compressGeneric(out, config.maxLines); strategy = "truncate";
   } else if (/^(npm run|bun run|pnpm run|yarn)\s/.test(prefix)) {

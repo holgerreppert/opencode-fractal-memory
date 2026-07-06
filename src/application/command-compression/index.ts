@@ -5,6 +5,7 @@ export { compressTestOutput } from "./strategies/test";
 export { compressGrep } from "./strategies/grep";
 export { compressGitStatus, compressGitLog, compressGitDiff } from "./strategies/git";
 export { compressGeneric, compressRelevantGeneric } from "./strategies/generic";
+export { compressByType, detectOutputType } from "./output-types";
 export { classifyShape, applyShapeCompression } from "./shape";
 export { trimByRelevance } from "./relevance";
 export { tryDeltaCompression, updateDeltaCache } from "./delta";
