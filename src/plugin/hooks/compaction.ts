@@ -163,8 +163,8 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                   level: 0,
                   parentIds: null,
                   embedding,
-                  importance: 3.0,
-                  usefulnessScore: 0.5,
+                  importance: 0.5,
+                  usefulnessScore: 0.1,
                   metadata: { customType: "storedcontext", sessionId, timestamp: now },
                 });
                 summaries.push(`Conversation archived as storedcontext node (label: ${nodeLabel}). Use memory_search with query or memory_recall_context to recall.`);
