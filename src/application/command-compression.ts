@@ -3,7 +3,7 @@ import type { CompressConfig } from "./command-compression/config";
 import { compressLs } from "./command-compression/strategies/ls";
 import { compressTestOutput } from "./command-compression/strategies/test";
 import { compressGrep } from "./command-compression/strategies/grep";
-import { compressGitStatus, compressGitLog, compressGitDiff } from "./command-compression/strategies/git";
+import { compressGitStatus, compressGitLog, compressGitDiff, compressGitPush, compressGitCommit, compressGitAdd } from "./command-compression/strategies/git";
 import { compressGeneric, compressRelevantGeneric } from "./command-compression/strategies/generic";
 import { applyShapeCompression } from "./command-compression/shape";
 import { trimByRelevance } from "./command-compression/relevance";
@@ -12,7 +12,7 @@ import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix } from "./comm
 export type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";
 export { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 export { addContentDedup } from "./command-compression/dedup";
-export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff } from "./command-compression/strategies";
+export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff, compressGitPush, compressGitCommit, compressGitAdd } from "./command-compression/strategies";
 
 export function compressCommandOutput(
   command: string,
@@ -54,7 +54,13 @@ export function compressCommandOutput(
     result = compressGitLog(out); strategy = "git-log";
   } else if (prefix.startsWith("git diff")) {
     result = compressGitDiff(out); strategy = "git-diff";
-  } else if (/^git (push|pull|commit|add)\b/.test(prefix)) {
+  } else if (/^git push\b/.test(prefix)) {
+    result = compressGitPush(out); strategy = "git-quick";
+  } else if (/^git commit\b/.test(prefix)) {
+    result = compressGitCommit(out); strategy = "git-quick";
+  } else if (/^git add\b/.test(prefix)) {
+    result = compressGitAdd(out); strategy = "git-quick";
+  } else if (/^git pull\b/.test(prefix)) {
     const clean = out.trim();
     if (clean) result = clean.split("\n").slice(0, 3).join("\n");
     strategy = "git-quick";

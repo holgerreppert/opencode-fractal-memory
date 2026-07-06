@@ -4,6 +4,7 @@ import { memLog } from "../logging";
 import { createRecordingHandler } from "./hooks/recording";
 import { createWorkingCacheHandler } from "./hooks/working-cache";
 import { createCompressionHandler } from "./hooks/compression";
+import { createNonBashCompressionHandler } from "./hooks/tool-compression";
 import { createSkeletonizationHandler } from "./hooks/skeletonization";
 import { createFileSummaryHandler } from "./hooks/file-summary";
 import { createReReadEliminationHandler } from "./hooks/re-read-elimination";
@@ -31,6 +32,7 @@ export function createHookHandlers(
     createRecordingHandler(store, memConfig),
     createWorkingCacheHandler(store),
     createCompressionHandler(store, memConfig),
+    createNonBashCompressionHandler(),
     createSkeletonizationHandler(memConfig),
     createFileSummaryHandler(store, memConfig),
     createReReadEliminationHandler(memConfig),

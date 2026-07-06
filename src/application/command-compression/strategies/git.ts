@@ -58,6 +58,41 @@ export function compressGitLog(raw: string): string {
   return result.length > 0 ? result.join("\n") : raw;
 }
 
+export function compressGitPush(raw: string): string {
+  const lines = raw.split("\n").filter(Boolean);
+  const branch = lines.find(l => /^To\s/.test(l) || l.includes("->"));
+  const summary = lines.find(l => /\d+\s+files?\s+changed/i.test(l) || /\.\./.test(l));
+  const refs = lines.filter(l => /^\s+[a-f0-9]{7,}\./.test(l));
+  if (branch && summary) {
+    return `${summary} | pushed to ${branch.trim()}`;
+  }
+  if (refs.length > 0) {
+    return `${refs.length} refs pushed`;
+  }
+  return lines.slice(0, 3).join("\n");
+}
+
+export function compressGitCommit(raw: string): string {
+  const lines = raw.split("\n").filter(Boolean);
+  const hash = lines.find(l => /^\[[\w-]+\s+[a-f0-9]+/.test(l));
+  const summary = lines.find(l => /^\d+\s+files?\s+changed/i.test(l) || /create mode|delete mode/.test(l));
+  const parts: string[] = [];
+  if (hash) parts.push(hash.trim());
+  if (summary) parts.push(summary.trim());
+  if (parts.length > 0) return parts.join(" | ");
+  return lines.slice(0, 3).join("\n");
+}
+
+export function compressGitAdd(raw: string): string {
+  const lines = raw.split("\n").filter(Boolean);
+  // "git add ." or "git add src/file.ts"
+  const fileCount = lines.length;
+  if (fileCount > 3) {
+    return `${fileCount} files staged`;
+  }
+  return lines.slice(0, 3).join("\n");
+}
+
 export function compressGitDiff(raw: string): string {
   const lines = raw.split("\n");
   const changed: string[] = [];
