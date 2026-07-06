@@ -7,7 +7,7 @@ import { compressGitStatus, compressGitLog, compressGitDiff, compressGitPush, co
 import { compressGeneric, compressRelevantGeneric } from "./command-compression/strategies/generic";
 import { applyShapeCompression } from "./command-compression/shape";
 import { trimByRelevance } from "./command-compression/relevance";
-import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix } from "./command-compression/utils";
+import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix, applyWordAbbreviations } from "./command-compression/utils";
 
 export type { CompressConfig, FuzzyDedupConfig } from "./command-compression/config";
 export { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
@@ -18,7 +18,8 @@ export function compressCommandOutput(
   command: string,
   rawOutput: string,
   failed: boolean,
-  config: CompressConfig
+  config: CompressConfig,
+  intentTerms?: string[],
 ): { output: string; strategy: string } | null {
   if (!config.enabled) return null;
   if (config.alwaysFullOnFailure && failed) return null;
@@ -77,47 +78,51 @@ export function compressCommandOutput(
   }
 
   if (result !== null && result !== out && result.length < out.length) {
+    const abbreviated = applyWordAbbreviations(result);
     memLog("debug", "compress", "Compressed output", {
       cmd: cmd.slice(0, 60),
       originalChars: out.length,
       compressedChars: result.length,
       saving: `${Math.round((1 - result.length / Math.max(out.length, 1)) * 100)}%`,
     });
-    return { output: result, strategy };
+    return { output: abbreviated, strategy };
   }
 
   const shaped = applyShapeCompression(out, config.maxLines);
   if (shaped) {
+    const abbreviated = applyWordAbbreviations(shaped.output);
     memLog("debug", "compress", "Shape-based compression applied", {
       cmd: cmd.slice(0, 60), shape: shaped.strategy,
-      originalChars: out.length, compressedChars: shaped.output.length,
-      saving: `${Math.round((1 - shaped.output.length / Math.max(out.length, 1)) * 100)}%`,
+      originalChars: out.length, compressedChars: abbreviated.length,
+      saving: `${Math.round((1 - abbreviated.length / Math.max(out.length, 1)) * 100)}%`,
     });
-    return shaped;
+    return { output: abbreviated, strategy: shaped.strategy };
   }
 
   if (config.relevanceTrimmingEnabled && out.split("\n").length > 20) {
-    const trimmed = trimByRelevance(out, prefix, config);
+    const trimmed = trimByRelevance(out, prefix, config, intentTerms);
     if (trimmed !== out) {
+      const abbreviated = applyWordAbbreviations(trimmed);
       memLog("debug", "compress", "Relevance-trimmed output", {
         cmd: cmd.slice(0, 60),
         originalChars: out.length,
-        compressedChars: trimmed.length,
-        saving: `${Math.round((1 - trimmed.length / Math.max(out.length, 1)) * 100)}%`,
+        compressedChars: abbreviated.length,
+        saving: `${Math.round((1 - abbreviated.length / Math.max(out.length, 1)) * 100)}%`,
       });
-      return { output: trimmed, strategy: "relevance-trim" };
+      return { output: abbreviated, strategy: "relevance-trim" };
     }
   }
 
   const generic = compressRelevantGeneric(out, config.maxLines, cmd);
   if (generic !== out) {
+    const abbreviated = applyWordAbbreviations(generic);
     memLog("debug", "compress", "Relevant generic compression applied", {
       cmd: cmd.slice(0, 60),
       originalChars: out.length,
-      compressedChars: generic.length,
-      saving: `${Math.round((1 - generic.length / Math.max(out.length, 1)) * 100)}%`,
+      compressedChars: abbreviated.length,
+      saving: `${Math.round((1 - abbreviated.length / Math.max(out.length, 1)) * 100)}%`,
     });
-    return { output: generic, strategy: "generic" };
+    return { output: abbreviated, strategy: "generic" };
   }
 
   return null;

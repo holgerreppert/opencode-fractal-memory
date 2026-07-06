@@ -1,9 +1,57 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { createHash } from "node:crypto";
+
 export interface ToolCompressResult {
   output: string;
   strategy: string;
 }
 
+const SCRATCH_DIR = path.join(os.homedir(), ".config", "opencode", "scratch");
 const MIN_TOOL_OUTPUT = 80;
+
+function ensureScratchDir(): void {
+  try { fs.mkdirSync(SCRATCH_DIR, { recursive: true }); } catch { /* best-effort */ }
+}
+
+export function stashOriginal(output: string): string | null {
+  if (!output || output.length < 200) return null;
+  ensureScratchDir();
+  const hash = createHash("sha256").update(output).digest("hex").slice(0, 16);
+  const outPath = path.join(SCRATCH_DIR, `${hash}.out`);
+  try {
+    if (!fs.existsSync(outPath)) {
+      fs.writeFileSync(outPath, output, "utf-8");
+    }
+    return outPath;
+  } catch {
+    return null;
+  }
+}
+
+export function applyToolWordAbbreviations(text: string): string {
+  const WORD_ABBRS: Record<string, string> = {
+    implementation: "impl", configuration: "config", authentication: "auth",
+    authorization: "authz", directory: "dir", executable: "exe",
+    environment: "env", variable: "var", function: "fn", property: "prop",
+    parameter: "param", argument: "arg", attribute: "attr", reference: "ref",
+    identifier: "id", initialization: "init", repository: "repo",
+    management: "mgmt", application: "app", documentation: "docs",
+    notification: "notif", communication: "comm", utility: "util",
+  };
+  let changed = false;
+  const result = text.split("\n").map(line => {
+    const updated = line.replace(/\b([a-zA-Z]{6,})\b/g, (match) => {
+      const lower = match.toLowerCase();
+      const abbrev = WORD_ABBRS[lower];
+      if (abbrev) { changed = true; return match[0]!.toUpperCase() === match[0] ? abbrev[0]!.toUpperCase() + abbrev.slice(1) : abbrev; }
+      return match;
+    });
+    return updated;
+  });
+  return changed ? result.join("\n") : text;
+}
 
 export function compressReadOutput(raw: string, filePath?: string): ToolCompressResult | null {
   if (!raw || raw.length < MIN_TOOL_OUTPUT) return null;

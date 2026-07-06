@@ -7,6 +7,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, type FuzzyDedupConfig } from "../../application/command-compression";
+import { stashOriginal } from "../../application/tool-compression";
 import type { HookHandler } from "./types";
 
 const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
@@ -121,7 +122,11 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
         return;
       }
 
-      const compressed = compressCommandOutput(cmd, raw, failed, compressConfig);
+      // Extract intent terms from command for context-aware relevance trimming
+      const cmdTerms = cmd.split(/\s+/).filter(t => !t.startsWith("-") && t.length >= 3).map(t => t.toLowerCase().replace(/["'`()]/g, ""));
+      const intentTerms = [...new Set(cmdTerms)];
+
+      const compressed = compressCommandOutput(cmd, raw, failed, compressConfig, intentTerms.length > 0 ? intentTerms : undefined);
       const durationMs = performance.now() - t0;
 
       if (compressed) {
@@ -144,6 +149,13 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             ? `[Dedup — ${raw.length}→${deduped.output.length} chars (same output seen before)]\n`
             : `[Compressed via ${strategyLabel} — ${raw.length}→${deduped.output.length} chars]\n`;
           let finalOutput = deduped.output;
+
+          // Reversible compression: stash original when output is big
+          const reversible = !deduped.dedup && raw.length > 2000; // always enabled for large output
+          let stashPath: string | null = null;
+          if (reversible) {
+            stashPath = stashOriginal(raw);
+          }
 
           const offloadConfig = config.outputOffloading;
           if (offloadConfig?.enabled && !deduped.dedup) {
@@ -199,7 +211,8 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             }
           }
 
-          out.output = banner + finalOutput;
+          const reversibleNote = stashPath ? `\n[Original stashed — use \`cat ${stashPath}\`]` : "";
+          out.output = banner + finalOutput + reversibleNote;
           out.metadata = {
             ...((out.metadata as Record<string, unknown>) ?? {}),
             compressed: true,

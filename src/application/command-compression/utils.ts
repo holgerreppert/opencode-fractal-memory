@@ -132,6 +132,73 @@ export function extractQueryTerms(cmd: string): string[] {
   return terms;
 }
 
+const WORD_ABBREVIATIONS: Record<string, string> = {
+  implementation: "impl",
+  implementations: "impls",
+  configuration: "config",
+  configurations: "configs",
+  authentication: "auth",
+  authorization: "authz",
+  directory: "dir",
+  directories: "dirs",
+  executable: "exe",
+  environment: "env",
+  variable: "var",
+  variables: "vars",
+  function: "fn",
+  functions: "fns",
+  property: "prop",
+  properties: "props",
+  parameter: "param",
+  parameters: "params",
+  argument: "arg",
+  arguments: "args",
+  attribute: "attr",
+  attributes: "attrs",
+  reference: "ref",
+  references: "refs",
+  identifier: "id",
+  identifiers: "ids",
+  initialization: "init",
+  initialize: "init",
+  initializing: "init",
+  management: "mgmt",
+  application: "app",
+  applications: "apps",
+  documentation: "docs",
+  repository: "repo",
+  repositories: "repos",
+  utility: "util",
+  utilities: "utils",
+  communication: "comm",
+  notification: "notif",
+  notifications: "notifs",
+};
+
+export function applyWordAbbreviations(text: string): string {
+  // Apply to each line: replace long words with abbreviations
+  const lines = text.split("\n");
+  let changed = false;
+  const result = lines.map(line => {
+    const updated = line.replace(/\b([a-zA-Z]{6,})\b/g, (match) => {
+      const lower = match.toLowerCase();
+      const abbrev = WORD_ABBREVIATIONS[lower];
+      if (abbrev) {
+        changed = true;
+        // Preserve capitalization of first letter
+        if (match[0] === match[0]!.toUpperCase()) {
+          return abbrev[0]!.toUpperCase() + abbrev.slice(1);
+        }
+        return abbrev;
+      }
+      return match;
+    });
+    return updated;
+  });
+  if (!changed) return text;
+  return result.join("\n");
+}
+
 export function scoreLine(line: string, terms: string[], idx: number, total: number): number {
   const lower = line.toLowerCase();
   let score = 0;

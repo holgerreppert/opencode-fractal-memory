@@ -2,7 +2,7 @@ import { writeCompressLog } from "../../logging";
 import { contentPreview, scoreLine, extractQueryTerms } from "./utils";
 import type { CompressConfig } from "./config";
 
-export function trimByRelevance(raw: string, command: string, config: CompressConfig): string {
+export function trimByRelevance(raw: string, command: string, config: CompressConfig, intentTerms?: string[]): string {
   const threshold = config.relevanceTrimmingThreshold ?? 15;
   const minKeep = config.relevanceTrimmingMinKeep ?? 5;
   const alwaysKeepTop = config.relevanceTrimmingAlwaysKeepTop ?? 3;
@@ -11,12 +11,13 @@ export function trimByRelevance(raw: string, command: string, config: CompressCo
   if (lines.length <= minKeep + alwaysKeepTop) return raw;
 
   const terms = extractQueryTerms(command);
+  const allTerms = intentTerms ? [...new Set([...terms, ...intentTerms.map(t => t.toLowerCase())])] : terms;
 
   // Score each line
   const total = lines.length;
   const scored: { line: string; score: number; idx: number }[] = [];
   for (let i = 0; i < total; i++) {
-    const s = scoreLine(lines[i]!, terms, i, total);
+    const s = scoreLine(lines[i]!, allTerms, i, total);
     scored.push({ line: lines[i]!, score: s, idx: i });
   }
 
