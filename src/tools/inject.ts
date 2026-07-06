@@ -83,6 +83,12 @@ export function MemoryInject(store: MemoryStore) {
         usedTokens = selectedNodes.reduce((sum, n) => sum + (nodeTokenCounts.get(n.id) ?? 0), 0);
       }
 
+      // Boost usefulness of injected nodes
+      for (const node of selectedNodes) {
+        const newScore = Math.min(5, (node.usefulnessScore ?? 0) + 0.05);
+        store.updateNode(node.id, { usefulnessScore: newScore, timesHelpful: (node.timesHelpful ?? 0) + 1 }).catch(() => {/* node may be deleted concurrently */});
+      }
+
       // Render selected nodes as XML-like blocks
       const renderedNodes = selectedNodes.map(node => {
         const content = node.content

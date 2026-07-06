@@ -88,6 +88,12 @@ export function MemorySearch(store: MemoryStore) {
 
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 
+      // Boost usefulness of retrieved nodes
+      for (const node of nodes) {
+        const newScore = Math.min(5, (node.usefulnessScore ?? 0) + 0.03);
+        store.updateNode(node.id, { usefulnessScore: newScore }).catch(() => {/* node may be deleted concurrently */});
+      }
+
       lastSearchResults.length = 0;
       lastSearchResults.push(...nodes.map(n => ({ id: n.id, label: n.label ?? undefined, scope: n.scope })));
 
