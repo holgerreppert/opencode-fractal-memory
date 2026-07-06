@@ -43,7 +43,7 @@ if you find bugs or if you just want to suggest improvements
 - **Memory nodes** — structured persistent memory with labels, content, metadata, and type system
 - **Semantic search** — ONNX-powered embeddings (all-MiniLM-L6-v2) with HNSW vector index for fast ANN retrieval
 - **Native ONNX runtime** — `onnxruntime-node` with multi-threaded CPU execution (`intraOpNumThreads: 0`), full graph optimization (`graphOptimizationLevel: "all"`), CPU memory arena, and denormal/GELU approximation flags. 12-15× faster embedding inference vs WASM
-- **BM25 hybrid search** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching
+- **BM25 hybrid search + dual retrieval** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching. BM25 runs independently across ALL scope nodes (not just HNSW candidates), catching keyword matches outside the vector neighborhood and covering nodes without embeddings
 - **Multi-hop temporal expansion** — temporally adjacent nodes (NEXT / DURING_SESSION edges) expanded up to 3 hops with 0.7^depth score decay, configurable via `temporal_hops` arg
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
 - **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels + LLM-powered summaries)
@@ -947,7 +947,14 @@ MIT
 
 ## Changelog
 
-### v0.6.43 (current)
+### v0.6.46 (current)
+- **Dual retrieval** — BM25 now runs independently across ALL scope nodes (not just HNSW candidates). Top BM25-only candidates (keyword matches outside the vector neighborhood) are fetched and merged with HNSW results. Catches nodes without embeddings that match via keywords. Changes in `src/storage/search.ts:181-228`. 60 tests pass (22 search, 38 search-helpers)
+- **Usefulness scoring fix** — `memory_inject` boosts `usefulnessScore` + `timesHelpful` for each injected node; `memory_search` boosts `usefulnessScore` for each retrieved node; recording hook rates follow-up tools (edit/bash/write) on success, no longer skipping `memory_*` tool results
+- **Storedcontext default scores lowered** — defaults reduced from `usefulnessScore: 0.5` + `importance: 3.0` to `0.1` + `0.5`, matching normal note baselines so search-driven scoring determines actual usefulness
+- **Backfill script** — new `scripts/backfill-embeddings.ts` backfilled 382 missing embeddings across all nodes, reset 615 stuck-at-0.0 nodes to 0.1 baseline
+- **Search pipeline graphviz** — `docs/search-pipeline.gv` updated with dual retrieval flow (all_nodes → bm25_score → bm25_only → merge → final)
+
+### v0.6.43
 - **Fix: run management server in-process when bun not in PATH** — Instead of giving up or spawning with the wrong binary, `startInProcess()` dynamically creates the Router, registers routes, and calls `Bun.serve()` directly in the plugin process. Both subprocess (bun in PATH) and in-process (embedded bun) paths are supported. Falls through to in-process if subprocess spawn throws
 
 ### v0.6.42

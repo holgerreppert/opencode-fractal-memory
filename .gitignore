@@ -19,3 +19,5 @@ tests/dbs/locomo-seeded/memory.db-shm
 tests/dbs/locomo-seeded/memory.db-wal
 tests/dbs/synthetic-seeded/
 *.tgz
+build_output.txt
+docs/questions/
