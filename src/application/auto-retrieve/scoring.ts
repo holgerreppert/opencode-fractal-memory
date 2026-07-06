@@ -12,6 +12,8 @@ export interface Candidate {
   usefulnessScore: number;
   accessCount: number;
   updatedAt: Date | null;
+  type?: string | null;
+  level?: number;
 }
 
 export function fallbackScore(
