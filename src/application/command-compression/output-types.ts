@@ -385,7 +385,7 @@ function compressConfigContent(raw: string, _maxLines: number): OutputTypeResult
   return { type: "config-content", compressed };
 }
 
-function compressRawText(raw: string, maxLines: number): OutputTypeResult {
+export function compressRawText(raw: string, maxLines: number): OutputTypeResult {
   const lines = raw.split("\n");
   const deduped: string[] = [];
   let dupCount = 1;

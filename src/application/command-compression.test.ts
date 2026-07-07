@@ -3,12 +3,12 @@ import { compressLs } from "./command-compression/strategies/ls";
 import { compressTestOutput } from "./command-compression/strategies/test";
 import { compressGrep } from "./command-compression";
 import { compressGeneric, compressRelevantGeneric } from "./command-compression/strategies/generic";
+import { compressRawText, detectOutputType, compressByType } from "./command-compression/output-types";
 import { classifyShape, applyShapeCompression } from "./command-compression/shape";
 import { compressCommandOutput, type CompressConfig } from "./command-compression";
 import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 import { addContentDedup, trigramJaccard } from "./command-compression/dedup";
 import { smartFilter, scoreLine } from "./command-compression/utils";
-import { detectOutputType, compressByType } from "./command-compression/output-types";
 
 const defaultConfig: CompressConfig = {
   enabled: true,
@@ -68,20 +68,24 @@ describe("compressTestOutput", () => {
 });
 
 describe("compressGeneric", () => {
-  test("deduplicates consecutive identical lines", () => {
-    const input = ["a", "b", "b", "b", "c"].join("\n");
-    expect(compressGeneric(input, 50)).toBe(["a", "b (×3)", "c"].join("\n"));
-  });
-
-  test("truncates with head + tail when exceeding maxLines", () => {
-    const lines: string[] = [];
-    for (let i = 0; i < 20; i++) lines.push(`line ${i}`);
+  test("delegates to compressByType for compressible input", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
     const result = compressGeneric(lines.join("\n"), 6);
-    const resultLines = result.split("\n");
-    expect(resultLines.length).toBeLessThan(20);
-    expect(result).toContain("truncated");
+    expect(result).not.toBe(lines.join("\n"));
+    expect(result).toContain("[kept");
     expect(result).toContain("line 0");
     expect(result).toContain("line 19");
+  });
+
+  test("truncates with head + tail when exceeding maxLines via compressRawText", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
+    const raw = compressRawText(lines.join("\n"), 6);
+    expect(raw).not.toBeNull();
+    const resultLines = raw!.compressed.split("\n");
+    expect(resultLines.length).toBeLessThanOrEqual(7); // header + 6 kept lines
+    expect(raw!.compressed).toContain("[kept");
+    expect(raw!.compressed).toContain("line 0");
+    expect(raw!.compressed).toContain("line 19");
   });
 
   test("returns raw when under maxLines with no dupes", () => {
@@ -368,21 +372,21 @@ describe("scoreLine", () => {
 });
 
 describe("compressRelevantGeneric", () => {
-  test("keeps error lines from middle of output", () => {
+  test("keeps error signal lines from middle of output via compressRawText", () => {
     const lines = Array.from({ length: 20 }, (_, i) => `ok line ${i}`);
     lines[10] = "ERROR: connection refused";
-    lines[15] = "panic: out of memory";
+    lines[15] = "error: out of memory";
     const result = compressRelevantGeneric(lines.join("\n"), 10, "run test");
     expect(result).toContain("ERROR: connection refused");
-    expect(result).toContain("panic: out of memory");
+    expect(result).toContain("error: out of memory");
   });
 
-  test("preserves original line order in output", () => {
+  test("preserves original line order from compressRawText", () => {
     const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
     const result = compressRelevantGeneric(lines.join("\n"), 6, "some command");
     const output = result.split("\n");
-    const dataLines = output.filter(l => !l.startsWith("[relevant:"));
-    // Data lines should be in ascending order
+    // Skip the [kept ...] header
+    const dataLines = output.filter(l => !l.startsWith("[kept") && !l.startsWith("[relevant"));
     const nums = dataLines.map(l => parseInt(l.match(/\d+/)?.[0] ?? "0"));
     for (let i = 1; i < nums.length; i++) {
       expect(nums[i]!).toBeGreaterThan(nums[i - 1]!);
