@@ -3,6 +3,9 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import type { HookHandler } from "./types";
 
+const CROSS_SESSION_CACHE = new Map<string, string[]>();
+let lastCrossSessionFetch = 0;
+
 const RULE_LABELS = [
   { label: "rule:mandatory:memory", type: "mandatory" },
   { label: "rule:mandatory:core", type: "mandatory" },
@@ -103,6 +106,44 @@ export function createSeedRulesHandler(
             injected: reminders.length,
             userQueryLength: userMessage.length,
           });
+        }
+
+        // Cross-session context injection
+        if (userMessage.length >= 10) {
+          try {
+            const now = Date.now();
+            if (now - lastCrossSessionFetch > 60000) {
+              lastCrossSessionFetch = now;
+              const priors = (await store.searchText("all", userMessage, 10))
+                .filter(n => n.type === "storedcontext")
+                .slice(0, 3);
+              if (priors.length > 0) {
+                const snippets: string[] = [];
+                const seenLabels = new Set<string>();
+                for (const n of priors) {
+                  if (seenLabels.has(n.label ?? "")) continue;
+                  seenLabels.add(n.label ?? "");
+                  const content = n.content ?? "";
+                  const summaryMatch = content.match(/--- storedcontext summary ---\n([\s\S]*?)--- conversation history ---/);
+                  const summary = summaryMatch ? summaryMatch[1]!.trim() : content.slice(0, 300);
+                  snippets.push(`<session reference="${n.label ?? "prior"}">\n${summary.slice(0, 500)}\n</session>`);
+                }
+                if (snippets.length > 0) {
+                  CROSS_SESSION_CACHE.set(sessionId, snippets);
+                }
+              }
+            }
+
+            const cachedSnippets = CROSS_SESSION_CACHE.get(sessionId);
+            if (cachedSnippets && cachedSnippets.length > 0) {
+              const crossSessionBlock = `<system_reminder type="info">\n<prior_sessions>\n${cachedSnippets.join("\n")}\n</prior_sessions>\n</system_reminder>`;
+              out.system.splice(out.system.length, 0, crossSessionBlock);
+              memLog("debug", "seed-rules", `Injected ${cachedSnippets.length} cross-session context snippets`, {
+                sessionId,
+                snippets: cachedSnippets.length,
+              });
+            }
+          } catch { /* best-effort */ }
         }
       } catch (err) {
         memLog("error", "injection", "Rule injection failed", { error: String(err) });
