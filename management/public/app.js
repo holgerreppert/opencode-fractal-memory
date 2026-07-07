@@ -2293,6 +2293,8 @@ async function loadSettings() {
     document.getElementById('reReadElimination-maxCacheSize').value = config.reReadElimination?.maxCacheSize ?? 100;
     document.getElementById('outputOffloading-enabled').value = String(config.outputOffloading?.enabled ?? true);
     document.getElementById('outputOffloading-thresholdChars').value = config.outputOffloading?.thresholdChars ?? 8000;
+    document.getElementById('toolDedup').value = String(config.toolDedup ?? true);
+    document.getElementById('errorPruning').value = String(config.errorPruning ?? false);
     const g = config.graph || {};
     document.getElementById('graph-enabled').value = String(g.enabled ?? true);
     document.getElementById('graph-maxFiles').value = g.maxFiles ?? 5000;
@@ -2437,6 +2439,8 @@ async function saveSettings() {
       enabled: document.getElementById('outputOffloading-enabled').value === 'true',
       thresholdChars: parseInt(document.getElementById('outputOffloading-thresholdChars').value) || 8000,
     },
+    toolDedup: document.getElementById('toolDedup').value === 'true',
+    errorPruning: document.getElementById('errorPruning').value === 'true',
     graph: {
       enabled: document.getElementById('graph-enabled').value === 'true',
       maxFiles: parseInt(document.getElementById('graph-maxFiles').value) || 5000,
