@@ -147,6 +147,17 @@ export interface MemConfig {
     criticalPrompt: string;
     excludePatterns: string[];
   } | undefined;
+  toolDedup?: {
+    enabled: boolean;
+    maxCacheEntries: number;
+    protectedTools: string[];
+    turnProtectionTurns: number;
+  } | undefined;
+  errorPruning?: {
+    enabled: boolean;
+    turns: number;
+    protectedTools: string[];
+  } | undefined;
 }
 
 const AutoRetrieveSchema = z.object({
@@ -423,6 +434,17 @@ const DEFAULT_CONFIG: MemConfig = {
     minLines: 200,
     strategy: "ast+regex",
   },
+  toolDedup: {
+    enabled: false,
+    maxCacheEntries: 500,
+    protectedTools: ["edit", "write", "task", "skill", "todowrite", "replace"],
+    turnProtectionTurns: 3,
+  },
+  errorPruning: {
+    enabled: false,
+    turns: 4,
+    protectedTools: ["edit", "write", "task"],
+  },
   graph: {
     enabled: true,
     maxFiles: 5000,
@@ -430,6 +452,19 @@ const DEFAULT_CONFIG: MemConfig = {
   },
   smallModel: {},
 };
+
+const ToolDedupSchema = z.object({
+  enabled: z.boolean().default(false),
+  maxCacheEntries: z.number().positive().int().default(500),
+  protectedTools: z.array(z.string()).default(["edit", "write", "task", "skill", "todowrite", "replace"]),
+  turnProtectionTurns: z.number().int().min(0).default(3),
+});
+
+const ErrorPruningSchema = z.object({
+  enabled: z.boolean().default(false),
+  turns: z.number().int().min(1).default(4),
+  protectedTools: z.array(z.string()).default(["edit", "write", "task"]),
+});
 
 const GraphSchema = z.object({
   enabled: z.boolean().default(true),
@@ -470,6 +505,8 @@ const MemConfigSchema = z.object({
   graph: GraphSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),
   fileSkeletonization: FileSkeletonizationSchema.optional(),
+  toolDedup: ToolDedupSchema.optional(),
+  errorPruning: ErrorPruningSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {
