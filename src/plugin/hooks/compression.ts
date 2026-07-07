@@ -8,6 +8,7 @@ import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, type FuzzyDedupConfig } from "../../application/command-compression";
 import { stashOriginal } from "../../application/tool-compression";
+import { SessionCache } from "../../application/session-cache";
 import type { HookHandler } from "./types";
 
 const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
@@ -67,6 +68,32 @@ async function purgeOldScratch(): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+const SESSION_CACHES = new Map<string, SessionCache>();
+
+function getSessionCache(sessionId: string): SessionCache | null {
+  if (!sessionId) return null;
+  if (SESSION_CACHES.has(sessionId)) return SESSION_CACHES.get(sessionId)!;
+  try {
+    const cache = new SessionCache(sessionId, 60);
+    SESSION_CACHES.set(sessionId, cache);
+    return cache;
+  } catch { return null; }
+}
+
+function trySessionCache(cache: SessionCache | null, raw: string): { output: string; strategy: string } | null {
+  if (!cache) return null;
+  const hash = cache.getOutputHash(raw);
+  const entry = cache.get(hash);
+  if (entry) return { output: entry.output, strategy: entry.strategy };
+  return null;
+}
+
+function recordSessionCache(cache: SessionCache | null, raw: string, output: string, strategy: string): void {
+  if (!cache) return;
+  const hash = cache.getOutputHash(raw);
+  cache.set(hash, output, strategy);
+}
+
 export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
   purgeOldScratch().catch(() => { /* empty */ });
   return {
@@ -122,6 +149,32 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
         return;
       }
 
+      // Check session-persistent cache before running strategies
+      const sessionCache = getSessionCache(input.sessionID ?? "");
+      const cached = trySessionCache(sessionCache, raw);
+      if (cached) {
+        const cacheDurationMs = performance.now() - t0;
+        out.output = `[Cached — ${raw.length}→${cached.output.length} chars (via session cache)]\n${cached.output}`;
+        out.metadata = {
+          ...((out.metadata as Record<string, unknown>) ?? {}),
+          compressed: true,
+          compressStrategy: cached.strategy + "-cached",
+        };
+        writeCompressLog({
+          action: "session-cache-hit",
+          strategy: cached.strategy + "-cached",
+          cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
+          original_chars: raw.length,
+          compressed_chars: cached.output.length,
+          original_lines: raw.split("\n").length,
+          compressed_lines: cached.output.split("\n").length,
+          reduction_pct: raw.length > 0 ? Math.round((1 - cached.output.length / raw.length) * 100) : 0,
+          duration_ms: Math.round(cacheDurationMs),
+          failed: failed ? 1 : 0,
+        });
+        return;
+      }
+
       // Extract intent terms from command for context-aware relevance trimming
       const cmdTerms = cmd.split(/\s+/).filter(t => !t.startsWith("-") && t.length >= 3).map(t => t.toLowerCase().replace(/["'`()]/g, ""));
       const intentTerms = [...new Set(cmdTerms)];
@@ -144,6 +197,12 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
 
       if (compressed) {
         updateDeltaCache(DELTA_CACHE, cmd, raw, compressed.strategy, compressConfig?.deltaMaxCacheSize ?? 50);
+        recordSessionCache(sessionCache, raw, compressed.output, compressed.strategy);
+      } else {
+        // Cache that this output is not compressible (empty marker)
+        if (raw.length >= 80) {
+          recordSessionCache(sessionCache, raw, raw, "no-compression");
+        }
       }
 
       try {

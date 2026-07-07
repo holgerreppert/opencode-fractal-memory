@@ -1,4 +1,4 @@
-export type OutputType = "build-log" | "dep-tree" | "log-stream" | "config-content" | "raw-text";
+export type OutputType = "build-log" | "dep-tree" | "log-stream" | "config-content" | "source-code" | "raw-text";
 export type OutputTypeResult = { type: OutputType; compressed: string } | null;
 
 const BUILD_PATTERNS = [
@@ -55,8 +55,127 @@ function detectConfigContent(raw: string): boolean {
   return sectionHeaders.length >= 2 || (keyValue.length >= lines.length * 0.4);
 }
 
+const CODE_LANG_PATTERNS = [
+  // TypeScript/JavaScript
+  { imports: [/^(import |export |from ["'])/], defs: [/^(function |class |interface |type |enum |const \w+[:=]|let \w+[:=]|var \w+[:=]|async function|arrow function)/] },
+  // Python
+  { imports: [/^(import |from \S+ import)/], defs: [/^(def |class |async def |@\w+)/] },
+  // Rust
+  { imports: [/^(use |pub use)/], defs: [/^(fn |pub fn|struct |enum |impl |trait |pub struct|pub enum|pub trait|type |pub type)/] },
+  // Go
+  { imports: [/^(import "|import \(|package )/], defs: [/^(func |type |struct |interface )/] },
+  // Java/Kotlin
+  { imports: [/^(import |package )/], defs: [/^(public |private |protected |class |interface |enum |fun |val |var )/] },
+  // generic code indicators
+  { imports: [/[{};]\s*$/], defs: [/^\s*\/\//, /^\s*#/] },
+];
+
+function detectSourceCode(raw: string): boolean {
+  const lines = raw.split("\n").filter(Boolean);
+  if (lines.length < 3) return false;
+
+  let importLines = 0;
+  let defLines = 0;
+  let totalSignificant = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    if (!trimmed || trimmed.startsWith("```")) continue;
+
+    for (const lang of CODE_LANG_PATTERNS) {
+      if (lang.imports.some(p => p.test(trimmed))) importLines++;
+      if (lang.defs.some(p => p.test(trimmed))) defLines++;
+    }
+
+    // Detect code-like structure (indentation patterns + operators)
+    if (/[{}=+\-*/%<>!&|^~?:;]/.test(trimmed) || /^\s{2,}\S/.test(line)) {
+      totalSignificant++;
+    }
+  }
+
+  // Source code if: at least 2 import/def lines OR strong structural indicators
+  return (importLines >= 2 || defLines >= 2) ||
+    (totalSignificant >= lines.length * 0.4 && lines.length >= 5);
+}
+
+function compressSourceCode(raw: string, _maxLines: number): OutputTypeResult {
+  const lines = raw.split("\n");
+  const imports: string[] = [];
+  const signatures: string[] = [];
+  const errors: string[] = [];
+  const other: string[] = [];
+  let totalLines = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trimStart();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("```")) continue;
+
+    // Collect import lines
+    if (/^(import |export |from ["']|use |package |#include|#import)/.test(trimmed) && !/^import\s+type/.test(trimmed)) {
+      if (imports.length < 15) imports.push(trimmed);
+      continue;
+    }
+
+    // Collect function/class/interface signatures
+    if ((/^(function |class |interface |type |enum |trait |impl |struct |pub |fn |def |async def)/.test(trimmed) ||
+         /^(export (default )?(function|class|interface|type|enum|const|let|var))/.test(trimmed) ||
+         /^(public|private|protected) (static )?(function|class|interface)/.test(trimmed) ||
+         /^(const|let|var)\s+\w+\s*[:=]\s*(\(|[a-zA-Z])/.test(trimmed) ||
+         /^(func |type |struct |interface )/.test(trimmed)) &&
+        !signatures.some(s => s.includes(trimmed.slice(0, 40)))) {
+      // Extract signature (before first { or :)
+      const sigEnd = trimmed.indexOf("{");
+      const sig = sigEnd >= 0 ? trimmed.slice(0, sigEnd).trim() : trimmed;
+      if (sig.length < 150) signatures.push(sig + "; // L" + (i + 1));
+      continue;
+    }
+
+    // Collect error-related lines
+    if (/\b(ERROR|error|Error|FAIL|fail|Exception|exception)\b/.test(trimmed) &&
+        /:\d+/.test(trimmed)) {
+      errors.push(trimmed.slice(0, 200));
+      continue;
+    }
+
+    other.push(trimmed.slice(0, 100));
+  }
+
+  const result: string[] = [];
+
+  if (imports.length > 0) {
+    result.push(`// imports (${imports.length})`);
+    result.push(...imports);
+  }
+
+  if (signatures.length > 0) {
+    result.push(`// signatures (${signatures.length})`);
+    result.push(...signatures);
+  }
+
+  if (errors.length > 0) {
+    result.push(`// errors (${errors.length})`);
+    result.push(...errors.slice(0, 5));
+    if (errors.length > 5) result.push(`// ... +${errors.length - 5} more error lines`);
+  }
+
+  if (result.length === 0) return null;
+
+  const compressed = result.join("\n");
+  if (compressed.length >= raw.length * 0.9) return null;
+  if (compressed.length > 4000) {
+    return {
+      type: "source-code",
+      compressed: `[source-code: ${totalLines}→${result.length} lines — imports ${imports.length}, signatures ${signatures.length}, errors ${errors.length}]\n${result.join("\n")}`,
+    };
+  }
+  return { type: "source-code", compressed: `[source-code: ${totalLines}→${result.length} lines — imports ${imports.length}, signatures ${signatures.length}, errors ${errors.length}]\n${result.join("\n")}` };
+}
+
 export function detectOutputType(raw: string): OutputType {
   if (detectBuildLog(raw)) return "build-log";
+  if (detectSourceCode(raw)) return "source-code";
   if (detectDepTree(raw)) return "dep-tree";
   if (detectLogStream(raw)) return "log-stream";
   if (detectConfigContent(raw)) return "config-content";
@@ -252,6 +371,7 @@ export function compressByType(raw: string, maxLines: number, explicitType?: Out
 
   switch (type) {
     case "build-log": return compressBuildLog(raw, maxLines);
+    case "source-code": return compressSourceCode(raw, maxLines);
     case "dep-tree": return compressDepTree(raw, maxLines);
     case "log-stream": return compressLogStream(raw, maxLines);
     case "config-content": return compressConfigContent(raw, maxLines);
