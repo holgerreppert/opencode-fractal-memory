@@ -3,6 +3,9 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import type { HookHandler } from "./types";
 
+const CROSS_SESSION_CACHE = new Map<string, string[]>();
+let lastCrossSessionFetch = 0;
+
 const RULE_LABELS = [
   { label: "rule:mandatory:memory", type: "mandatory" },
   { label: "rule:mandatory:core", type: "mandatory" },
@@ -16,6 +19,22 @@ const RULE_LABELS = [
   { label: "rule:feature:auto-retrieve", type: "info" },
 ];
 
+function extractKeywords(text: string): Set<string> {
+  const words = text.toLowerCase().split(/[^a-z0-9_#-]+/);
+  const filtered = words.filter(w => w.length >= 3 && !["the", "and", "for", "are", "was", "but", "not", "you", "all", "can", "has", "had", "its", "how", "why", "what", "when", "where", "which", "will", "your", "from", "have", "that", "this", "with", "been", "some", "than", "then", "they", "them", "also", "just", "more", "most", "only", "over", "such", "each", "about", "into", "than", "very", "after", "other", "their", "there", "these", "those", "could", "would", "should"].includes(w));
+  return new Set(filtered);
+}
+
+function scoreKeywordOverlap(userKeywords: Set<string>, ruleContent: string): number {
+  const ruleKeywords = extractKeywords(ruleContent);
+  if (ruleKeywords.size === 0 || userKeywords.size === 0) return 0;
+  let overlap = 0;
+  for (const kw of userKeywords) {
+    if (ruleKeywords.has(kw)) overlap++;
+  }
+  return overlap / Math.sqrt(userKeywords.size * ruleKeywords.size);
+}
+
 export function createSeedRulesHandler(
   store: MemoryStore,
   config: MemConfig,
@@ -25,7 +44,7 @@ export function createSeedRulesHandler(
 ): HookHandler {
   return {
     "system.transform": async (_input: unknown, output: unknown) => {
-      const input = _input as { sessionID?: string };
+      const input = _input as { args?: Record<string, unknown>; sessionID?: string };
       const out = output as { system: string[] };
       const sessionId = input.sessionID ?? `session-${Date.now()}`;
       setSessionId(sessionId);
@@ -34,6 +53,8 @@ export function createSeedRulesHandler(
       sessionInjectionLock.set(sessionId, true);
 
       const reminders: string[] = [];
+      const seenLabels = new Set<string>();
+
       try {
         if (ruleCacheDirty.value || ruleCache.size === 0) {
           for (const { label, type } of RULE_LABELS) {
@@ -50,16 +71,96 @@ export function createSeedRulesHandler(
           ruleCacheDirty.value = false;
         }
 
-        for (const [_label, cached] of ruleCache) {
-          const allowed = ["mandatory", "standard", "suggestion", "info"];
-          if (allowed.includes(cached.type)) {
-            reminders.push(`<system_reminder type="${cached.type}">\n${cached.content}\n</system_reminder>`);
+        const userMessage = input.args?.userMessage ? String(input.args.userMessage) : "";
+        const userKeywords = userMessage ? extractKeywords(userMessage) : new Set<string>();
+
+        // Progressive rule disclosure: at high context pressure, strip non-essential rules
+        const pressureState = (globalThis as any).__pressureState as { phase: string; pct: number } | undefined;
+        const pressurePct = pressureState?.pct ?? 0;
+        const minScoreForRules = pressurePct >= 95 ? 0.50 :
+                                 pressurePct >= 85 ? 0.30 :
+                                 pressurePct >= 75 ? 0.20 :
+                                 0.0;
+        const allowStandard = pressurePct < 85;
+        const allowSuggestion = pressurePct < 75;
+
+        const scoredRules: Array<{ label: string; content: string; type: string; score: number }> = [];
+
+        for (const [label, cached] of ruleCache) {
+          if (!["mandatory", "standard", "suggestion", "info"].includes(cached.type)) continue;
+          if (seenLabels.has(label)) continue;
+          seenLabels.add(label);
+
+          const score = userKeywords.size > 0
+            ? scoreKeywordOverlap(userKeywords, cached.content)
+            : 1.0;
+
+          scoredRules.push({ label, content: cached.content, type: cached.type, score });
+        }
+
+        scoredRules.sort((a, b) => b.score - a.score);
+
+        for (const { label: _label, content, type, score } of scoredRules) {
+          if (type === "mandatory") {
+            reminders.push(`<system_reminder type="${type}">\n${content}\n</system_reminder>`);
+          } else if (type === "standard" && !allowStandard) {
+            continue;
+          } else if ((type === "suggestion" || type === "info") && !allowSuggestion) {
+            continue;
+          } else if (score >= Math.max(minScoreForRules, 0.15)) {
+            reminders.push(`<system_reminder type="${type}">\n${content}\n</system_reminder>`);
           }
         }
 
         if (reminders.length > 0) {
           const insertAt = out.system.length > 0 ? 1 : 0;
           out.system.splice(insertAt, 0, reminders.join("\n\n"));
+        }
+
+        if (reminders.length < ruleCache.size) {
+          memLog("debug", "seed-rules", `Adaptive selection: ${reminders.length}/${ruleCache.size} rules injected`, {
+            total: ruleCache.size,
+            injected: reminders.length,
+            userQueryLength: userMessage.length,
+          });
+        }
+
+        // Cross-session context injection
+        if (userMessage.length >= 10) {
+          try {
+            const now = Date.now();
+            if (now - lastCrossSessionFetch > 60000) {
+              lastCrossSessionFetch = now;
+              const priors = (await store.searchText("all", userMessage, 10))
+                .filter(n => n.type === "storedcontext")
+                .slice(0, 3);
+              if (priors.length > 0) {
+                const snippets: string[] = [];
+                const seenLabels = new Set<string>();
+                for (const n of priors) {
+                  if (seenLabels.has(n.label ?? "")) continue;
+                  seenLabels.add(n.label ?? "");
+                  const content = n.content ?? "";
+                  const summaryMatch = content.match(/--- storedcontext summary ---\n([\s\S]*?)--- conversation history ---/);
+                  const summary = summaryMatch ? summaryMatch[1]!.trim() : content.slice(0, 300);
+                  snippets.push(`<session reference="${n.label ?? "prior"}">\n${summary.slice(0, 500)}\n</session>`);
+                }
+                if (snippets.length > 0) {
+                  CROSS_SESSION_CACHE.set(sessionId, snippets);
+                }
+              }
+            }
+
+            const cachedSnippets = CROSS_SESSION_CACHE.get(sessionId);
+            if (cachedSnippets && cachedSnippets.length > 0) {
+              const crossSessionBlock = `<system_reminder type="info">\n<prior_sessions>\n${cachedSnippets.join("\n")}\n</prior_sessions>\n</system_reminder>`;
+              out.system.splice(out.system.length, 0, crossSessionBlock);
+              memLog("debug", "seed-rules", `Injected ${cachedSnippets.length} cross-session context snippets`, {
+                sessionId,
+                snippets: cachedSnippets.length,
+              });
+            }
+          } catch { /* best-effort */ }
         }
       } catch (err) {
         memLog("error", "injection", "Rule injection failed", { error: String(err) });
@@ -77,7 +178,7 @@ export function createSeedRulesHandler(
           counts[cached.type] = (counts[cached.type] ?? 0) + 1;
         }
         const parts = Object.entries(counts).map(([t, c]) => `${t}=${c}`).join(" ");
-        appendSessionLog(`[${new Date().toISOString()}] SYSTEM TRANSFORM | id=${sessionId} | rules=${ruleCache.size} | ${parts}`);
+        appendSessionLog(`[${new Date().toISOString()}] SYSTEM TRANSFORM | id=${sessionId} | rules=${reminders.length}/${ruleCache.size} | ${parts}`);
       }
     },
   };

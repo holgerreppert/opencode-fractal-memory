@@ -144,6 +144,19 @@ export function estimatePressureLevel(
 
 let lastLogKey = "";
 
+export function getCompactionNudge(level: PressureLevel): string | null {
+  switch (level) {
+    case "warn":
+      return "[Context notice: conversation is growing long. Keep responses concise — prefer short answers, avoid unnecessary tool calls, and summarize where possible.]";
+    case "aggressive":
+      return "[Context notice: approaching context limit. Be extremely concise. Skip verbose explanations. Consider whether the model needs all prior tool outputs or whether they can be summarized.]";
+    case "critical":
+      return "[Context notice: near context limit. Respond in as few tokens as possible. Prioritize essential information only.]";
+    default:
+      return null;
+  }
+}
+
 export function logOutputTokenInjection(level: PressureLevel, text: string): void {
   const key = `${level}|${text.slice(0, 80)}`;
   if (key === lastLogKey) return;

@@ -57,7 +57,7 @@ if you find bugs or if you just want to suggest improvements
 - **Consolidation** — extracts semantic facts from episodic node clusters on session idle
 - **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Optional Ollama extraction via small local model as last-resort. Stats tracked in `compression_stats` table. View via management app Compress tab
 - **Context dashboard** — new management app tab showing memory node count/tokens by level, active rules, compression stats, recent injection history, and estimated total context usage with overhead breakdown
-- **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count). Falls through to generic if shape is unknown
+- **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table, compiler-diagnostics, test-output, npm-install, coverage-log) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count, compiler-diagnostics → errors grouped by file with codes). Falls through to generic if shape is unknown
 - **SmartFilter** — noise-stripping preprocessor in shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines before shape classification. Logged as `shape-json`, `shape-csv`, etc. with noise counts
 - **Fuzzy dedup** — after exact SHA-256 dedup fails, computes trigram Jaccard similarity against recent outputs (threshold 0.85) to catch near-duplicates (timestamps, whitespace diffs). Logged as `fuzzy-dedup` in compress.log
 - **Adaptive pressure** — tracks estimated context token usage; issues warnings and tightens `maxLines` (50→35→20→5) at configurable thresholds (70/85/95%). Logged to compress.log per phase transition
@@ -67,6 +67,16 @@ if you find bugs or if you just want to suggest improvements
 - **Relevant generic truncation** — relevance-weighted line selection instead of blind top-N truncation. Scores each line by signal-word density and keeps the highest-scoring lines up to maxLines when generic fallback fires. Falls back to blind truncation if relevance scoring fails
 - **Delta compression** — when the same command runs again and output is ≥50% similar, emits only the diff lines (prefix/suffix) instead of the full compressed output. Config via `commandCompression.deltaCompression*` fields. Logged as `delta` in compress.log
 - **Before/after compression statistics** — each compression event stores original_lines, compressed_lines, cmd_preview, and full content previews (up to 2K chars) in the DB. Management UI shows side-by-side before/after detail with expandable row modal
+- **Code-aware output compression** — detects TS/JS/Python/Rust/Go/Java output and extracts imports + signatures + error lines with preserved line references instead of full file dumps
+- **Session-persistent compression cache** — per-session JSON cache at `~/.config/opencode/scratch/session-<id>-cache.json` with 60-min TTL and 30s auto-save. Prevents redundant re-compression of identical command outputs within a session
+- **Tool call deduplication** — LRU cache of tool call signatures per turn suppresses repeated identical calls (same tool + same args) before they waste LLM context. Config via `toolDedup` flag (default: on)
+- **Error input pruning** — after 4 turns, replaces errored tool call input strings with `[<tool_name> call failed]` placeholder to reclaim context tokens without losing the failure signal. Config via `errorPruning` flag (default: off)
+- **Structured memory injection** — injected memories formatted as XML-tagged `<memory_context label="..." type="..." importance="...">` blocks with structured metadata instead of raw text, improving LLM parsing of injected context
+- **Stored context structured summaries** — `storedcontext` nodes (from compaction) now include a YAML header with `tools_used:`, `files_modified:`, `key_errors:`, `token_usage:`, and `turn_count:` fields for efficient cross-session scanning
+- **Cross-session context injection** — on new sessions, searches `storedcontext` nodes via `searchText` and injects structured summaries of prior sessions as `<system_reminder type="info">` blocks. 60s throttle between fetches
+- **Adaptive rule selection** — scores each rule against the current user message via keyword-overlap similarity. Mandatory rules always inject; standard/suggestion/info need ≥0.15 relevance threshold. Logged with injected/total counts
+- **Progressive rule disclosure** — at context pressure thresholds, strips non-essential rules: >75% removes suggestion/info, >85% removes standard, >95% requires ≥0.50 relevance for any non-mandatory rule. Reads global `__pressureState` from output-token-control
+- **Proactive compaction nudge** — when context pressure hits warn(75%)/aggressive(85%)/critical(95%), injects a context-pressure warning into the system prompt urging the agent to use `memory_recall_context`, `memory_middle_term`, or `memory_search` to reduce token usage
 - **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
 - **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely. Logged to filesum.log (RE-READ component)
 - **Code knowledge graph** — builds a directed graph of code symbols (functions, classes, interfaces, types) and their relationships (calls, imports, references, defined_in, extends) via tree-sitter WASM AST extraction. 32 supported languages. Louvain community detection clusters related code; god-node and surprising-connections analysis highlight architectural hotspots
@@ -291,6 +301,8 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
 | `commandCompression.alwaysFullOnFailure` | bool | `true` | Preserve full output on non-zero exit |
 | `sessionLog.enabled` | bool | `false` | Log session events to separate file |
+| `toolDedup` | bool | `true` | Deduplicate repeated identical tool calls within a turn |
+| `errorPruning` | bool | `false` | Replace errored tool call inputs with placeholders after 4 turns |
 | `commandCompression.relevanceTrimmingEnabled` | bool | `false` | Signal-word relevance trimming of command output |
 | `commandCompression.relevanceTrimmingThreshold` | float | `0.15` | Min TF-IDF score to keep a line |
 | `commandCompression.relevanceTrimmingMinKeep` | int | `5` | Min lines to keep regardless |
@@ -723,12 +735,15 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 ┌─ PHASE 1: SYSTEM PROMPT ───────────────────────────────────────────┐
 │  experimental.chat.system.transform                                  │
 │                                                                     │
-│  seed-rules        Loads rule:mandatory/*, rule:standard,            │
-│                    rule:suggestion, rule:feature/* from DB →         │
-│                    injects as <system_reminder> tags                  │
-│                                                                     │
-│  output-token-     If context pressure is high, injects a            │
-│  control           concise-output rule into the system prompt        │
+│  seed-rules        Loads rule:mandatory/*, rule:standard,                    │
+│                    rule:suggestion, rule:feature/* from DB →                  │
+│                    injects as <system_reminder> tags.                          │
+│                    Adaptive selection scores rules against user message;       │
+│                    progressive disclosure at >75%/>85%/>95% pressure           │
+│                                                                               │
+│  output-token-     If context pressure is high, injects a                     │
+│  control           concise-output rule into the system prompt.                 │
+│                    At pressure thresholds, also injects compaction nudge       │
 │                                                                     │
 │  graph-tools       If code knowledge graph is built, injects         │
 │                    graph tool usage instructions                     │
@@ -739,11 +754,18 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  experimental.chat.messages.transform                                │
 │                                                                     │
 │  messages-         Calls drilldownQuery(userText) for raw memory     │
-│  transform         injection into the message list                   │
+│  transform         injection into the message list — uses            │
+│                    structured <memory_context> XML format             │
 │                                                                     │
 │  auto-retrieve     Finds memory_search tool results in pending       │
 │                    messages → re-ranks candidates via Ollama /       │
 │                    LLM judge / fallback scorer → rewrites order      │
+│                                                                     │
+│  tool-dedup        LRU cache deduplicates repeated tool calls        │
+│                    (same tool + same args in current turn)           │
+│                                                                     │
+│  error-prune       After 4 turns, replaces errored tool input        │
+│                    strings with [<tool> call failed] placeholder     │
 └─────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -788,8 +810,12 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │    adaptive-           Records output size → prepends pressure     │
 │    pressure            warning if nearing context limit            │
 │    compression         Compresses output via delta / fuzzy-dedup / │
-│                        7 strategies (ls/test/grep/git-*) → may    │
-│                        offload >8KB to scratch dir                 │
+│                        7 strategies (ls/test/grep/git-*),          │
+│                        code-aware shape detection (source-code /   │
+│                        compiler-diagnostics / test-output /        │
+│                        npm-install / coverage-log),                │
+│                        session-persistent cache → may offload      │
+│                        >8KB to scratch dir                         │
 │                                                                   │
 │  read tool:                                                       │
 │    skeletonization    If >200 lines → tree-sitter AST skeleton    │
@@ -839,7 +865,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 | Hook point | Orchestrator | Individual handlers |
 |---|---|---|
 | `experimental.chat.system.transform` | `src/plugin/hooks.ts:61` | `seed-rules.ts`, `output-token-control.ts`, `graph-tools.ts` |
-| `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts` |
+| `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts`, `tool-dedup.ts`, `error-prune.ts` |
 | `chat.params` | `src/plugin/hooks.ts:73` | `chat-params.ts` |
 | `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts`, `file-summary.ts`, `graph-tools.ts` |
 | `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `skeletonization.ts`, `file-summary.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |

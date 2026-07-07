@@ -16,6 +16,8 @@ import { createOutputTokenControlHandler } from "./hooks/output-token-control";
 import { createChatParamsHandler } from "./hooks/chat-params";
 import { createMessagesTransformHandler } from "./hooks/messages-transform";
 import { createGraphToolsHandler } from "./hooks/graph-tools";
+import { createToolDedupHandler } from "./hooks/tool-dedup";
+import { createErrorPruneHandler } from "./hooks/error-prune";
 import type { HookHandler } from "./hooks/types";
 
 export function createHookHandlers(
@@ -29,6 +31,8 @@ export function createHookHandlers(
   managementServer: { start: () => void; stop: () => void },
 ) {
   const handlers: HookHandler[] = [
+    createToolDedupHandler(memConfig),
+    createErrorPruneHandler(memConfig),
     createRecordingHandler(store, memConfig),
     createWorkingCacheHandler(store),
     createCompressionHandler(store, memConfig),

@@ -805,6 +805,28 @@
       </div>
 
       <div class="config-category">
+        <h3 class="category-header">Context Quality <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Tool Call Dedup</label>
+            <select id="toolDedup">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Deduplicate repeated identical tool calls within a turn</p>
+          </div>
+          <div class="config-field">
+            <label>Error Input Pruning</label>
+            <select id="errorPruning">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Replace errored tool call inputs with placeholders after 4 turns</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-category">
         <h3 class="category-header">Code Graph <span class="collapse-arrow">&#x25BC;</span></h3>
         <div class="category-body">
           <div class="config-field">

@@ -5,6 +5,59 @@ import { generateEmbedding } from "../../infrastructure/llm/embeddings";
 import { getWorkingCache, addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
 
+function extractToolUse(entries: string[]): string[] {
+  const tools = new Set<string>();
+  for (const entry of entries) {
+    const m = entry.match(/\[tool: (\w+)/);
+    if (m) tools.add(m[1]!);
+  }
+  return [...tools].sort();
+}
+
+function extractFilePaths(entries: string[], toolNames: string[]): string[] {
+  const files = new Set<string>();
+  for (const entry of entries) {
+    for (const tool of toolNames) {
+      const re = new RegExp(`\\[tool: ${tool}[^\\]]*?"(filePath|path)":"([^"]+)"`);
+      const m = entry.match(re);
+      if (m?.[2]) files.add(m[2]);
+    }
+  }
+  return [...files].sort();
+}
+
+function extractKeyErrors(entries: string[]): string[] {
+  const errors: string[] = [];
+  for (const entry of entries) {
+    if (entry.includes("error") || entry.includes("fail") || entry.includes("exception")) {
+      const lines = entry.split("\n").filter(l => /\b(error|fail|exception|cannot|not found)\b/i.test(l));
+      for (const line of lines.slice(0, 3)) {
+        const clean = line.replace(/^\[.*?\]\s*/, "").slice(0, 150);
+        if (clean && !errors.includes(clean)) errors.push(clean);
+      }
+    }
+  }
+  return errors.slice(0, 5);
+}
+
+function extractTokenSummary(messages: Array<Record<string, unknown>>): string {
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCost = 0;
+  let agentCount = 0;
+  for (const msg of messages) {
+    const info = msg.info as Record<string, unknown> | undefined;
+    const tokens = info?.tokens as Record<string, unknown> | undefined;
+    if (tokens) {
+      totalInput += (tokens.input as number) ?? 0;
+      totalOutput += (tokens.output as number) ?? 0;
+    }
+    totalCost += (info?.cost as number) ?? 0;
+    if (info?.agent) agentCount++;
+  }
+  return `input=${totalInput} output=${totalOutput} cost=${totalCost.toFixed(4)} agents=${agentCount}`;
+}
+
 export function createCompactionHandler(store: MemoryStore, config: MemConfig, client: unknown): HookHandler {
   return {
     "compacting": async (_input: unknown, output: unknown) => {
@@ -151,8 +204,26 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
               }
 
               if (entries.length > 0) {
+                // Generate structured summary
+                const structured: Record<string, unknown> = {
+                  session_id: sessionId,
+                  timestamp: new Date(now).toISOString(),
+                  turn_count: turnIndex,
+                  tools_used: extractToolUse(entries),
+                  files_modified: extractFilePaths(entries, ["edit", "write", "create"]),
+                  key_errors: extractKeyErrors(entries),
+                  token_usage: extractTokenSummary(messages),
+                };
+                const structuredYaml = Object.entries(structured)
+                  .filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))
+                  .map(([k, v]) => {
+                    if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${String(i).replace(/\n/g, "\\n")}`).join("\n")}`;
+                    return `${k}: ${String(v)}`;
+                  })
+                  .join("\n");
+
                 const nodeLabel = `storedcontext:${sessionId}:${now}`;
-                const content = entries.join("\n\n---\n\n");
+                const content = `--- storedcontext summary ---\n${structuredYaml}\n--- conversation history ---\n\n${entries.join("\n\n---\n\n")}`;
                 let embedding: number[] | null = null;
                 try { embedding = await generateEmbedding(content.slice(0, 8000)); } catch { embedding = null; }
                 await store.createNode({
@@ -165,9 +236,9 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                   embedding,
                   importance: 0.5,
                   usefulnessScore: 0.1,
-                  metadata: { customType: "storedcontext", sessionId, timestamp: now },
+                  metadata: { customType: "storedcontext", sessionId, timestamp: now, turnCount: turnIndex },
                 });
-                summaries.push(`Conversation archived as storedcontext node (label: ${nodeLabel}). Use memory_search with query or memory_recall_context to recall.`);
+                summaries.push(`Conversation archived as storedcontext node with structured summary (label: ${nodeLabel}).`);
               }
             }
           }
