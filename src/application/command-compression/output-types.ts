@@ -106,7 +106,7 @@ function detectCompilerDiagnostics(raw: string): boolean {
     const t = line.trim();
     // Match: file.ts:line:col: error/warning, or error[code], or (col,row): error
     if (/^[A-Za-z]:\\/.test(t)) continue; // skip absolute Windows paths alone
-    if (/\b(error|warning|note|help)\[?[\w\d]+\]?:?\s/i.test(t) && /\.\w+:\d+:\d+/.test(t)) {
+    if (/\.\w+:\d+:\d+/.test(t) && /\b(error|warning|note|help)\s*\[?[\w\d()]+\]?:?\s/i.test(t)) {
       diagLines++;
     }
     if (diagLines >= 2) return true;
@@ -154,6 +154,9 @@ function detectCoverageLog(raw: string): boolean {
   for (const line of lines) {
     const t = line.trim();
     if (/\b(\d+\.\d+\s*%|\d+\/\d+)\s+(\|\s+)?(statements|branches|functions|lines)\b/i.test(t)) {
+      coverageLines++;
+    }
+    if (/^\|?\s*[\w./-]+\s*\|\s*\d+\.\d+\s/.test(t)) {
       coverageLines++;
     }
     if (/All files\s*\|/.test(t) || /File\s+\|/.test(t)) coverageLines += 2;
@@ -243,8 +246,8 @@ export function detectOutputType(raw: string): OutputType {
   if (detectCompilerDiagnostics(raw)) return "compiler-diagnostics";
   if (detectTestOutput(raw)) return "test-output";
   if (detectCoverageLog(raw)) return "coverage-log";
-  if (detectSourceCode(raw)) return "source-code";
   if (detectNpmInstall(raw)) return "npm-install";
+  if (detectSourceCode(raw)) return "source-code";
   if (detectDepTree(raw)) return "dep-tree";
   if (detectLogStream(raw)) return "log-stream";
   if (detectConfigContent(raw)) return "config-content";
@@ -446,10 +449,12 @@ function compressCompilerDiagnostics(raw: string, _maxLines: number): OutputType
       const severity = fileMatch[4]!.toLowerCase();
       if (!byFile.has(file)) byFile.set(file, { errors: [], warnings: [], notes: [] });
       const entry = byFile.get(file)!;
-      const snippet = t.slice(t.indexOf(severity)).slice(0, 200);
-      if (severity === "error") entry.errors.push(snippet);
-      else if (severity === "warning" || severity === "warn") entry.warnings.push(snippet);
-      else entry.notes.push(snippet);
+      // Extract code and message, stripping duplicate severity word
+      const afterSev = t.slice(t.indexOf(severity) + severity.length).trim();
+      const codeMsg = afterSev.replace(/^\[?[\w\d]+\]?:?\s*/, "").slice(0, 100);
+      if (severity === "error") entry.errors.push(codeMsg);
+      else if (severity === "warning" || severity === "warn") entry.warnings.push(codeMsg);
+      else entry.notes.push(codeMsg);
     }
   }
 
@@ -459,17 +464,25 @@ function compressCompilerDiagnostics(raw: string, _maxLines: number): OutputType
   let totalErrors = 0;
   let totalWarnings = 0;
 
-  for (const [file, diag] of byFile) {
+  // Sort files by error count descending
+  const sorted = [...byFile.entries()].sort((a, b) => b[1].errors.length - a[1].errors.length);
+
+  for (const [file, diag] of sorted) {
     totalErrors += diag.errors.length;
     totalWarnings += diag.warnings.length;
-    result.push(`${file}: ${diag.errors.length} errors, ${diag.warnings.length} warnings`);
-    for (const e of diag.errors.slice(0, 3)) result.push(`  error: ${e}`);
-    if (diag.errors.length > 3) result.push(`  ... +${diag.errors.length - 3} more errors`);
-    for (const w of diag.warnings.slice(0, 2)) result.push(`  warning: ${w}`);
-    if (diag.warnings.length > 2) result.push(`  ... +${diag.warnings.length - 2} more warnings`);
+    const shortFile = file.split("/").pop() ?? file;
+    const parts: string[] = [];
+    if (diag.errors.length > 0) parts.push(`${diag.errors.length}e`);
+    if (diag.warnings.length > 0) parts.push(`${diag.warnings.length}w`);
+    result.push(`${shortFile} (${parts.join(" ")})`);
+    for (const e of diag.errors.slice(0, 2)) result.push(`  e: ${e}`);
+    if (diag.errors.length > 2) result.push(`  ... +${diag.errors.length - 2} more`);
+    for (const w of diag.warnings.slice(0, 1)) result.push(`  w: ${w}`);
+    if (diag.warnings.length > 1) result.push(`  ... +${diag.warnings.length - 1} more`);
   }
 
-  const compressed = `[compiler: ${byFile.size} files, ${totalErrors} errors, ${totalWarnings} warnings]\n${result.join("\n")}`;
+  const compressed = `[compiler: ${byFile.size}f ${totalErrors}e ${totalWarnings}w]` +
+    (result.length > 0 ? `\n${result.join("\n")}` : "");
   if (compressed.length >= raw.length * 0.9) return null;
   return { type: "compiler-diagnostics", compressed };
 }
@@ -542,27 +555,21 @@ function compressNpmInstall(raw: string, _maxLines: number): OutputTypeResult {
 
   if (added === 0 && removed === 0 && changed === 0 && !inProgress) return null;
 
-  const result: string[] = [];
-  if (inProgress && added === 0) result.push("up to date");
+  const parts: string[] = [];
+  if (inProgress && added === 0) parts.push("up to date");
   else {
-    const parts: string[] = [];
-    if (added > 0) parts.push(`added ${added}`);
-    if (removed > 0) parts.push(`removed ${removed}`);
-    if (changed > 0) parts.push(`changed ${changed}`);
-    result.push(parts.join(", "));
-    if (newPkgs.length > 0 && newPkgs.length <= 5) result.push(`packages: ${newPkgs.join(", ")}`);
-    else if (newPkgs.length > 5) result.push(`packages: ${newPkgs.slice(0, 5).join(", ")} ... +${newPkgs.length - 5} more`);
-    if (audited > 0) result.push(`audited ${audited} packages`);
-    if (vulnerabilities > 0) result.push(`${vulnerabilities} vulnerabilities`);
-
-    // Extract final summary lines (last 3 non-empty lines)
-    const summaryLines = lines.filter(l => /^up to date|^already up|added \d+|removed \d+|audited/i.test(l.trim())).slice(-3);
-    for (const sl of summaryLines) {
-      if (!result.some(r => r.includes(sl.trim().slice(0, 20)))) result.push(sl.trim());
-    }
+    const counts: string[] = [];
+    if (added > 0) counts.push(`+${added}`);
+    if (removed > 0) counts.push(`-${removed}`);
+    if (changed > 0) counts.push(`~${changed}`);
+    parts.push(counts.join(" "));
+    if (newPkgs.length > 0 && newPkgs.length <= 3) parts.push(`pkg: ${newPkgs.join(" ")}`);
+    else if (newPkgs.length > 3) parts.push(`pkg: ${newPkgs.slice(0, 3).join(" ")} +${newPkgs.length - 3}`);
+    if (audited > 0) parts.push(`audited:${audited}`);
+    if (vulnerabilities > 0) parts.push(`vuln:${vulnerabilities}`);
   }
 
-  const compressed = result.join("\n");
+  const compressed = `[npm] ${parts.join(" | ")}`;
   if (compressed.length >= raw.length * 0.9) return null;
   return { type: "npm-install", compressed };
 }
@@ -575,15 +582,19 @@ function compressCoverageLog(raw: string, _maxLines: number): OutputTypeResult {
   for (const line of lines) {
     const t = line.trim();
     if (/All files\s*\|/.test(t) || /^\|\s*All files/i.test(t)) { overallLine = t; continue; }
-    if (/^\|?\s*[\w./-]+\s*\|/.test(t) && /\d+\.\d+\s*%/.test(t)) {
-      fileResults.push(t);
+    if (/^(File|Name)/.test(t) && t.includes("|")) { continue; }
+    if (/^\|?\s*[\w./-]+\s*\|/.test(t)) {
+      // Has a path/name followed by pipe and content with a number
+      if (/\d+\.\d+|\d+%/.test(t)) {
+        fileResults.push(t);
+      }
     }
   }
 
   const result: string[] = [];
   const fileCount = fileResults.length;
   if (overallLine) {
-    const overallPct = overallLine.match(/(\d+\.\d+)%/);
+    const overallPct = overallLine.match(/(\d+\.?\d*)%?/);
     result.push(`coverage: ${fileCount} files${overallPct ? `, overall ${overallPct[1]}%` : ""}`);
   } else {
     result.push(`coverage: ${fileCount} files`);
@@ -591,8 +602,8 @@ function compressCoverageLog(raw: string, _maxLines: number): OutputTypeResult {
 
   // Show lowest-coverage files first
   fileResults.sort((a, b) => {
-    const ap = a.match(/(\d+\.\d+)%/);
-    const bp = b.match(/(\d+\.\d+)%/);
+    const ap = a.match(/(\d+\.\d+)%?/);
+    const bp = b.match(/(\d+\.\d+)%?/);
     return (ap ? parseFloat(ap[1]!) : 100) - (bp ? parseFloat(bp[1]!) : 100);
   });
 

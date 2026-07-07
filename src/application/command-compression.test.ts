@@ -8,6 +8,7 @@ import { compressCommandOutput, type CompressConfig } from "./command-compressio
 import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 import { addContentDedup, trigramJaccard } from "./command-compression/dedup";
 import { smartFilter, scoreLine } from "./command-compression/utils";
+import { detectOutputType, compressByType } from "./command-compression/output-types";
 
 const defaultConfig: CompressConfig = {
   enabled: true,
@@ -391,5 +392,119 @@ describe("compressRelevantGeneric", () => {
   test("returns raw under maxLines", () => {
     const lines = Array.from({ length: 5 }, (_, i) => `line ${i}`);
     expect(compressRelevantGeneric(lines.join("\n"), 10, "cmd")).toBe(lines.join("\n"));
+  });
+});
+
+describe("detectOutputType — new structural shapes", () => {
+  test("detects compiler diagnostics", () => {
+    const input = [
+      "src/a.ts:10:5: error TS2345: Type 'X' is not assignable to type 'Y'",
+      "src/a.ts:15:3: warning TS1000: Unused variable",
+      "src/b.ts:1:1: error TS111: Cannot find module 'z'",
+    ].join("\n");
+    expect(detectOutputType(input)).toBe("compiler-diagnostics");
+  });
+
+  test("detects test output", () => {
+    const input = "✓ basic test passes\n✗ failing test broke\nTests: 1 failed, 1 passed";
+    expect(detectOutputType(input)).toBe("test-output");
+  });
+
+  test("detects npm install output", () => {
+    const input = "npm install react\n+ react@18.2.0\n+ lodash@4.17.21\nadded 2 packages\nnpm audit";
+    expect(detectOutputType(input)).toBe("npm-install");
+  });
+
+  test("detects coverage log", () => {
+    const input = ["File          | % Stmts | % Branch | % Funcs | % Lines",
+      "All files     |     85.5 |     72.3 |    90.1 |   85.5",
+      "src/foo.ts    |    100.0 |     80.0 |   100.0 |  100.0",
+      "src/bar.ts    |     50.0 |      0.0 |   100.0 |   50.0",
+    ].join("\n");
+    expect(detectOutputType(input)).toBe("coverage-log");
+  });
+
+  test("falls back to raw-text for plain build errors without build-pattern or diagnostics format", () => {
+    const input = ["ERROR: build failed", "FAILURE in build step"].join("\n");
+    expect(detectOutputType(input)).toBe("raw-text");
+  });
+});
+
+describe("compressByType — compiler diagnostics", () => {
+  test("groups diagnostics by file, shows errors first", () => {
+    const input = [
+      "src/a.ts:10:5: error TS2345: Type 'X' is not assignable to type 'Y'",
+      "src/a.ts:15:3: warning TS1000: Unused variable 'z'",
+      "src/a.ts:22:1: error TS1800: File is a CommonJS module but no 'export' statement",
+      "src/b.ts:1:1: error TS111: Cannot find module 'z'",
+      "src/b.ts:45:8: warning TS2322: Type 'string' is not assignable to type 'number'",
+      "src/c.ts:3:3: error TS2339: Property 'foo' does not exist on type 'Bar'",
+    ].join("\n");
+    const result = compressByType(input, 50);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("compiler-diagnostics");
+    expect(result!.compressed).toContain("3f");
+    expect(result!.compressed).toContain("4e");
+    expect(result!.compressed).toContain("2w");
+    expect(result!.compressed).toContain("Type 'X'");
+  });
+
+  test("returns null when compression is not beneficial", () => {
+    const result = compressByType("plain text without diagnostics", 50);
+    expect(result).toBeNull();
+  });
+});
+
+describe("compressByType — test output", () => {
+  test("shows pass/fail summary", () => {
+    const input = "✓ passing test one\n✓ passing test two\n✗ failing test three\nFAIL failing test four\n✗ failing test five\n✓ passing test six\nTests: 2 failed, 4 passed";
+    const result = compressByType(input, 50);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("test-output");
+    expect(result!.compressed).toContain("2 failed");
+    expect(result!.compressed).toContain("failing test three");
+    expect(result!.compressed).toContain("failing test four");
+  });
+
+  test("shows only suite-line when all pass", () => {
+    const input = "✓ test one\n✓ test two\n✓ test three\n✓ test four\n✓ test five\n✓ test six\n✓ test seven\n✓ test eight\n10 passing";
+    const result = compressByType(input, 50);
+    expect(result).not.toBeNull();
+    expect(result!.compressed).toContain("10 passing");
+  });
+});
+
+describe("compressByType — npm install", () => {
+  test("summarizes added packages", () => {
+    const input = ["npm install", "+ react@18.2.0", "+ lodash@4.17.21", "+ express@4.18.2", "+ typescript@5.3.0", "added 4 packages", "changed 2 packages in 1.2s", "audited 1000 packages", "2 vulnerabilities"].join("\n");
+    const result = compressByType(input, 50);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("npm-install");
+    expect(result!.compressed).toContain("+4");
+    expect(result!.compressed).toContain("audited");
+  });
+
+  test("returns null for output with no package changes", () => {
+    const result = compressByType("some irrelevant output here", 50);
+    expect(result).toBeNull();
+  });
+});
+
+describe("compressByType — coverage log", () => {
+  test("summarizes coverage with lowest-coverage files first", () => {
+    const input = [
+      "File          | % Stmts | % Branch",
+      "All files     |     70.0 |     65.0",
+      "src/bar.ts    |     50.0 |     40.0",
+      "src/foo.ts    |    100.0 |    100.0",
+      "src/baz.ts    |     60.0 |     55.0",
+    ].join("\n");
+    const result = compressByType(input, 50);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("coverage-log");
+    expect(result!.compressed).toContain("70.0");
+    expect(result!.compressed).toContain("3 files");
+    const lines = result!.compressed.split("\n");
+    expect(lines[1]).toMatch(/50\.0|bar/);
   });
 });
