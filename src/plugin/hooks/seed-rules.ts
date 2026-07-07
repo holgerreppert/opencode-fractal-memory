@@ -73,6 +73,17 @@ export function createSeedRulesHandler(
 
         const userMessage = input.args?.userMessage ? String(input.args.userMessage) : "";
         const userKeywords = userMessage ? extractKeywords(userMessage) : new Set<string>();
+
+        // Progressive rule disclosure: at high context pressure, strip non-essential rules
+        const pressureState = (globalThis as any).__pressureState as { phase: string; pct: number } | undefined;
+        const pressurePct = pressureState?.pct ?? 0;
+        const minScoreForRules = pressurePct >= 95 ? 0.50 :
+                                 pressurePct >= 85 ? 0.30 :
+                                 pressurePct >= 75 ? 0.20 :
+                                 0.0;
+        const allowStandard = pressurePct < 85;
+        const allowSuggestion = pressurePct < 75;
+
         const scoredRules: Array<{ label: string; content: string; type: string; score: number }> = [];
 
         for (const [label, cached] of ruleCache) {
@@ -89,9 +100,15 @@ export function createSeedRulesHandler(
 
         scoredRules.sort((a, b) => b.score - a.score);
 
-        for (const rule of scoredRules) {
-          if (rule.type === "mandatory" || rule.score >= 0.15) {
-            reminders.push(`<system_reminder type="${rule.type}">\n${rule.content}\n</system_reminder>`);
+        for (const { label: _label, content, type, score } of scoredRules) {
+          if (type === "mandatory") {
+            reminders.push(`<system_reminder type="${type}">\n${content}\n</system_reminder>`);
+          } else if (type === "standard" && !allowStandard) {
+            continue;
+          } else if ((type === "suggestion" || type === "info") && !allowSuggestion) {
+            continue;
+          } else if (score >= Math.max(minScoreForRules, 0.15)) {
+            reminders.push(`<system_reminder type="${type}">\n${content}\n</system_reminder>`);
           }
         }
 
