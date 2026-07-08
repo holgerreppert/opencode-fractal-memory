@@ -2233,7 +2233,6 @@ async function loadSettings() {
     document.getElementById('autoRetrieve-minQueryLength').value = config.autoRetrieve?.minQueryLength ?? 10;
     document.getElementById('autoRetrieve-injectionCooldownMs').value = config.autoRetrieve?.injectionCooldownMs ?? 30000;
     document.getElementById('autoRetrieve-llmJudgeEnabled').value = String(config.autoRetrieve?.llmJudgeEnabled ?? true);
-    document.getElementById('autoFileSummarization-enabled').value = String(config.autoFileSummarization?.enabled ?? false);
     document.getElementById('ollama-enabled').value = String(config.ollama?.enabled ?? false);
     document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
     document.getElementById('ollama-baseUrl').value = config.ollama?.baseUrl ?? 'http://localhost:11434';
@@ -2346,9 +2345,6 @@ async function saveSettings() {
       minQueryLength: parseInt(document.getElementById('autoRetrieve-minQueryLength').value) || 10,
       injectionCooldownMs: parseInt(document.getElementById('autoRetrieve-injectionCooldownMs').value) || 30000,
       llmJudgeEnabled: document.getElementById('autoRetrieve-llmJudgeEnabled').value === 'true',
-    },
-    autoFileSummarization: {
-      enabled: document.getElementById('autoFileSummarization-enabled').value === 'true',
     },
     ollama: {
       enabled: document.getElementById('ollama-enabled').value === 'true',

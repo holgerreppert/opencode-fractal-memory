@@ -97,7 +97,7 @@ OpenCode loads `ContextPaths` as raw file contents at session start. Directories
 
 | # | Proposal | Impact | Effort | Rationale |
 |---|----------|--------|--------|-----------|
-| 2.1 | **Auto-summarize context files**: Use existing `file-summary.ts` infrastructure to generate per-file summaries instead of raw content. | High | Low | Infrastructure exists, just needs wiring. |
+| 2.1 | **(removed)** `file-summary.ts` was removed — unused dead code. Graph + skeletonization provide equivalent coverage. | — | — |
 | 2.2 | **Priority-weighted loading**: Add `priority` metadata (critical/high/medium/low). Critical always injected, low only when pressure < 50%. | Medium | Low | HCP-style relevance ranking. |
 | 2.3 | **Structural skeleton for code files**: Apply existing skeletonization (32 languages, AST) to code context files. Only import + signature. | High | Low | Skeletonization exists for read output, not for context files. |
 | 2.4 | **Cache-aware re-loading**: Track mtime of context files. Only re-inject when changed. | Medium | Low | Re-read elimination pattern already exists. |
@@ -162,14 +162,14 @@ Our `messages-transform.ts` (line 13-51) runs `store.drilldownQuery(userText, 3)
 [Tool definitions → provider]
 ...
 [Tool call: read]
-[Tool result: AST skeleton + summary]  ← skeletonization + file-summary
+[Tool result: AST skeleton + summary]  ← skeletonization (file-summarization was removed)
 [Tool call: bash]
 [Tool result: compressed output]  ← 7 strategies + Ollama fallback
 [Tool call: grep]
 [Tool result: grouped output]  ← grep compression
 ```
 
-Our most heavily instrumented layer. 7 bash strategies, non-bash compression, skeletonization, re-read elimination, file summarization, working cache.
+Our most heavily instrumented layer. 7 bash strategies, non-bash compression, skeletonization, re-read elimination, working cache.
 
 ### Problems
 
@@ -273,7 +273,7 @@ Layer 1 (system prompt)
   └─ (proposed) AppendDynamicContext with session metadata
 
 Layer 2 (project context)
-  └─ (proposed) file-summary integration → auto-summarize context files
+  └─ (removed) file-summary was dead code
 
 Layer 3 (conversation history)
   ├─ messages-transform.ts → inject memory snippets before last user message
@@ -284,7 +284,7 @@ Layer 4 (tool context)
   ├─ tool-compression.ts → compress read/glob/edit output
   ├─ skeletonization.ts → AST skeleton for file reads
   ├─ re-read-elimination.ts → cache reads by mtime
-  ├─ file-summary.ts → auto-summarize read files
+  ├─ (removed) file-summary.ts → was dead code
   ├─ working-cache.ts → populate cache from tool results
   ├─ adaptive-pressure.ts → track pressure phase
   ├─ recording.ts → record tool calls for memory

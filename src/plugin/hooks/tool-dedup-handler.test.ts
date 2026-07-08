@@ -8,7 +8,6 @@ function makeConfig(overrides?: Record<string, unknown>): MemConfig {
     autoRetrieve: { enabled: false, topK: 3, minScore: 0.5, ollamaUrl: "", useOllama: false, useOnnx: false, bm25Weight: 0.5 },
     memoryCompression: { enabled: false, minLevel: 1, targetLevel: 3, maintenanceInterval: 3600000, llmCompressOnAccess: false, llmCompressOnSet: false },
     outputCompression: { enabled: false, maxLines: 50, excludeCommands: [], alwaysFullOnFailure: false, relevanceTrimmingEnabled: false },
-    fileSummary: { enabled: false },
     sessionManagement: { enabled: false },
     embedding: { enabled: false, model: "all-MiniLM-L6-v2", dimension: 384 },
     errorPruning: { enabled: false, turns: 1, protectedTools: [] },

@@ -14,9 +14,6 @@ export interface MemConfig {
   criticalContextThreshold: number;
   enableMiddleTermCapture: boolean;
   defaultTtlDays: number;
-  autoFileSummarization?: {
-    enabled: boolean;
-  } | undefined;
   adaptivePressure?: {
     enabled: boolean;
     warnThreshold: number;
@@ -317,9 +314,6 @@ const DEFAULT_CONFIG: MemConfig = {
   criticalContextThreshold: 0.8,
   enableMiddleTermCapture: true,
   defaultTtlDays: 0,
-  autoFileSummarization: {
-    enabled: false,
-  },
   autoRetrieve: {
     enabled: false,
     candidateCount: 30,
@@ -484,9 +478,6 @@ const MemConfigSchema = z.object({
   criticalContextThreshold: z.number().min(0).max(1).default(0.8),
   enableMiddleTermCapture: z.boolean().default(true),
   defaultTtlDays: z.number().int().min(0).default(0),
-  autoFileSummarization: z.object({
-    enabled: z.boolean().default(false),
-  }).optional(),
   autoRetrieve: AutoRetrieveSchema.optional(),
   ollama: OllamaSchema.optional(),
   llmCompression: LlmCompressionSchema.optional(),
