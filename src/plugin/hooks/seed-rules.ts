@@ -15,7 +15,6 @@ const RULE_LABELS = [
   { label: "rule:suggestion", type: "suggestion" },
   { label: "rule:feature:command-compression", type: "info" },
   { label: "rule:feature:file-skeletonization", type: "info" },
-  { label: "rule:feature:file-summarization", type: "info" },
   { label: "rule:feature:auto-retrieve", type: "info" },
 ];
 

@@ -82,7 +82,7 @@ if you find bugs or if you just want to suggest improvements
 - **Code knowledge graph** — builds a directed graph of code symbols (functions, classes, interfaces, types) and their relationships (calls, imports, references, defined_in, extends) via tree-sitter WASM AST extraction. 32 supported languages. Louvain community detection clusters related code; god-node and surprising-connections analysis highlight architectural hotspots
 - **Always-on graph hooks** — `tool.before` for read/grep/glob triggers a background incremental build on plugin load (configurable maxFiles, default 5000). `system.transform` injects a rule reminding the agent to use graph tools before reading source files
 - **Graph usage tracking** — every graph action (build, search, path, explain, rule injection, background build) is counted in-memory and logged to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID for audit
-- **Dedicated log files** — separate `filesum.log` for file summarization/skeletonization events and `compress.log` for command compression events, auto-rotating
+- **Dedicated log files** — separate `filesum.log` for skeletonization events and `compress.log` for command compression events, auto-rotating
 - **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
 - **Playbooks** — reusable workflow templates (sticky memory nodes) proposed by the agent
@@ -289,7 +289,6 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `management.enabled` | bool | `false` | Auto-start the management web UI on plugin init |
 | `management.port` | int | `8787` | Port for the management server |
 | `journal.enabled` | bool | `false` | Enable append-only searchable journal entries |
-| `autoFileSummarization.enabled` | bool | `false` | Auto-summarize files on read |
 | `fileSkeletonization.enabled` | bool | `true` | Inline AST skeleton for large file reads |
 | `fileSkeletonization.minLines` | int | `200` | Min file lines to trigger skeletonization |
 | `fileSkeletonization.strategy` | enum | `"ast+regex"` | `"ast+regex"` (tree-sitter + regex fallback) or `"regex"` only |
@@ -735,7 +734,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 ┌─ PHASE 1: SYSTEM PROMPT ───────────────────────────────────────────┐
 │  experimental.chat.system.transform                                  │
 │                                                                     │
-│  seed-rules        Loads rule:mandatory/*, rule:standard,                    │
+│  seed-rules        Loads rule:mandatory/*, rule:standard,            │
 │                    rule:suggestion, rule:feature/* from DB →                  │
 │                    injects as <system_reminder> tags.                          │
 │                    Adaptive selection scores rules against user message;       │
@@ -791,8 +790,6 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  read tool:                                                       │
 │    re-read-elimination  If file cached + mtime unchanged →        │
 │                         serves cached content, **skips** read      │
-│    file-summary         If source code file → checks cached       │
-│                         summary, pre-fills output if found        │
 │    graph-tools          Triggers background graph build if not    │
 │                         already running                           │
 └─────────────────────────────────────────────────────────────────────┘
@@ -820,8 +817,6 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  read tool:                                                       │
 │    skeletonization    If >200 lines → tree-sitter AST skeleton    │
 │                       or regex fallback replaces full content      │
-│    file-summary       Stores/updates file summary as memory node  │
-│                       (label: file:path)                           │
 │    re-read-           Caches result + mtime for future re-read    │
 │    elimination        elimination checks                          │
 │                                                                   │
@@ -855,7 +850,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 | Principle | Detail |
 |---|---|
 | **Everything runs before the LLM response** | All hooks fire before the LLM generates text — the plugin modifies inputs (system prompt, messages, params) and tool results, never the LLM's response |
-| **Tool execution can be skipped** | Only `tool.execute.before` handlers (re-read-elimination, file-summary) can short-circuit execution by pre-filling the output |
+| **Tool execution can be skipped** | Only `tool.execute.before` handlers (re-read-elimination, graph-tools) can short-circuit execution by pre-filling the output |
 | **Post-processing feeds the next turn** | `tool.execute.after` modifies tool results that will be sent back to the LLM on the *next* iteration of Phase 2 |
 | **Graceful degradation** | Every handler is wrapped in a try/catch in `hooks.ts` — a single handler failure never crashes the agent |
 | **No auto-injection for memory** | By default, memory retrieval is agent-driven (`memory_search`/`memory_get`). The `messages.transform` hook is an opt-in alternative |
@@ -867,8 +862,8 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 | `experimental.chat.system.transform` | `src/plugin/hooks.ts:61` | `seed-rules.ts`, `output-token-control.ts`, `graph-tools.ts` |
 | `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts`, `tool-dedup.ts`, `error-prune.ts` |
 | `chat.params` | `src/plugin/hooks.ts:73` | `chat-params.ts` |
-| `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts`, `file-summary.ts`, `graph-tools.ts` |
-| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `skeletonization.ts`, `file-summary.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
+| `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts`, `graph-tools.ts` |
+| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `skeletonization.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
 | `experimental.session.compacting` | `src/plugin/hooks.ts:67` | `compaction.ts` |
 | `event` | `src/plugin/hooks.ts:77` | `events.ts` |
 
@@ -882,7 +877,7 @@ All plugin logs are consolidated under `~/.config/opencode/logs/`:
 | MCP server | `logs/mcp-server.log` | MCP tool calls, resources, errors |
 | Injection debug | `logs/memory-injection.log` | Full auto-retrieve injection payloads (rotated at 1 MB) |
 | Context dump | `logs/context-dump.log` | Full context snapshots for debugging |
-| File summarization | `logs/filesum.log` | Auto-file-summarization cache hit/miss/stale and skeletonization apply/skip/error (auto-rotated at 2 MB) |
+| Skeletonization | `logs/filesum.log` | Skeletonization apply/skip/error (auto-rotated at 2 MB) |
 | Command compression | `logs/compress.log` | Compression events per command: strategy, original/compressed sizes, reduction pct, duration (auto-rotated at 2 MB) |
 | Graph usage | `logs/graph-usage.log` | Graph tool calls with source, action type, and session ID (auto-rotated at 2 MB) |
 | Session log | `logs/sessionlog.log` | Session lifecycle events (enabled via `sessionLog.enabled`) |
@@ -1116,14 +1111,12 @@ MIT
 - **Auto-retrieve relevance filters** — `maxLevel: 0` blocks L1+ compression summaries from injection; `categoryFilter: "semantic"` blocks episodic session traces. Config gains `minQueryLength` and `injectionCooldownMs`.
 - **Auto-retrieve dedup + rate limit** — session-level injection cache (prevents re-injecting same node IDs), query similarity skip (cosine > 0.95 skips re-injection), 30s cooldown, short message bypass (`minQueryLength=10`), skills cache with 5-minute TTL.
 - **Migration v23** — adds `category` column to `memory_nodes` with index.
-- **Bug fix: file summary UNIQUE constraint race** — concurrent file reads of the same path can collide on `(scope, label)` UNIQUE constraint. Now catches the error and falls back to `updateNode`.
 - **`memory_temporal_edges` tool** — inspect temporal edges (conversation flow) between nodes.
 - **`category_filter` arg** added to `memory_search` and `category_filter` option to `memory_drilldown`.
 - **Cross-project auto-retrieve pollution fix** — added `(scope === "global" || projectName === currentProject)` post-search filter in auto-retrieve hook. Prevents nodes from other projects being injected into the current session.
 - **`memory_list scope=project` auto-scopes to current project** — `memory_list scope=project` now defaults `project_name` to the current project, avoiding confusing cross-project node listings. To see all projects, pass `project_name=""` explicitly.
 - **Management UI project dropdown** — replaced button-based project filter with a `<select>` dropdown for cleaner project selection.
 - **Management API `?project_name=` support** — `/api/nodes`, `/api/links`, `/api/stats` accept optional `project_name` query param for server-side filtering.
-- **Fix: `validateLabel` allows periods in file labels** — `validateLabel()` regex now allows `.` characters, fixing file summary UNIQUE constraint recovery for files with extensions (e.g. `file:sqlite.ts:5zc`).
 - **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls (`insertAgentToolCall`, `createSessionMetricsRow`, `updateSessionMetrics`, `incrementSessionToolCall`), and injection-event calls (`insertInjectionMetrics`, `updateMemoryToolCall`, `finalizeInjection`, `insertInjectionFeedback`, `insertToolUsageLog`) now properly awaited. Critical: `queryDeleteNode` inside a transaction callback could commit before the DELETE completed.
 - **Bug fix: HNSW search returning ghost entries** — `HNSW.removeNode` only removed the label-map entry (the HNSW library doesn't support point deletion), causing `search()` to return `{ id: "", score }` for deleted nodes. Added `.filter(r => r.id !== "")` to strip ghost results.
 - **Bug fix: pruneNodes not cleaning up HNSW index** — `pruneNodes` deleted nodes from the database but didn't call `hnsw.removeNode()`, leaving ghost points in the HNSW graph. Added cleanup loop for each pruned node.

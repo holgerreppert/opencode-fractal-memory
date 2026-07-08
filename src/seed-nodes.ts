@@ -1377,13 +1377,6 @@ As of npm v12 (July 2026), \`--ignore-scripts\` is the default — \`postinstall
     content: `Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows [Skeletonized via <strategy> — original: N lines, now: M lines]. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
   },
   {
-    label: "rule:feature:file-summarization",
-    tag: "rule:feature",
-    type: "rule",
-    summary: "File summaries stored as memory nodes with label prefix 'file:' on first read. Use memory_search('file:<filename>') to find them.",
-    content: `File content summaries are stored as memory nodes with label prefix 'file:'. Generated on first read, updated when the file changes. Use memory_search with 'file:<filename>' to find them.`,
-  },
-  {
     label: "rule:feature:auto-retrieve",
     tag: "rule:feature",
     type: "rule",
