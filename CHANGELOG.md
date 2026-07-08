@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 — 2026-07-08
+
+### Removed
+
+- **File summarization** — removed dead feature. Deleted 3 source files, removed `autoFileSummarization` from config/Zod/UI/hooks/seed nodes, updated all docs. DB cleaned: 626 stale file-summary memory nodes deleted.
+
 ## 0.7.0 — 2026-07-07
 
 ### Context Quality Layer Improvements (P0–P2)
