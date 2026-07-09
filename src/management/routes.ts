@@ -15,7 +15,7 @@ import { VERSION } from "../version";
 import { CodeGraph } from "../application/graph/graph";
 import { buildGraph, incrementalBuildGraph } from "../application/graph/build";
 import { shortestPath, explain, searchNodes } from "../application/graph/query";
-import { trackSearch, trackPath, trackExplain, trackExport, getGraphUsageStats } from "../application/graph/usage";
+import { trackSearch, trackPath, trackExplain, trackExport, getGraphUsageStats, readPluginGraphUsage, type GraphUsageStats } from "../application/graph/usage";
 import type { BuildResult } from "../application/graph/build";
 
 let cachedGraph: CodeGraph | null = null;
@@ -410,6 +410,17 @@ async function handleGraphBuild(_req: Request): Promise<Response> {
   }
 }
 
+function getMergedGraphUsage(): GraphUsageStats {
+  const mgmtStats = getGraphUsageStats();
+  const pluginStats = readPluginGraphUsage();
+  if (pluginStats) {
+    mgmtStats.readAnnotations = pluginStats.readAnnotations;
+    mgmtStats.fileRefreshes = pluginStats.fileRefreshes;
+    mgmtStats.backgroundBuilds.count += pluginStats.backgroundBuilds.count;
+  }
+  return mgmtStats;
+}
+
 function handleGraphGet(): Response {
   if (!cachedAnalysis) {
     return jsonResponse({ built: false, message: "No graph built yet. POST /api/graph/build to build one." });
@@ -431,7 +442,7 @@ function handleGraphGet(): Response {
     })),
     suggestedQuestions: analysis.suggestedQuestions,
     report: cachedAnalysis.report,
-    usage: getGraphUsageStats(),
+    usage: getMergedGraphUsage(),
   });
 }
 
@@ -465,7 +476,7 @@ async function handleGraphExplain(req: Request): Promise<Response> {
 }
 
 function handleGraphUsage(): Response {
-  return jsonResponse(getGraphUsageStats());
+  return jsonResponse(getMergedGraphUsage());
 }
 
 function handleGraphExport(): Response {

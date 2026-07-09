@@ -2297,7 +2297,7 @@ async function loadSettings() {
     const g = config.graph || {};
     document.getElementById('graph-enabled').value = String(g.enabled ?? true);
     document.getElementById('graph-maxFiles').value = g.maxFiles ?? 5000;
-    document.getElementById('graph-ruleEnabled').value = String(g.ruleEnabled ?? true);
+    document.getElementById('graph-refreshEnabled').value = String(g.refreshEnabled ?? true);
     const otc = config.outputTokenControl || {};
     document.getElementById('outputTokenControl-enabled').value = String(otc.enabled ?? false);
     document.getElementById('outputTokenControl-mode').value = otc.mode ?? 'adaptive';
@@ -2440,7 +2440,7 @@ async function saveSettings() {
     graph: {
       enabled: document.getElementById('graph-enabled').value === 'true',
       maxFiles: parseInt(document.getElementById('graph-maxFiles').value) || 5000,
-      ruleEnabled: document.getElementById('graph-ruleEnabled').value === 'true',
+      refreshEnabled: document.getElementById('graph-refreshEnabled').value === 'true',
     },
     outputTokenControl: {
       enabled: document.getElementById('outputTokenControl-enabled').value === 'true',
@@ -3118,14 +3118,14 @@ function renderGraphStats(data) {
   let usageHtml = "";
   if (u) {
     usageHtml = `
-      <h3 style="font-size:12px;color:#888;margin:10px 0 6px;text-transform:uppercase;">Usage</h3>
+      <h3 style="font-size:12px;color:#888;margin:10px 0 6px;text-transform:uppercase;">Graph Tool Usage</h3>
       <div class="graph-stat-row"><span class="label">Search calls</span><span class="value">${u.search.count}</span></div>
       <div class="graph-stat-row"><span class="label">Path queries</span><span class="value">${u.path.count}</span></div>
       <div class="graph-stat-row"><span class="label">Explain calls</span><span class="value">${u.explain.count}</span></div>
-      <div class="graph-stat-row"><span class="label">Exports</span><span class="value">${u.exports.count}</span></div>
-      <div class="graph-stat-row"><span class="label">Rule injections</span><span class="value">${u.ruleInjections.count}</span></div>
       <div class="graph-stat-row"><span class="label">Background builds</span><span class="value">${u.backgroundBuilds.count}</span></div>
       ${u.build.lastBuild ? `<div class="graph-stat-row"><span class="label">Last build</span><span class="value">${new Date(u.build.lastBuild).toLocaleTimeString()}</span></div>` : ""}
+      <h3 style="font-size:12px;color:#888;margin:10px 0 6px;text-transform:uppercase;">Plugin-side</h3>
+      <div class="graph-stat-row"><span class="label">File refreshes</span><span class="value">${u.fileRefreshes.count}</span></div>
     `;
   }
   statsEl.innerHTML = `

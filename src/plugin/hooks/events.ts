@@ -3,6 +3,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import { distillRules, runConsolidation, applyScoreDecay } from "../../application";
 import { cleanupMiddleTermCaptures } from "../state";
+import { ensureBackgroundGraph } from "../../application/graph/build";
 import type { HookHandler } from "./types";
 
 export function createEventHandler(
@@ -51,6 +52,13 @@ export function createEventHandler(
             memLog("info", "predictive-rating", msg)
           ).catch(err => memLog("error", "predictive-rating", "Decay failed", { error: String(err) }));
           tasks.push("decay");
+        }
+
+        if (config?.graph?.enabled) {
+          const root = process.cwd();
+          const maxFiles = config.graph.maxFiles ?? 5000;
+          ensureBackgroundGraph(root, maxFiles);
+          tasks.push("graph-rebuild");
         }
 
         if (sl()) {

@@ -20,6 +20,12 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 **Auto-Retrieve** (`experimental.chat.messages.transform`): Reranking pipeline with LLM judge scoring (via `client.session.prompt({noReply:true})`), Ollama fallback, ONNX cross-encoder. Impl at `src/hooks/auto-retrieve/`.
 
+**Code Graph** (pull-based `graph` tool): Navigate code dependencies on demand. Relations: `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. Builds AST knowledge graph via tree-sitter WASM (32 languages). Auto-refreshes on edit/write. Available as both plugin tool and MCP tool. Impl at `src/tools/graph.ts`, `src/application/graph/`.
+
+## Graph Tool Usage
+
+Before editing a function, use `graph` with `relation=callers name=<function>` to know what depends on it. After finding a symbol, use `relation=callees` or `relation=call_chain depth=3` to trace dependencies. Use `relation=dependents file=<path>` for change impact analysis. All results are JSON with a `truncated` field indicating if results were capped.
+
 ## Development Install (critical — cache or it won't work)
 
 OpenCode loads from plugin cache, NOT from node_modules:
@@ -80,7 +86,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | File | Purpose |
 |---|---|---|
 | `src/config.ts` | MemConfig interface + Zod schema + defaults |
-| `src/plugin/hooks.ts` | Thin orchestration — calls 9 extracted handlers |
+| `src/plugin/hooks.ts` | Thin orchestration — calls 10 extracted handlers |
 | `src/plugin/hooks/compression.ts` | Compression handler + feature banner |
 | `src/plugin/hooks/skeletonization.ts` | File read skeletonization handler + banner |
 | `src/plugin/hooks/seed-rules.ts` | Rule loading + system transform injection |
@@ -146,3 +152,6 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `file:src/plugin/hooks.ts` | file | Hook wiring — all features |
 | `file:src/hooks/compress-output.ts` | file | Compression implementation |
 | `file:src/management/routes.ts` | file | All API routes |
+| `file:src/tools/graph.ts` | file | Shared graph tool (plugin + MCP) |
+| `file:src/plugin/hooks/graph-refresh.ts` | file | Auto-refresh on edit/write |
+| `file:src/application/graph/query.test.ts` | file | Tests for callers/callees/callChain |

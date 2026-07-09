@@ -122,6 +122,23 @@ export function writeCompressLog(fields: Record<string, string | number>): void 
 const FILE_SUM_LOG_FILE = path.join(LOG_DIR, "filesum.log");
 const FILE_SUM_LOG_MAX_SIZE = 2 * 1024 * 1024;
 
+const GRAPH_LOG_FILE = path.join(LOG_DIR, "graph.log");
+const GRAPH_LOG_MAX_SIZE = 2 * 1024 * 1024;
+
+export function writeGraphLog(level: string, msg: string, data?: Record<string, unknown>): void {
+  if (!fs.existsSync(LOG_DIR)) return;
+  try {
+    rotateFile(GRAPH_LOG_FILE, GRAPH_LOG_MAX_SIZE);
+    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const session = currentSessionId ? `[${currentSessionId.slice(0, 8)}]` : "";
+    const line = `[${ts}] [${level}]${session} ${msg}` +
+      (data && Object.keys(data).length > 0 ? ` ${JSON.stringify(data)}` : "");
+    fs.appendFileSync(GRAPH_LOG_FILE, line + "\n");
+  } catch (e) {
+    fallbackLog(e, "graph-log");
+  }
+}
+
 const GRAPH_USAGE_LOG_FILE = path.join(LOG_DIR, "graph-usage.log");
 const GRAPH_USAGE_LOG_MAX_SIZE = 2 * 1024 * 1024;
 
@@ -139,7 +156,7 @@ export function writeGraphUsageLog(fields: Record<string, string | number>): voi
   }
 }
 
-export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE" | "RE-READ", fields: Record<string, string | number>): void {
+export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE" | "RE-READ" | "GRAPH-TOOLS", fields: Record<string, string | number>): void {
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(FILE_SUM_LOG_FILE, FILE_SUM_LOG_MAX_SIZE);

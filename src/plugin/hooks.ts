@@ -14,7 +14,7 @@ import { createEventHandler } from "./hooks/events";
 import { createOutputTokenControlHandler } from "./hooks/output-token-control";
 import { createChatParamsHandler } from "./hooks/chat-params";
 import { createMessagesTransformHandler } from "./hooks/messages-transform";
-import { createGraphToolsHandler } from "./hooks/graph-tools";
+import { createGraphRefreshHandler } from "./hooks/graph-refresh";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
 import type { HookHandler } from "./hooks/types";
@@ -45,7 +45,7 @@ export function createHookHandlers(
     createOutputTokenControlHandler(memConfig),
     createChatParamsHandler(memConfig),
     createMessagesTransformHandler(store, memConfig),
-    createGraphToolsHandler(memConfig),
+    createGraphRefreshHandler(memConfig),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {

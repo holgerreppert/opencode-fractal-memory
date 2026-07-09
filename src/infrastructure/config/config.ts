@@ -118,7 +118,7 @@ export interface MemConfig {
   graph?: {
     enabled: boolean;
     maxFiles: number;
-    ruleEnabled: boolean;
+    refreshEnabled: boolean;
   } | undefined;
   outputTokenControl?: {
     enabled: boolean;
@@ -442,7 +442,7 @@ const DEFAULT_CONFIG: MemConfig = {
   graph: {
     enabled: true,
     maxFiles: 5000,
-    ruleEnabled: true,
+    refreshEnabled: true,
   },
   smallModel: {},
 };
@@ -463,7 +463,7 @@ const ErrorPruningSchema = z.object({
 const GraphSchema = z.object({
   enabled: z.boolean().default(true),
   maxFiles: z.number().positive().int().default(5000),
-  ruleEnabled: z.boolean().default(true),
+  refreshEnabled: z.boolean().default(true),
 });
 
 const SmallModelSchema = z.record(z.string(), z.string()).default({});

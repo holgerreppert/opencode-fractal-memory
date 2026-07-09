@@ -80,8 +80,8 @@ if you find bugs or if you just want to suggest improvements
 - **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
 - **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely. Logged to filesum.log (RE-READ component)
 - **Code knowledge graph** — builds a directed graph of code symbols (functions, classes, interfaces, types) and their relationships (calls, imports, references, defined_in, extends) via tree-sitter WASM AST extraction. 32 supported languages. Louvain community detection clusters related code; god-node and surprising-connections analysis highlight architectural hotspots
-- **Always-on graph hooks** — `tool.before` for read/grep/glob triggers a background incremental build on plugin load (configurable maxFiles, default 5000). `system.transform` injects a rule reminding the agent to use graph tools before reading source files
-- **Graph usage tracking** — every graph action (build, search, path, explain, rule injection, background build) is counted in-memory and logged to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID for audit
+- **Pull-based code graph** — graph builds automatically on plugin init and auto-refreshes on `edit`/`write` (configurable via `graph.refreshEnabled`). No banner injection on reads, no system rule spamming. Agents call the `graph` tool on demand with `relation=callers|callees|call_chain|imports|dependents|search|explain|path`. Incremental rebuild on `session.idle` catches external changes.
+- **Graph usage tracking** — every graph action (build, search, path, explain, graph tool call, background build) is counted in-memory and logged to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID for audit
 - **Dedicated log files** — separate `filesum.log` for skeletonization events and `compress.log` for command compression events, auto-rotating
 - **Session logging** — opt-in session log with 1MB rotation for observability
 - **Journal** — append-only searchable journal entries with semantic search
@@ -227,8 +227,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
   },
   "graph": {
     "enabled": true,
-    "maxFiles": 5000,
-    "ruleEnabled": true
+    "maxFiles": 5000
   },
   "commandCompression": {
     "enabled": true,
@@ -292,9 +291,9 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `fileSkeletonization.enabled` | bool | `true` | Inline AST skeleton for large file reads |
 | `fileSkeletonization.minLines` | int | `200` | Min file lines to trigger skeletonization |
 | `fileSkeletonization.strategy` | enum | `"ast+regex"` | `"ast+regex"` (tree-sitter + regex fallback) or `"regex"` only |
-| `graph.enabled` | bool | `true` | Enable code knowledge graph (AST extraction + MCP tools) |
+| `graph.enabled` | bool | `true` | Enable code knowledge graph (AST extraction + `graph` tool + auto-refresh) |
 | `graph.maxFiles` | int | `5000` | Max files to extract in background build |
-| `graph.ruleEnabled` | bool | `true` | Inject graph-reminder rule into system prompt via `system.transform` |
+| `graph.refreshEnabled` | bool | `true` | Auto-re-extract on edit/write |
 | `commandCompression.enabled` | bool | `true` | Compress bash tool output |
 | `commandCompression.maxLines` | int | `50` | Max lines for generic truncation |
 | `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
@@ -577,11 +576,7 @@ When the MCP server is configured, the memory and graph tools are available as M
 
 | Tool | Description |
 |---|---|
-| `graph_build(root=".", max_files=5000)` | Build or rebuild the code knowledge graph from AST extraction. Returns stats, top god nodes, and a report snippet |
-| `graph_search(query)` | Search graph nodes by symbol name or file path. Returns matching node IDs with metadata |
-| `graph_path(from, to)` | Find the shortest directed path between two nodes (dependency chain). Returns path as node array |
-| `graph_explain(id)` | Get full details on a node: attributes, degree, community, neighbors with relationship types |
-| `graph_usage` | Get usage counters for all graph tools (build, search, path, explain, rule injections, background builds) |
+| `graph(relation, name?, file?, depth?, query?, from?, to?, id?, limit?)` | Unified code graph navigator. Relations: `callers`/`callees`/`call_chain`/`imports`/`dependents`/`search`/`explain`/`path`. Returns JSON with `{relation, results, truncated}` |
 
 ## Skills
 
@@ -744,8 +739,8 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  control           concise-output rule into the system prompt.                 │
 │                    At pressure thresholds, also injects compaction nudge       │
 │                                                                     │
-│  graph-tools       If code knowledge graph is built, injects         │
-│                    graph tool usage instructions                     │
+│  graph-refresh     Auto-re-extract graph on edit/write               │
+│                    available" with node/edge counts                  │
 └─────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -790,8 +785,6 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  read tool:                                                       │
 │    re-read-elimination  If file cached + mtime unchanged →        │
 │                         serves cached content, **skips** read      │
-│    graph-tools          Triggers background graph build if not    │
-│                         already running                           │
 └─────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -819,6 +812,11 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │                       or regex fallback replaces full content      │
 │    re-read-           Caches result + mtime for future re-read    │
 │    elimination        elimination checks                          │
+│    graph-refresh      Auto-re-extract on edit/write               │
+│                                                                   │
+│  edit/write tool:                                                 │
+│    graph-refresh      Re-extracts changed file into the graph     │
+│                       (single-file incremental update, ~1-5ms)    │
 │                                                                   │
 │  memory_* tools:                                                  │
 │    recording          Logs memory tool calls to store +            │
@@ -841,7 +839,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 |---|---|---|
 | `experimental.session.compacting` | compaction | Captures working cache → middle-term context node. Archives full conversation history → storedcontext node (with embedding for semantic recall). Records per-turn token usage stats |
 | `experimental.compaction.autocontinue` | compaction | Forces `output.enabled = true` so the agent auto-resumes after compaction |
-| `event('session.idle')` | events | Auto-distill (LLM extracts rules from lessons) + auto-consolidation + score decay |
+| `event('session.idle')` | events | Auto-distill (LLM extracts rules from lessons) + auto-consolidation + score decay + incremental graph rebuild |
 | `event('session.compacted')` | events | Cleanup middle-term captures + score decay + auto-consolidation |
 | `event('session.deleted')` | events | Stops management server if no active sessions remain |
 
@@ -859,10 +857,10 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 
 | Hook point | Orchestrator | Individual handlers |
 |---|---|---|
-| `experimental.chat.system.transform` | `src/plugin/hooks.ts:61` | `seed-rules.ts`, `output-token-control.ts`, `graph-tools.ts` |
+| `experimental.chat.system.transform` | `src/plugin/hooks.ts:61` | `seed-rules.ts`, `output-token-control.ts` |
 | `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts`, `tool-dedup.ts`, `error-prune.ts` |
 | `chat.params` | `src/plugin/hooks.ts:73` | `chat-params.ts` |
-| `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts`, `graph-tools.ts` |
+| `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts` |
 | `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `skeletonization.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
 | `experimental.session.compacting` | `src/plugin/hooks.ts:67` | `compaction.ts` |
 | `event` | `src/plugin/hooks.ts:77` | `events.ts` |
@@ -968,7 +966,14 @@ MIT
 
 ## Changelog
 
-### v0.6.48 (current)
+### v0.7.1 (current)
+- **Pull-based graph tool** — replaced push-based banner injection + system rule with a single `graph` tool the agent calls on demand. Relations: `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. JSON output with `truncated` field. Available as both plugin tool and MCP tool. Files: `src/tools/graph.ts` (shared impl), `src/plugin/tools.ts` (plugin registration), `src/mcp/server.ts` (MCP registration).
+- **`graph.ruleEnabled` → `graph.refreshEnabled`** — renamed and repurposed. No longer controls system rule injection (removed). Controls auto-re-extract on edit/write.
+- **Banner injection removed** — no more `[Graph: ... exports | used by: ...]` prepended to file reads. No more system rule spamming.
+- **`graph-tools.ts` → `graph-refresh.ts`** — stripped read annotations, kept auto-refresh on edit/write.
+- **New query functions** — `callers()`, `callees()`, `callChain()` in `src/application/graph/query.ts`. 9 tests.
+
+### v0.6.48
 - **Ollama output extraction** — when heuristic compression strategies don't match, fires a small Ollama model (default `qwen3.5:3b`) to extract only the relevant lines from tool output. Zero-shot extraction with ~0.55 recall at 50-90% compression. Configurable via `commandCompression.ollamaExtraction` in `opencode-mem.json`. Last-resort fallback, enabled by default with `enabled: false` (opt-in)
 - New file: `src/application/command-compression/ollama-extract.ts`
 - Added `OllamaExtractionConfig` to CompressConfig, MemConfig, Zod schema with defaults

@@ -2,6 +2,7 @@ import type { MemoryStore } from "../storage/sqlite";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import * as tools from "../tools";
 import { MemoryPlaybookExecute } from "../tools/playbook";
+import { createGraphPluginTool } from "../tools/graph";
 
 export function createToolMap(
   store: MemoryStore,
@@ -49,6 +50,7 @@ export function createToolMap(
     skill: tools.MemorySkillLoad(store),
     memory_temporal_edges: tools.MemoryTemporalEdges(store),
     memory_recall_context: tools.MemoryRecallContext(store),
+    graph: createGraphPluginTool(),
     ...journalTools,
   };
 }

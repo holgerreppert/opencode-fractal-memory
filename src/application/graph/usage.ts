@@ -1,13 +1,19 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 import { writeGraphUsageLog, getSessionId } from "../../logging";
+
+const PLUGIN_USAGE_FILE = path.join(os.homedir(), ".config", "opencode", "graph-plugin-usage.json");
 
 export interface GraphUsageStats {
   build: { count: number; lastBuild: string | null; fileCount?: number; symbolCount?: number; edgeCount?: number };
   search: { count: number; lastCall: string | null };
   path: { count: number; lastCall: string | null };
   explain: { count: number; lastCall: string | null };
-  ruleInjections: { count: number; lastInjection: string | null };
   backgroundBuilds: { count: number; lastTrigger: string | null };
   exports: { count: number; lastExport: string | null };
+  readAnnotations: { count: number; lastAnnotation: string | null };
+  fileRefreshes: { count: number; lastRefresh: string | null };
 }
 
 const stats: GraphUsageStats = {
@@ -15,9 +21,10 @@ const stats: GraphUsageStats = {
   search: { count: 0, lastCall: null },
   path: { count: 0, lastCall: null },
   explain: { count: 0, lastCall: null },
-  ruleInjections: { count: 0, lastInjection: null },
   backgroundBuilds: { count: 0, lastTrigger: null },
   exports: { count: 0, lastExport: null },
+  readAnnotations: { count: 0, lastAnnotation: null },
+  fileRefreshes: { count: 0, lastRefresh: null },
 };
 
 function now(): string {
@@ -60,12 +67,6 @@ export function trackExplain(source = "unknown"): void {
   logUsage("explain", { count: stats.explain.count }, source);
 }
 
-export function trackRuleInjection(source = "unknown"): void {
-  stats.ruleInjections.count++;
-  stats.ruleInjections.lastInjection = now();
-  logUsage("rule-injection", { count: stats.ruleInjections.count }, source);
-}
-
 export function trackBackgroundBuild(source = "unknown"): void {
   stats.backgroundBuilds.count++;
   stats.backgroundBuilds.lastTrigger = now();
@@ -78,14 +79,54 @@ export function trackExport(source = "unknown"): void {
   logUsage("export", { count: stats.exports.count }, source);
 }
 
+export function trackReadAnnotation(source = "unknown"): void {
+  stats.readAnnotations.count++;
+  stats.readAnnotations.lastAnnotation = now();
+  logUsage("read-annotation", { count: stats.readAnnotations.count }, source);
+}
+
+export function trackGraphTool(relation: string, source = "unknown"): void {
+  logUsage("graph-tool", { relation, count: 1 }, source);
+}
+
+export function trackFileRefresh(source = "unknown"): void {
+  stats.fileRefreshes.count++;
+  stats.fileRefreshes.lastRefresh = now();
+  logUsage("file-refresh", { count: stats.fileRefreshes.count }, source);
+}
+
+export function getPluginUsageFile(): string {
+  return PLUGIN_USAGE_FILE;
+}
+
+export function writePluginGraphUsage(): void {
+  try {
+    const dir = path.dirname(PLUGIN_USAGE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(PLUGIN_USAGE_FILE, JSON.stringify(stats, null, 2));
+  } catch {
+    // best-effort
+  }
+}
+
+export function readPluginGraphUsage(): GraphUsageStats | null {
+  try {
+    if (!fs.existsSync(PLUGIN_USAGE_FILE)) return null;
+    return JSON.parse(fs.readFileSync(PLUGIN_USAGE_FILE, "utf-8")) as GraphUsageStats;
+  } catch {
+    return null;
+  }
+}
+
 export function getGraphUsageStats(): GraphUsageStats {
   return {
     build: { ...stats.build },
     search: { ...stats.search },
     path: { ...stats.path },
     explain: { ...stats.explain },
-    ruleInjections: { ...stats.ruleInjections },
     backgroundBuilds: { ...stats.backgroundBuilds },
     exports: { ...stats.exports },
+    readAnnotations: { ...stats.readAnnotations },
+    fileRefreshes: { ...stats.fileRefreshes },
   };
 }

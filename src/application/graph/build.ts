@@ -7,7 +7,7 @@ import { detectCommunities } from "./cluster";
 import { analyze, type AnalysisResult } from "./analyze";
 import { generateReport } from "./report";
 import { trackBuild, trackBackgroundBuild } from "./usage";
-import { memLog } from "../../logging";
+import { memLog, writeGraphLog } from "../../logging";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,6 +77,11 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
   const report = generateReport(analysis);
 
   memLog("info", "graph", "Build diagnostics", { totalFound: files.length, readErrors, tooSmall, extractErrors, skippedUnchanged, fileNodes: analysis.stats.files, symbolNodes: analysis.stats.symbols });
+  writeGraphLog("info", "Graph built", {
+    stats: analysis.stats,
+    godNodes: analysis.godNodes.map(n => `${n.node.label}(${n.node.kind}):${n.degree}`),
+    surprisingConnections: analysis.surprisingConnections.slice(0, 10).map(c => `${c.source.label}(${c.source.kind}) --${c.relation}-> ${c.target.label}(${c.target.kind})`),
+  });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "buildGraph");
 
   return {
@@ -137,6 +142,11 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
   const report = generateReport(analysis);
 
   memLog("info", "graph", "Incremental build diagnostics", { newFiles, skippedUnchanged, readErrors, tooSmall, extractErrors, fileNodes: analysis.stats.files, symbolNodes: analysis.stats.symbols });
+  writeGraphLog("info", "Graph incremental build", {
+    newFiles,
+    stats: analysis.stats,
+    godNodes: analysis.godNodes.slice(0, 10).map(n => `${n.node.label}(${n.node.kind}):${n.degree}`),
+  });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "incrementalBuildGraph");
 
   return {
@@ -149,11 +159,32 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
   };
 }
 
+export function refreshGraphFile(filePath: string, content: string): void {
+  const graph = getActiveGraph();
+  if (!graph || content.length < 100) return;
+  try {
+    const mod = getWasm();
+    extractFile(filePath, content, mod, graph);
+    graph.markExtracted(filePath, content);
+  } catch {
+    // single-file re-extract failed silently — will be picked up by idle rebuild
+  }
+}
+
 let backgroundGraph: CodeGraph | null = null;
+let activeGraph: CodeGraph | null = null;
 let backgroundBuildPromise: Promise<void> | null = null;
 
 export function getBackgroundGraph(): CodeGraph | null {
   return backgroundGraph;
+}
+
+export function getActiveGraph(): CodeGraph | null {
+  return activeGraph ?? backgroundGraph;
+}
+
+export function setActiveGraph(g: CodeGraph): void {
+  activeGraph = g;
 }
 
 export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
@@ -172,6 +203,7 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
     try {
       const result = buildGraph(root, maxFiles);
       backgroundGraph = result.graph;
+      activeGraph = backgroundGraph;
     } catch {
       // background build failed silently — will retry on explicit call
     }
