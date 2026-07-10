@@ -1663,14 +1663,19 @@ function showDetailPanel(node) {
       <h4>Metrics</h4>
       <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${node.level}</span></div>
       <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value">${node.type || "none"}${node.metadata?.customType ? ' <span style="color: #ff6b6b;">[' + escapeHtml(node.metadata.customType) + ']</span>' : ""}</span></div>
+      <div class="stat-row"><span class="stat-label">Supertype</span><span class="stat-value" style="text-transform: capitalize;">${node.supertype || "none"}</span></div>
       <div class="stat-row"><span class="stat-label">Importance</span><span class="stat-value">${node.importance}</span></div>
       <div class="stat-row"><span class="stat-label">Usefulness Score</span><span class="stat-value">${node.usefulnessScore}</span></div>
       <div class="stat-row"><span class="stat-label">Access Count</span><span class="stat-value">${node.accessCount}</span></div>
       <div class="stat-row"><span class="stat-label">Times Used</span><span class="stat-value">${node.timesUsed}</span></div>
       <div class="stat-row"><span class="stat-label">Times Helpful</span><span class="stat-value">${node.timesHelpful}</span></div>
-      <div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-value">${node.confidence}</span></div>
+      <div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-value" id="confidence-value-${node.id}">${node.confidence}</span></div>
+      <div class="stat-row"><span class="stat-label">Verifications</span><span class="stat-value">${node.verificationCount || 0}</span></div>
       <div class="stat-row"><span class="stat-label">Sticky</span><span class="stat-value">${node.sticky ? "Yes" : "No"}</span></div>
+      <div class="stat-row"><span class="stat-label">Source</span><span class="stat-value">${node.source || "auto"}</span></div>
       <div class="stat-row"><span class="stat-label">Content Length</span><span class="stat-value">${node.contentLength} chars</span></div>
+      ${node.tags && node.tags.length > 0 ? `<div class="stat-row"><span class="stat-label">Tags</span><span class="stat-value">${node.tags.map(t => `<span style="display:inline-block;padding:1px 6px;margin:1px 2px;background:#333;border-radius:3px;font-size:11px;">${escapeHtml(t)}</span>`).join('')}</span></div>` : ""}
+      <div style="margin-top: 8px;"><button class="btn btn-sm" onclick="verifyNode('${node.id}')">✓ Verify</button></div>
     </div>
     ${metadataHtml}
     ${skillHtml}
@@ -1860,6 +1865,28 @@ async function deleteNode(node) {
     }
   } catch (e) {
     alert("Delete error: " + e.message);
+  }
+}
+
+async function verifyNode(nodeId) {
+  try {
+    const res = await fetch(`/api/nodes/${nodeId}/verify?scope=${currentScope}`, { method: "POST" });
+    const result = await res.json();
+    if (result.success) {
+      const el = document.getElementById(`confidence-value-${nodeId}`);
+      if (el) el.textContent = result.node.confidence;
+      const parent = el?.closest?.(".detail-section") || document.getElementById("detail-content");
+      const flash = document.createElement("span");
+      flash.textContent = "✓ Verified!";
+      flash.style.cssText = "color:#22c55e;margin-left:8px;font-weight:600;animation:fadeOut 2s forwards;";
+      const btn = parent?.querySelector("button[onclick*='verifyNode']");
+      if (btn) btn.parentElement.appendChild(flash);
+      setTimeout(() => flash.remove(), 2000);
+    } else {
+      alert("Verify failed: " + (result.error || "Unknown"));
+    }
+  } catch (e) {
+    alert("Verify error: " + e.message);
   }
 }
 

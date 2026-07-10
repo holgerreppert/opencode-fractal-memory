@@ -1,7 +1,7 @@
 import type {
   MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType,
   MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult,
-  DrilldownResult, TemporalEdge,
+  DrilldownResult, TemporalEdge, SearchIntent,
 } from "./MemoryStore";
 
 export interface NodeRepository {
@@ -12,7 +12,7 @@ export interface NodeRepository {
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
   getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode>;
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
-  updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
+  updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
   deleteNode(id: string): Promise<void>;
   searchByEmbedding(query: number[], limit?: number | undefined, options?: {
     minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined;
@@ -22,6 +22,7 @@ export interface NodeRepository {
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
     temporalHops?: number | undefined;
     categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined;
+    intent?: SearchIntent | undefined;
   }): Promise<MemoryNode[]>;
   getFractalStats(scope: MemoryScope | "all", projectName?: string | undefined): Promise<FractalStats>;
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;

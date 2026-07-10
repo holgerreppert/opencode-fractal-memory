@@ -16,20 +16,24 @@ export interface SqliteNode {
   last_accessed: number | null;
   type: string | null;
   category: string | null;
+  supertype: string | null;
+  tags: string | null;
+  source: string | null;
   metadata: string | null;
   sticky: number;
   ttl_days: number | null;
   expires_at: number | null;
   confidence: number;
   last_verified: number | null;
+  verification_count: number;
   usefulness_score: number;
   times_used: number;
   times_helpful: number;
   project_name: string | null;
 }
 
-import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory } from "../../storage/types";
-export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory } from "../../storage/types";
+import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype } from "../../storage/types";
+export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype } from "../../storage/types";
 
 export function blobToEmbedding(blob: Buffer | null): number[] | null {
   if (!blob) return null;
@@ -66,12 +70,16 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     lastAccessed: row.last_accessed ? new Date(row.last_accessed) : null,
     type: row.type as MemoryNodeType | null,
     category: row.category as MemoryCategory | null,
+    supertype: row.supertype as MemorySupertype | null,
+    tags: row.tags ? JSON.parse(row.tags) : null,
+    source: row.source ?? null,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,
     sticky: Boolean(row.sticky),
     ttlDays: row.ttl_days ?? null,
     expiresAt: row.expires_at ? new Date(row.expires_at) : null,
     confidence: row.confidence ?? 0.5,
     lastVerified: row.last_verified ? new Date(row.last_verified) : null,
+    verificationCount: row.verification_count ?? 0,
     usefulnessScore: row.usefulness_score ?? 0,
     timesUsed: row.times_used ?? 0,
     timesHelpful: row.times_helpful ?? 0,

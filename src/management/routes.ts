@@ -46,6 +46,7 @@ export function registerRoutes(router: Router, store: MemoryStore): void {
   // ==================== Node CRUD ====================
   router.put(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx, store));
   router.patch(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx, store));
+  router.post(/^\/api\/nodes\/(?<id>[^/]+)\/verify$/, async (_, ctx) => handleNodeVerify(ctx, store));
   router.delete(/^\/api\/nodes\/(?<id>[^/]+)$/, (_, ctx) => handleNodeDelete(ctx, store));
 
   // ==================== Compression Stats ====================
@@ -283,6 +284,18 @@ async function handleNodeDelete(ctx: { params: Record<string, string>; scope: st
   }
 }
 
+async function handleNodeVerify(ctx: { params: Record<string, string>; scope: string }, store: MemoryStore): Promise<Response> {
+  const nodeId = ctx.params.id!;
+  try {
+    const node = await store.verifyNode(nodeId);
+    memLog("info", "management", `[api] Verified node ${nodeId}`);
+    return jsonResponse({ success: true, node: mapNode(node) });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonResponse({ success: false, error: msg }, 404);
+  }
+}
+
 async function handleCompressionStats(req: Request, store: MemoryStore): Promise<Response> {
   const url = new URL(req.url);
   const rawLimit = url.searchParams.get("limit");
@@ -504,6 +517,8 @@ function mapNode(n: {
   level: number; type: string | null; importance: number;
   usefulnessScore: number | null; timesUsed: number | null; timesHelpful: number | null;
   accessCount: number | null; sticky: boolean; confidence: number | null;
+  verificationCount: number | null;
+  supertype: string | null; tags: string[] | null; source: string | null;
   createdAt: Date; updatedAt: Date;
   parentIds: string[] | null;
   metadata: Record<string, unknown> | null;
@@ -516,6 +531,9 @@ function mapNode(n: {
     summary: n.summary,
     level: n.level,
     type: n.type,
+    supertype: n.supertype,
+    tags: n.tags,
+    source: n.source,
     importance: n.importance,
     usefulnessScore: n.usefulnessScore,
     timesUsed: n.timesUsed,
@@ -523,6 +541,7 @@ function mapNode(n: {
     accessCount: n.accessCount,
     sticky: !!n.sticky,
     confidence: n.confidence,
+    verificationCount: n.verificationCount ?? 0,
     createdAt: n.createdAt,
     updatedAt: n.updatedAt,
     parentIds: n.parentIds ? (typeof n.parentIds === "string" ? JSON.parse(n.parentIds) : n.parentIds) : null,

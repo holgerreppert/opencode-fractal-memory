@@ -249,7 +249,7 @@ class SqliteMemoryStore implements MemoryStore {
     });
   }
 
-  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "metadata" | "embedding" | "sticky" | "confidence" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
+  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
     const { db, scope } = await resolveNodeFn((s) => this.getDb(s), this.idScopeCache, id);
 
     await withRetryableTransaction(db, async () => {

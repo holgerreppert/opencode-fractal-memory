@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory } from "./types";
+import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent } from "../domain/ports/MemoryStore";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
@@ -7,6 +7,56 @@ import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
 import { computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding } from "./utils";
+
+type Stratum = "hot" | "warm" | "cold";
+
+function computeStratum(lastAccessed: Date | null): Stratum {
+  if (!lastAccessed) return "cold";
+  const daysSinceAccess = (Date.now() - lastAccessed.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysSinceAccess < 1) return "hot";
+  if (daysSinceAccess < 7) return "warm";
+  return "cold";
+}
+
+function stratumWeight(s: Stratum): number {
+  switch (s) {
+    case "hot": return 1.0;
+    case "warm": return 0.85;
+    case "cold": return 0.5;
+  }
+}
+
+function computeIntentWeight(intent: SearchIntent | undefined, category: string | null, _type: string | null, supertype: string | null): number {
+  if (supertype) {
+    switch (intent) {
+      case "read":
+      case "edit":
+        if (supertype === "procedural" || supertype === "declarative") return 1.3;
+        if (supertype === "experiential") return 0.6;
+        return 1.0;
+      case "debug":
+        if (supertype === "experiential") return 1.3;
+        if (supertype === "declarative" || supertype === "procedural") return 0.8;
+        return 1.0;
+      case "discovery":
+        return 1.0;
+      default:
+        if (supertype === "experiential") return 0.5;
+        return 1.0;
+    }
+  }
+  switch (intent) {
+    case "read":
+    case "edit":
+      return category === "episodic" ? 0.6 : 1.2;
+    case "debug":
+      return category === "episodic" ? 1.2 : 0.8;
+    case "discovery":
+      return 1.0;
+    default:
+      return category === "episodic" ? 0.5 : 1.0;
+  }
+}
 
 const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
 
@@ -76,6 +126,7 @@ export async function searchByEmbedding(
     temporalHops?: number | undefined;
     categoryFilter?: MemoryCategory | undefined;
     typeFilter?: MemoryNodeType | undefined;
+    intent?: SearchIntent | undefined;
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
@@ -125,11 +176,12 @@ export async function searchByEmbedding(
         const levelWeight = weights[level] ?? 1;
         const confidence = node.confidence ?? 0.5;
         const confidenceWeight = 0.5 + 0.5 * confidence;
-        const categoryWeight = node.category === "episodic" ? 0.5 : 1.0;
+        const iw = computeIntentWeight(options?.intent, node.category, node.type, node.supertype);
+        const sw = stratumWeight(computeStratum(node.lastAccessed));
 
         scoredNodes.push({
           ...node,
-          importance: hnswScore * levelWeight * confidenceWeight * categoryWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          importance: hnswScore * levelWeight * confidenceWeight * iw * sw * (1 + (node.usefulnessScore ?? 0) * 0.1),
         });
       }
     }
@@ -168,11 +220,12 @@ export async function searchByEmbedding(
         const levelWeight = weights[level] ?? 1;
         const confidence = node.confidence ?? 0.5;
         const confidenceWeight = 0.5 + 0.5 * confidence;
-        const categoryWeight = node.category === "episodic" ? 0.5 : 1.0;
+        const iw = computeIntentWeight(options?.intent, node.category, node.type, node.supertype);
+        const sw = stratumWeight(computeStratum(node.lastAccessed));
 
         scoredNodes.push({
           ...node,
-          importance: semanticScore * levelWeight * confidenceWeight * categoryWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+          importance: semanticScore * levelWeight * confidenceWeight * iw * sw * (1 + (node.usefulnessScore ?? 0) * 0.1),
         });
       }
     }
@@ -230,11 +283,12 @@ export async function searchByEmbedding(
           const levelWeight = weights[level] ?? 1;
           const confidence = node.confidence ?? 0.5;
           const confidenceWeight = 0.5 + 0.5 * confidence;
-          const categoryWeight = node.category === "episodic" ? 0.5 : 1.0;
+          const iw = computeIntentWeight(options?.intent, node.category, node.type, node.supertype);
+          const sw = stratumWeight(computeStratum(node.lastAccessed));
 
           scoredNodes.push({
             ...node,
-            importance: levelWeight * confidenceWeight * categoryWeight * (1 + (node.usefulnessScore ?? 0) * 0.1),
+            importance: levelWeight * confidenceWeight * iw * sw * (1 + (node.usefulnessScore ?? 0) * 0.1),
           });
           existingIds.add(node.id);
         }

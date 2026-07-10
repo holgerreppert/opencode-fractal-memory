@@ -100,13 +100,14 @@ export async function verifyNode(
 
     if (existing) {
       const newConfidence = Math.min(1, (existing.confidence ?? 0.5) + 0.2);
+      const newVerificationCount = (existing.verification_count ?? 0) + 1;
       await withRetry(() => {
         db.run(
-          "UPDATE memory_nodes SET confidence = ?, last_verified = ? WHERE id = ?",
-          [newConfidence, Date.now(), id]
+          "UPDATE memory_nodes SET confidence = ?, last_verified = ?, verification_count = ? WHERE id = ?",
+          [newConfidence, Date.now(), newVerificationCount, id]
         );
       });
-      return rowToNode({ ...existing, confidence: newConfidence, last_verified: Date.now() });
+      return rowToNode({ ...existing, confidence: newConfidence, last_verified: Date.now(), verification_count: newVerificationCount });
     }
   }
   throw new Error(`Memory node not found: ${id}`);

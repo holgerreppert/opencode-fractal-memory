@@ -534,4 +534,37 @@ export const MIGRATIONS: Migration[] = [
       db.run("CREATE INDEX IF NOT EXISTS idx_token_ts ON token_tracking(timestamp)");
     },
   },
+  {
+    version: 29,
+    name: "add-supertype-column",
+    up: (db) => {
+      try {
+        const tableInfo = db.query("PRAGMA table_info(memory_nodes)").all() as { name: string }[];
+        const existing = new Set(tableInfo.map(c => c.name));
+        if (!existing.has("supertype")) {
+          db.run("ALTER TABLE memory_nodes ADD COLUMN supertype TEXT");
+          db.run("CREATE INDEX IF NOT EXISTS idx_nodes_supertype ON memory_nodes(supertype)");
+        }
+      } catch { /* table may not exist yet */ }
+    },
+  },
+  {
+    version: 30,
+    name: "add-tags-source-verification",
+    up: (db) => {
+      try {
+        const tableInfo = db.query("PRAGMA table_info(memory_nodes)").all() as { name: string }[];
+        const existing = new Set(tableInfo.map(c => c.name));
+        if (!existing.has("tags")) {
+          db.run("ALTER TABLE memory_nodes ADD COLUMN tags TEXT");
+        }
+        if (!existing.has("source")) {
+          db.run("ALTER TABLE memory_nodes ADD COLUMN source TEXT");
+        }
+        if (!existing.has("verification_count")) {
+          db.run("ALTER TABLE memory_nodes ADD COLUMN verification_count INTEGER DEFAULT 0");
+        }
+      } catch { /* table may not exist yet */ }
+    },
+  },
 ];

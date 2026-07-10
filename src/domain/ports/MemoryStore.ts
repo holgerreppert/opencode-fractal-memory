@@ -8,6 +8,8 @@ export type MemoryNodeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact" | "storedcontext";
 
 export type MemoryCategory = "episodic" | "semantic";
+export type MemorySupertype = "declarative" | "procedural" | "experiential" | "meta";
+export type SearchIntent = "read" | "edit" | "debug" | "discovery";
 
 export type MemoryNode = {
   id: string;
@@ -25,12 +27,16 @@ export type MemoryNode = {
   lastAccessed: Date | null;
   type: MemoryNodeType | null;
   category: MemoryCategory | null;
+  supertype: MemorySupertype | null;
   metadata: Record<string, unknown> | null;
   sticky: boolean;
   ttlDays: number | null;
   expiresAt: Date | null;
+  tags: string[] | null;
+  source: string | null;
   confidence: number;
   lastVerified: Date | null;
+  verificationCount: number;
   usefulnessScore: number;
   timesUsed: number;
   timesHelpful: number;
@@ -48,10 +54,14 @@ export type CreateNodeInput = {
   importance?: number | undefined;
   type?: MemoryNodeType | null | undefined;
   category?: MemoryCategory | null | undefined;
+  supertype?: MemorySupertype | null | undefined;
   metadata?: Record<string, unknown> | null | undefined;
   sticky?: boolean | undefined;
   ttlDays?: number | null | undefined;
+  tags?: string[] | null | undefined;
+  source?: string | null | undefined;
   confidence?: number | undefined;
+  verificationCount?: number | undefined;
   usefulnessScore?: number | undefined;
   timesUsed?: number | undefined;
   timesHelpful?: number | undefined;
