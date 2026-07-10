@@ -20,6 +20,8 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 **Auto-Retrieve** (`experimental.chat.messages.transform`): Reranking pipeline with LLM judge scoring (via `client.session.prompt({noReply:true})`), Ollama fallback, ONNX cross-encoder. Impl at `src/hooks/auto-retrieve/`.
 
+**Memory Categorization** (multi-phase): Nodes have `type` → auto-derived `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (`read`/`edit`/`debug`/`discovery`) for intent-aware biasing. Temporal stratification (hot/warm/cold) penalizes stale nodes. Tags (`string[]`), source provenance, and verification count tracked. Management UI shows all fields. Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`, `src/domain/ports/MemoryStore.ts`.
+
 **Code Graph** (pull-based `graph` tool): Navigate code dependencies on demand. Relations: `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. Builds AST knowledge graph via tree-sitter WASM (32 languages). Auto-refreshes on edit/write. Available as both plugin tool and MCP tool. Impl at `src/tools/graph.ts`, `src/application/graph/`.
 
 ## Graph Tool Usage
@@ -107,6 +109,8 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `src/storage/sqlite.ts` | SqliteMemoryStore class |
 | `src/storage/migrations/definitions.ts` | DB migrations (increment version, never modify existing) |
 | `src/logging.ts` | Per-feature logging functions |
+| `src/storage/queries/nodes.ts` | Node CRUD — Zod schema, TYPE_CATEGORY, TYPE_SUPERTYPE, TYPE_METADATA maps |
+| `src/storage/search.ts` | searchByEmbedding with intent biasing, temporal stratification, BM25 hybrid |
 | `src/management/routes.ts` | All API route handlers |
 | `src/management/helpers.ts` | withDb, rowToNode, JSON serialization |
 | `src/management-standalone.ts` | Management server entry point (subprocess) |
@@ -124,6 +128,9 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 - Skeletonize strategy in skeletonize.ts: `ast-only`, `regex-only`, or `ast+regex`
 - When graph build has silent failures (file nodes << expected), check the `@kreuzberg/tree-sitter-language-pack-wasm` type definitions (`*.d.ts`) and docs first — `getParser(name)` **throws** on unknown language, returns parser pre-configured (no `setLanguage` needed), module uses `FinalizationRegistry` for auto-cleanup
 - When adding new log files: add write function to `src/logging.ts`, register in section map, create file path constant
+- When adding columns to `memory_nodes`, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) or rowToNode will break
+- After schema migrations, update mapNode in routes.ts to include new fields for management API
+- `verifyNode` must update both confidence (+0.2) AND verification_count (+1) in the same SQL UPDATE
 
 ## Critical Memory Nodes
 
@@ -155,3 +162,5 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `file:src/tools/graph.ts` | file | Shared graph tool (plugin + MCP) |
 | `file:src/plugin/hooks/graph-refresh.ts` | file | Auto-refresh on edit/write |
 | `file:src/application/graph/query.test.ts` | file | Tests for callers/callees/callChain |
+| `plan:memory-categorization-improvements` | plan | Full memory categorization improvement plan (project scope) |
+| `pattern:multi-phase-implementation` | pattern | Batch implementation pattern for multi-file schema changes |

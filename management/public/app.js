@@ -1868,6 +1868,7 @@ async function deleteNode(node) {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 async function verifyNode(nodeId) {
   try {
     const res = await fetch(`/api/nodes/${nodeId}/verify?scope=${currentScope}`, { method: "POST" });

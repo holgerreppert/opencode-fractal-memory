@@ -973,6 +973,17 @@ MIT
 - **`graph-tools.ts` → `graph-refresh.ts`** — stripped read annotations, kept auto-refresh on edit/write.
 - **New query functions** — `callers()`, `callees()`, `callChain()` in `src/application/graph/query.ts`. 9 tests.
 
+### v0.6.49 (2026-07-10)
+- **Hierarchical Type System (supertypes)** — All nodes auto-derived to a supertype (declarative/procedural/experiential/meta) from their type. Migration v29 adds `supertype` column. Search scoring uses supertype for smarter intent-aware weighting.
+- **Intent-Aware Retrieval Biasing** — `searchByEmbedding` accepts `intent` option (`read`/`edit`/`debug`/`discovery`). Each intent biases retrieval weights differently: read/edit boost procedural+declarative (1.3×), debug boosts experiential (1.3×), discovery uses uniform weights.
+- **Temporal Stratification** — Search results now stratified by recency: hot (<1d, 1.0×), warm (<7d, 0.85×), cold (≥7d, 0.5×). Each node gets a stratum weight applied in scoring.
+- **Tag System** — `memory_set` accepts `tags` parameter (string array). Stored as JSON in new `tags` column. Displayed in management UI detail panel. Searchable via SQL.
+- **Confidence Tracking** — `verification_count` column tracks how many times a node has been verified. `memory_verify` increments both confidence (by +0.2) and verification count (by +1). Management UI shows verification count and Verify button.
+- **Provenance Tracking** — `source` column records how a node was created (manual/tool_result/auto_extract/web_search/reflection/llm_compress). Displayed in management UI.
+- **Management UI updates** — Detail panel now shows supertype, tags (as chips), source, verification count. POST `/api/nodes/:id/verify` endpoint added with Verify button.
+- **Migration v29** — `ALTER TABLE memory_nodes ADD COLUMN supertype TEXT` with index.
+- **Migration v30** — Batch: `tags TEXT`, `source TEXT`, `verification_count INTEGER DEFAULT 0`.
+
 ### v0.6.48
 - **Ollama output extraction** — when heuristic compression strategies don't match, fires a small Ollama model (default `qwen3.5:3b`) to extract only the relevant lines from tool output. Zero-shot extraction with ~0.55 recall at 50-90% compression. Configurable via `commandCompression.ollamaExtraction` in `opencode-mem.json`. Last-resort fallback, enabled by default with `enabled: false` (opt-in)
 - New file: `src/application/command-compression/ollama-extract.ts`
