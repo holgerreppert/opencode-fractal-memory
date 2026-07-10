@@ -306,6 +306,12 @@
     .node-list-item .node-label { font-size: 12px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .node-list-item .node-meta { font-size: 10px; color: #666; margin-top: 2px; }
     .node-list-count { font-size: 11px; color: #666; margin-left: 8px; }
+    .sort-controls { display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+    .sort-select { background: rgba(255,255,255,0.08); color: #ccc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; font-size: 11px; padding: 3px 6px; cursor: pointer; }
+    .sort-select:hover { background: rgba(255,255,255,0.12); }
+    .sort-select:focus { outline: none; border-color: #6699ff; }
+    .sort-dir-btn { background: rgba(255,255,255,0.08); color: #ccc; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; line-height: 1; }
+    .sort-dir-btn:hover { background: rgba(255,255,255,0.12); }
 
     /* Mini-bar stats */
     .mini-stats { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: #888; padding: 4px 0; }
@@ -418,11 +424,16 @@
       <div id="stats-container"></div>
     </div>
 
+    <div class="section" style="margin-bottom:10px;">
+      <div id="dashboard-charts-container"></div>
+    </div>
+
     <div class="section" style="margin-bottom:8px;">
       <h3>Layout</h3>
       <div style="display:flex; gap:4px;">
         <button class="layout-btn filter-btn active" data-layout="shell">Shell</button>
         <button class="layout-btn filter-btn" data-layout="type-cluster">Type</button>
+        <button class="layout-btn filter-btn" data-layout="brain">Brain</button>
         <button class="layout-btn filter-btn" data-layout="force">Force</button>
       </div>
     </div>
@@ -449,6 +460,14 @@
         <div class="section">
           <h3>Shape</h3>
           <div class="filter-group" id="shape-filters"></div>
+        </div>
+        <div class="section">
+          <h3>Supertype</h3>
+          <div class="filter-group" id="supertype-filters"></div>
+        </div>
+        <div class="section">
+          <h3>Source</h3>
+          <div class="filter-group" id="source-filters"></div>
         </div>
         <div class="section" style="display:none;">
           <h3>Project</h3>
@@ -481,6 +500,21 @@
         <span class="collapse-arrow">&#x25BC;</span>
       </h3>
       <div class="category-body" id="node-list-body">
+        <div class="sort-controls" id="sort-controls">
+          <span style="font-size:10px;color:#888;margin-right:4px;">Sort:</span>
+          <select id="sort-field" class="sort-select">
+            <option value="level">Level</option>
+            <option value="importance">Importance</option>
+            <option value="createdAt">Created</option>
+            <option value="updatedAt">Updated</option>
+            <option value="label">Label</option>
+            <option value="type">Type</option>
+            <option value="usefulnessScore">Usefulness</option>
+            <option value="accessCount">Access Count</option>
+            <option value="confidence">Confidence</option>
+          </select>
+          <button id="sort-dir-btn" class="sort-dir-btn" title="Toggle sort direction">&#x25B2;</button>
+        </div>
         <div id="node-list"></div>
       </div>
     </div>

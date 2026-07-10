@@ -119,6 +119,8 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
           embedding: null,
           importance: 0.8,
           usefulnessScore: 0,
+          source: "auto_extract",
+          tags: ["middle-term", "capture"],
           metadata: { customType: "middle-term", sessionId, timestamp: now },
         });
 
@@ -236,6 +238,8 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                   embedding,
                   importance: 0.5,
                   usefulnessScore: 0.1,
+                  source: "auto_extract",
+                  tags: ["storedcontext", "session-archive"],
                   metadata: { customType: "storedcontext", sessionId, timestamp: now, turnCount: turnIndex },
                 });
                 summaries.push(`Conversation archived as storedcontext node with structured summary (label: ${nodeLabel}).`);

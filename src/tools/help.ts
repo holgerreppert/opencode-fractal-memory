@@ -69,9 +69,12 @@ export function MemoryHelp(store?: MemoryStore) {
         "- **Meta** (summaries): summary, core, fix",
         "",
         "Search with `intent` parameter (`read`/`edit`/`debug`/`discovery`) for intent-aware biasing.",
+        "Search with `tagsFilter` to find nodes matching ALL specified tags (tag intersection).",
         "",
         "Use `memory_search` with `category_filter` to target a specific category.",
         "Use `memory_set` with a semantic type for important facts that should persist.",
+        "Use `memory_set` with `tags` parameter (string array) to tag nodes for filtered search.",
+        "Nodes auto-record their `source` (manual / tool_result / auto_extract / web_search / reflection / llm_compress).",
         "", "### About Fractal Memory", "");
       lines.push(
         "Fractal memory organizes knowledge as a hierarchy of increasingly compressed summaries:",

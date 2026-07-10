@@ -519,7 +519,7 @@ function mapNode(n: {
   accessCount: number | null; sticky: boolean; confidence: number | null;
   verificationCount: number | null;
   supertype: string | null; tags: string[] | null; source: string | null;
-  createdAt: Date; updatedAt: Date;
+  createdAt: Date; updatedAt: Date; lastAccessed: Date | null;
   parentIds: string[] | null;
   metadata: Record<string, unknown> | null;
   projectName: string | null;
@@ -544,6 +544,7 @@ function mapNode(n: {
     verificationCount: n.verificationCount ?? 0,
     createdAt: n.createdAt,
     updatedAt: n.updatedAt,
+    lastAccessed: n.lastAccessed,
     parentIds: n.parentIds ? (typeof n.parentIds === "string" ? JSON.parse(n.parentIds) : n.parentIds) : null,
     metadata: n.metadata ? (typeof n.metadata === "string" ? JSON.parse(n.metadata) : n.metadata) : null,
     projectName: n.projectName ?? null,

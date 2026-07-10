@@ -80,6 +80,8 @@ class NodeFilterEngine {
     this.onUpdate = null;
     this.hideAll = false;
     this._allValues = null;
+    this.supertypeFilter = null;
+    this.sourceFilter = null;
   }
 
   initFromStats(stats) {
@@ -95,6 +97,8 @@ class NodeFilterEngine {
     this.customTypes.clear();
     this.shapes.clear();
     this.projects.clear();
+    this.supertypeFilter = null;
+    this.sourceFilter = null;
 
     this._allValues.levels.forEach(l => this.levels.add(l));
     this._allValues.types.forEach(t => this.types.add(t));
@@ -119,6 +123,8 @@ class NodeFilterEngine {
     this.customTypes.clear();
     this.shapes.clear();
     this.projects.clear();
+    this.supertypeFilter = null;
+    this.sourceFilter = null;
     this._allValues.levels.forEach(l => this.levels.add(l));
     this._allValues.types.forEach(t => this.types.add(t));
     this._allValues.customTypes.forEach(ct => this.customTypes.add(ct));
@@ -135,6 +141,8 @@ class NodeFilterEngine {
     this.customTypes.clear();
     this.shapes.clear();
     this.projects.clear();
+    this.supertypeFilter = null;
+    this.sourceFilter = null;
     this.searchQuery = "";
     this.serverSearchIds = null;
     this.hideAll = true;
@@ -208,6 +216,10 @@ class NodeFilterEngine {
       if (!this.projects.has(p)) return false;
     }
 
+    // New filters
+    if (this.supertypeFilter && node.supertype !== this.supertypeFilter) return false;
+    if (this.sourceFilter && node.source !== this.sourceFilter) return false;
+
     if (this.searchQuery) {
       if (this.searchMode === "text") {
         const q = this.searchQuery;
@@ -233,7 +245,7 @@ class SceneController {
   constructor() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0a0f);
-    this.scene.fog = new THREE.FogExp2(0x0a0a0f, 0.002);
+    this.scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0006);
 
     this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
     this.camera.position.set(0, 100, 300);
@@ -246,6 +258,7 @@ class SceneController {
     this.layoutMode = "shell";
     this.nodeObjects = [];
     this.edgeObjects = [];
+    this.regionObjects = [];
     this.nodePositions = new Map();
     this.nodeVelocities = new Map();
     this.hoveredNode = null;
@@ -426,8 +439,10 @@ class SceneController {
   clear() {
     this.nodeObjects.forEach(obj => this.scene.remove(obj));
     this.edgeObjects.forEach(obj => this.scene.remove(obj));
+    this.regionObjects.forEach(obj => this.scene.remove(obj));
     this.nodeObjects = [];
     this.edgeObjects = [];
+    this.regionObjects = [];
     this.nodePositions.clear();
     this.nodeVelocities.clear();
   }
@@ -445,6 +460,8 @@ class SceneController {
       this._computeShellPositions(data);
     } else if (layoutMode === "type-cluster") {
       this._computeTypeClusterPositions(data);
+    } else if (layoutMode === "brain") {
+      this._computeBrainPositions(data);
     } else {
       this._computeForcePositions(data);
     }
@@ -546,6 +563,85 @@ class SceneController {
     this.shellRadii = {};
   }
 
+  _computeBrainPositions(data) {
+    const BRAIN_REGIONS = {
+      procedural:  { center: new THREE.Vector3(0, 30, -90), label: "Frontal Lobe", color: 0x4a9eff },
+      declarative: { center: new THREE.Vector3(70, 20, 10),  label: "Parietal Lobe", color: 0xfb923c },
+      experiential:{ center: new THREE.Vector3(-60, -20, 60), label: "Temporal Lobe", color: 0xa78bfa },
+      meta:        { center: new THREE.Vector3(-50, 60, -60), label: "Prefrontal Cortex", color: 0xf472b6 },
+      other:       { center: new THREE.Vector3(30, -10, 100), label: "Occipital Lobe", color: 0x34d399 },
+    };
+
+    const TYPE_REGION = {
+      skill: "procedural", playbook: "procedural", rule: "procedural",
+      howto: "procedural", bug: "procedural", fix: "procedural",
+      fact: "other", concept: "other", knowledge: "other", research: "other",
+      lesson: "experiential", improvement: "experiential", review: "experiential",
+      event: "experiential", session: "experiential", episode: "experiential",
+      decision: "declarative", architecture: "declarative", convention: "declarative",
+      preference: "declarative", plan: "declarative", task: "declarative",
+      summary: "meta", core: "meta",
+    };
+
+    function getRegion(node) {
+      const supertype = node.supertype;
+      if (supertype && BRAIN_REGIONS[supertype]) return supertype;
+      const type = node.type || "unknown";
+      return TYPE_REGION[type] || "other";
+    }
+
+    const regionNodes = {};
+    for (const node of data) {
+      if (!node) continue;
+      const region = getRegion(node);
+      if (!regionNodes[region]) regionNodes[region] = [];
+      regionNodes[region].push(node);
+    }
+
+    for (const [region, nodes] of Object.entries(regionNodes)) {
+      const regionInfo = BRAIN_REGIONS[region] || BRAIN_REGIONS.other;
+      const center = regionInfo.center;
+      const count = nodes.length;
+      const clusterRadius = Math.max(15, Math.sqrt(count) * 6);
+
+      // Semi-transparent region indicator sphere
+      const indicatorGeom = new THREE.SphereGeometry(clusterRadius + 10, 24, 24);
+      const indicatorMat = new THREE.MeshBasicMaterial({
+        color: regionInfo.color, transparent: true, opacity: 0.08, wireframe: false,
+      });
+      const indicator = new THREE.Mesh(indicatorGeom, indicatorMat);
+      indicator.position.copy(center);
+      this.scene.add(indicator);
+      this.regionObjects.push(indicator);
+
+      // Region wireframe ring
+      const wireGeom = new THREE.SphereGeometry(clusterRadius + 12, 16, 16);
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: regionInfo.color, transparent: true, opacity: 0.15, wireframe: true,
+      });
+      const wire = new THREE.Mesh(wireGeom, wireMat);
+      wire.position.copy(center);
+      this.scene.add(wire);
+      this.regionObjects.push(wire);
+
+      // Region label
+      const labelSprite = createTextSprite(regionInfo.label, regionInfo.color, true);
+      labelSprite.position.copy(center);
+      labelSprite.position.y += clusterRadius + 18;
+      this.scene.add(labelSprite);
+      this.regionObjects.push(labelSprite);
+
+      nodes.forEach((node, idx) => {
+        const localPos = fibonacciSphere(idx, count, clusterRadius);
+        const pos = new THREE.Vector3().copy(center).add(localPos);
+        this.nodePositions.set(node.id, pos);
+        this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
+      });
+    }
+
+    this.shellRadii = {};
+  }
+
   _createNodeMeshes(data) {
     for (const node of data) {
       if (!node) continue;
@@ -569,7 +665,7 @@ class SceneController {
 
       const geometry = getGeometry(shape, size);
       const material = new THREE.MeshPhongMaterial({
-        color, emissive: color, emissiveIntensity: 0.2, transparent: true, opacity: 0.9,
+        color, emissive: color, emissiveIntensity: 0.35, transparent: true, opacity: 0.95,
       });
 
       const mesh = new THREE.Mesh(geometry, material);
@@ -815,7 +911,7 @@ class SceneController {
 
       // --- Shell constraint (gentle centering) ---
       const shellMultiplier = this.layoutMode === "shell" ? 1.0 :
-                              this.layoutMode === "type-cluster" ? 0.15 : 0.03;
+                              (this.layoutMode === "type-cluster" || this.layoutMode === "brain") ? 0.15 : 0.03;
       const forceTargetRadius = 400;
       for (const id of ids) {
         const pos = this.nodePositions.get(id);
@@ -1353,9 +1449,9 @@ function computeShellRadii(levelCounts) {
 // ==================== Visualization Helpers ====================
 
 function getNodeSize(node) {
-  const base = 2 + node.importance * 1.5;
-  const accessBoost = Math.min(node.accessCount * 0.3, 6);
-  return Math.max(2, Math.min(base + accessBoost, 20));
+  const base = 3 + node.importance * 2;
+  const accessBoost = Math.min(node.accessCount * 0.4, 8);
+  return Math.max(3, Math.min(base + accessBoost, 24));
 }
 
 function getNodeShape(node) {
@@ -1377,27 +1473,34 @@ function getGeometry(shape, size) {
   }
 }
 
-function createTextSprite(text, color) {
+function createTextSprite(text, color, big = false) {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-  canvas.width = 256;
-  canvas.height = 64;
+  canvas.width = big ? 512 : 256;
+  canvas.height = big ? 128 : 64;
 
   ctx.fillStyle = "rgba(0,0,0,0)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.font = "bold 24px Inter, sans-serif";
+  ctx.font = big ? "bold 36px Inter, sans-serif" : "bold 24px Inter, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
+  // Glow
   const hex = "#" + color.toString(16).padStart(6, "0");
+  ctx.shadowColor = hex;
+  ctx.shadowBlur = big ? 12 : 4;
   ctx.fillStyle = hex;
-  ctx.fillText(text.length > 25 ? text.slice(0, 25) + "..." : text, 128, 32);
+  ctx.fillText(text.length > 25 ? text.slice(0, 25) + "..." : text, big ? 256 : 128, big ? 64 : 32);
 
   const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.8 });
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.9 });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(30, 7.5, 1);
+  if (big) {
+    sprite.scale.set(80, 20, 1);
+  } else {
+    sprite.scale.set(30, 7.5, 1);
+  }
   return sprite;
 }
 
@@ -1406,6 +1509,7 @@ function createTextSprite(text, color) {
 function buildUI() {
   buildScopeButtons();
   buildStats();
+  buildDashboardCharts();
   buildFilters();
   buildLegend();
   buildNodeList();
@@ -1448,6 +1552,99 @@ function buildStats() {
   container.innerHTML = html;
 }
 
+function buildDashboardCharts() {
+  if (!statsData) return;
+  const container = document.getElementById("dashboard-charts-container");
+  if (!container) return;
+
+  // Color definitions
+  const SUPERTYPE_COLORS = {
+    declarative: "#4a9eff",   // blue
+    procedural: "#34d399",    // green
+    experiential: "#fb923c",  // orange
+    meta: "#a78bfa",          // purple
+  };
+
+  const STRATUM_COLORS = {
+    hot: "#ef4444",   // red
+    warm: "#fbbf24",  // yellow
+    cold: "#3b82f6",  // blue
+  };
+
+  // Helper to get max value for scaling
+  const getMax = (obj) => Math.max(...Object.values(obj || {}));
+
+  // Helper to create colored bar div
+  const makeBar = (label, value, max, color) => {
+    const pct = max > 0 ? (value / max) * 100 : 0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="flex:0 0 80px;font-size:11px;color:#888;">${label}</span>
+      <span style="flex:1;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">
+        <div style="width:${pct}%;height:16px;background:${color};transition:width 0.3s;"></div>
+      </span>
+      <span style="flex:0 0 40px;font-size:11px;color:#fff;text-align:right;">${value}</span>
+    </div>`;
+  };
+
+  // 1. Supertype distribution card
+  const supertypeData = statsData.nodesPerSupertype || {};
+  const supertypeMax = getMax(supertypeData);
+  let supertypeHtml = "";
+  Object.entries(supertypeData).forEach(([st, count]) => {
+    supertypeHtml += makeBar(st, count, supertypeMax, SUPERTYPE_COLORS[st] || "#888", Object.values(supertypeData).reduce((a,b)=>a+b,0));
+  });
+
+  // 2. Tag cloud card
+  const tagsData = statsData.tagsFrequency || {};
+  const tagMax = getMax(tagsData);
+  const tagEntries = Object.entries(tagsData).sort((a,b) => b[1]-a[1]).slice(0, 20);
+  let tagHtml = "";
+  tagEntries.forEach(([tag, count]) => {
+    const size = Math.max(12, Math.min(36, 12 + (count / (tagMax || 1)) * 24));
+    tagHtml += `<span style="display:inline-block;margin:2px 4px;font-size:${size}px;color:#aaa;cursor:pointer;" onclick="console.log('Tag clicked:', '${tag}')">${tag} <span style="font-size:10px;color:#666;">(${count})</span></span>`;
+  });
+  if (tagEntries.length === 0) tagHtml = '<div style="color:#666;font-size:12px;">No tags found</div>';
+
+  // 3. Confidence histogram card
+  const confidenceData = statsData.confidenceHistogram || {};
+  const confMax = getMax(confidenceData);
+  let confHtml = "";
+  Object.entries(confidenceData).sort().forEach(([bucket, count]) => {
+    confHtml += makeBar(bucket, count, confMax, "#d946ef", Object.values(confidenceData).reduce((a,b)=>a+b,0));
+  });
+
+  // 4. Stratum breakdown card
+  const stratumData = statsData.stratumBreakdown || {};
+  const stratumMax = getMax(stratumData);
+  let stratumHtml = "";
+  Object.entries(stratumData).forEach(([stratum, count]) => {
+    stratumHtml += makeBar(stratum, count, stratumMax, STRATUM_COLORS[stratum] || "#888", Object.values(stratumData).reduce((a,b)=>a+b,0));
+  });
+
+  // Build the cards HTML
+  const cardStyle = "background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;margin-bottom:12px;";
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="${cardStyle}">
+        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Supertype Distribution</h4>
+        ${supertypeHtml}
+      </div>
+      <div style="${cardStyle}">
+        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Tag Cloud</h4>
+        <div style="padding:8px 0;">${tagHtml}</div>
+      </div>
+      <div style="${cardStyle}">
+        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Confidence Histogram</h4>
+        ${confHtml}
+      </div>
+      <div style="${cardStyle}">
+        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Stratum Breakdown</h4>
+        ${stratumHtml}
+      </div>
+    </div>
+  `;
+}
+
 function buildFilters() {
   if (!statsData) return;
 
@@ -1488,6 +1685,26 @@ function buildFilters() {
       customTypes.map(ct =>
         `<button class="filter-btn active" data-custom-type="${ct}">${ct} (${statsData.nodesPerCustomType[ct]})</button>`
       ).join("");
+  }
+
+  // Supertype filters (dropdown)
+  const supertypes = Object.keys(statsData.nodesPerSupertype || {}).sort();
+  const supertypeContainer = document.getElementById("supertype-filters");
+  if (supertypeContainer) {
+    supertypeContainer.innerHTML = `<select id="supertype-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.supertypeFilter = this.value || null; filterEngine.changed();">
+      <option value="">All Supertypes</option>
+      ${supertypes.map(st => `<option value="${st}">${st} (${statsData.nodesPerSupertype[st]})</option>`).join("")}
+    </select>`;
+  }
+
+  // Source filters (dropdown)
+  const sources = Object.keys(statsData.nodesPerSource || {}).sort();
+  const sourceContainer = document.getElementById("source-filters");
+  if (sourceContainer) {
+    sourceContainer.innerHTML = `<select id="source-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.sourceFilter = this.value || null; filterEngine.changed();">
+      <option value="">All Sources</option>
+      ${sources.map(s => `<option value="${s}">${s} (${statsData.nodesPerSource[s]})</option>`).join("")}
+    </select>`;
   }
 
   // Shape filters
@@ -1548,6 +1765,21 @@ function buildLegend() {
   popover.innerHTML = html;
 }
 
+let sortField = "level";
+let sortAsc = true;
+
+const SORT_COMPARATORS = {
+  level: (a, b) => a.level - b.level,
+  importance: (a, b) => a.importance - b.importance,
+  createdAt: (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
+  updatedAt: (a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0),
+  label: (a, b) => (a.label || "").localeCompare(b.label || ""),
+  type: (a, b) => (a.type || "").localeCompare(b.type || ""),
+  usefulnessScore: (a, b) => (a.usefulnessScore || 0) - (b.usefulnessScore || 0),
+  accessCount: (a, b) => (a.accessCount || 0) - (b.accessCount || 0),
+  confidence: (a, b) => (a.confidence || 0) - (b.confidence || 0),
+};
+
 function buildNodeList() {
   const container = document.getElementById("node-list");
   const countEl = document.getElementById("node-list-count");
@@ -1555,14 +1787,10 @@ function buildNodeList() {
 
   countEl.textContent = `(${filtered.length})`;
 
-  const sorted = [...filtered].sort((a, b) => {
-    if (a.level !== b.level) return a.level - b.level;
-    return b.importance - a.importance;
-  });
+  const cmp = SORT_COMPARATORS[sortField] || SORT_COMPARATORS.level;
+  const sorted = [...filtered].sort((a, b) => sortAsc ? cmp(a, b) : cmp(b, a));
 
   container.innerHTML = sorted.map(node => {
-    
-    
     const isSelected = sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeId === node.id;
 
     let customIndicator = "";
@@ -1672,9 +1900,23 @@ function showDetailPanel(node) {
       <div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-value" id="confidence-value-${node.id}">${node.confidence}</span></div>
       <div class="stat-row"><span class="stat-label">Verifications</span><span class="stat-value">${node.verificationCount || 0}</span></div>
       <div class="stat-row"><span class="stat-label">Sticky</span><span class="stat-value">${node.sticky ? "Yes" : "No"}</span></div>
-      <div class="stat-row"><span class="stat-label">Source</span><span class="stat-value">${node.source || "auto"}</span></div>
+      <div class="stat-row"><span class="stat-label">Source</span>
+        <span class="stat-value">
+          <select id="source-select-${node.id}" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#fff;font-size:12px;padding:2px 4px;" onchange="updateNodeSource('${node.id}', this.value)">
+            ${["manual","tool_result","auto_extract","web_search","reflection","llm_compress"].map(s =>
+              `<option value="${s}" ${(node.source || "auto") === s ? "selected" : ""}>${s}</option>`
+            ).join("")}
+          </select>
+        </span>
+      </div>
       <div class="stat-row"><span class="stat-label">Content Length</span><span class="stat-value">${node.contentLength} chars</span></div>
-      ${node.tags && node.tags.length > 0 ? `<div class="stat-row"><span class="stat-label">Tags</span><span class="stat-value">${node.tags.map(t => `<span style="display:inline-block;padding:1px 6px;margin:1px 2px;background:#333;border-radius:3px;font-size:11px;">${escapeHtml(t)}</span>`).join('')}</span></div>` : ""}
+      <div class="stat-row"><span class="stat-label">Tags</span>
+        <span class="stat-value" id="tags-display-${node.id}">
+          ${(node.tags || []).map(t => `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;margin:1px 2px;background:#333;border-radius:3px;font-size:11px;">${escapeHtml(t)}<span style="cursor:pointer;color:#f44;font-size:10px;" onclick="removeTag('${node.id}','${escapeHtml(t)}')">x</span></span>`).join('')}
+          <input id="tag-input-${node.id}" type="text" style="width:80px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);border-radius:3px;color:#fff;font-size:11px;padding:2px 4px;" placeholder="add tag" onkeydown="if(event.key==='Enter')addTag('${node.id}')">
+          <span style="cursor:pointer;color:#4f4;font-size:14px;margin-left:2px;" onclick="addTag('${node.id}')">+</span>
+        </span>
+      </div>
       <div style="margin-top: 8px;"><button class="btn btn-sm" onclick="verifyNode('${node.id}')">✓ Verify</button></div>
     </div>
     ${metadataHtml}
@@ -1891,6 +2133,56 @@ async function verifyNode(nodeId) {
   }
 }
 
+async function removeTag(nodeId, tag) {
+  const node = nodeData.find(n => n.id === nodeId);
+  if (!node) return;
+  node.tags = (node.tags || []).filter(t => t !== tag);
+  await saveTagsAndRefresh(nodeId, node.tags);
+}
+
+async function addTag(nodeId) {
+  const input = document.getElementById(`tag-input-${nodeId}`);
+  if (!input || !input.value.trim()) return;
+  const node = nodeData.find(n => n.id === nodeId);
+  if (!node) return;
+  const newTags = input.value.split(",").map(t => t.trim()).filter(t => t);
+  node.tags = [...new Set([...(node.tags || []), ...newTags])];
+  input.value = "";
+  await saveTagsAndRefresh(nodeId, node.tags);
+}
+
+async function saveTagsAndRefresh(nodeId, tags) {
+  try {
+    await fetch(`/api/nodes/${nodeId}?scope=${currentScope}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags }),
+    });
+    showDetailPanel(nodeData.find(n => n.id === nodeId));
+  } catch (e) {
+    alert("Save tags error: " + e.message);
+  }
+}
+
+async function updateNodeSource(nodeId, source) {
+  try {
+    await fetch(`/api/nodes/${nodeId}?scope=${currentScope}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source }),
+    });
+    const node = nodeData.find(n => n.id === nodeId);
+    if (node) node.source = source;
+  } catch (e) {
+    alert("Update source error: " + e.message);
+  }
+}
+
+// Expose for inline HTML onclick/onchange handlers
+window.removeTag = removeTag;
+window.addTag = addTag;
+window.updateNodeSource = updateNodeSource;
+
 async function injectNode(node) {
   const statusEl = document.getElementById("inject-status");
   try {
@@ -2027,6 +2319,17 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
+  });
+
+  // Sort controls
+  document.getElementById("sort-field").addEventListener("change", (e) => {
+    sortField = e.target.value;
+    buildNodeList();
+  });
+  document.getElementById("sort-dir-btn").addEventListener("click", () => {
+    sortAsc = !sortAsc;
+    document.getElementById("sort-dir-btn").innerHTML = sortAsc ? "&#x25B2;" : "&#x25BC;";
+    buildNodeList();
   });
 
   // Backup / Restore event listeners

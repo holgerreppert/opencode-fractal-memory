@@ -26,6 +26,12 @@ function stratumWeight(s: Stratum): number {
   }
 }
 
+function matchesTagsFilter(nodeTags: string[] | null, tagsFilter: string[] | undefined): boolean {
+  if (!tagsFilter || tagsFilter.length === 0) return true;
+  if (!nodeTags || nodeTags.length === 0) return tagsFilter.length === 0;
+  return tagsFilter.every(t => nodeTags.includes(t));
+}
+
 function computeIntentWeight(intent: SearchIntent | undefined, category: string | null, _type: string | null, supertype: string | null): number {
   if (supertype) {
     switch (intent) {
@@ -127,6 +133,7 @@ export async function searchByEmbedding(
     categoryFilter?: MemoryCategory | undefined;
     typeFilter?: MemoryNodeType | undefined;
     intent?: SearchIntent | undefined;
+    tagsFilter?: string[] | undefined;
   }
 ): Promise<MemoryNode[]> {
   const weights = options?.levelWeights ?? {};
@@ -165,6 +172,7 @@ export async function searchByEmbedding(
         if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
         if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+        if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
         let _embedding = node.embedding;
         if (row.embedding_blob) {
@@ -215,6 +223,7 @@ export async function searchByEmbedding(
 
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
         if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+        if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
         const semanticScore = cosineSimilarity(query, embedding);
         const levelWeight = weights[level] ?? 1;
@@ -279,6 +288,7 @@ export async function searchByEmbedding(
           if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
           if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
           if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+          if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
           const levelWeight = weights[level] ?? 1;
           const confidence = node.confidence ?? 0.5;

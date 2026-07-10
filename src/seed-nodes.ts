@@ -157,6 +157,55 @@ When to use:
 - Before making decisions: "I need decisions and architecture" → boost: decision=1.5, architecture=1.2
 - When irrelevant types pollute results: "suppress rules" → boost: rule=0.1`,
   },
+  // Feature info nodes (auto-injected as info reminders)
+  {
+    label: "rule:feature:command-compression",
+    tag: "rule:feature",
+    content: `## Command Compression Feature
+tag: rule:feature
+
+Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first line shows the compression strategy and savings. Original output is preserved on non-zero exit. View stats at management app → Compress tab.`,
+  },
+  {
+    label: "rule:feature:file-skeletonization",
+    tag: "rule:feature",
+    content: `## File Skeletonization Feature
+tag: rule:feature
+
+Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows the strategy (ast+regex or regex) and reduction. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
+  },
+  {
+    label: "rule:feature:auto-retrieve",
+    tag: "rule:feature",
+    content: `## Auto-Retrieve Feature
+tag: rule:feature
+
+Memory search results may be reordered by an LLM judge or fallback scorer based on your current reasoning context. Results show a '## Reranked Memory Results' header with relevance percentages per node. Higher relevance = better match for your current task.`,
+  },
+  {
+    label: "rule:feature:tag-intersection-search",
+    tag: "rule:feature",
+    content: `## Tag Intersection Search Feature
+tag: rule:feature
+
+Memory search accepts a \`tagsFilter\` option — returns only nodes containing ALL specified tags (intersection semantics). Empty array = no filter. Use when narrowing search results to nodes with specific tags.`,
+  },
+  {
+    label: "rule:feature:source-propagation",
+    tag: "rule:feature",
+    content: `## Source Propagation Feature
+tag: rule:feature
+
+All memory nodes have a \`source\` field set on creation. Values: \`manual\` (user memory_set), \`tool_result\` (tool output), \`auto_extract\` (automatic capture/seed), \`web_search\` (web results), \`reflection\` (agent reflection), \`llm_compress\` (compression summaries). View/edit source in management app detail panel.`,
+  },
+  {
+    label: "rule:feature:confidence-diminishing-returns",
+    tag: "rule:feature",
+    content: `## Confidence Diminishing Returns Feature
+tag: rule:feature
+
+memory_verify uses a diminishing-returns formula: confidence increases by \`0.2/(1+verificationCount)\`. First verify: +0.20, second: +0.10, third: +0.067. Each verification also increments verification_count. This prevents rapid confidence saturation.`,
+  },
   // Seed nodes (on-demand, not injected)
   {
     label: "memory-quick-start",

@@ -9,7 +9,7 @@ import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
-import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
+import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
 import type { MemoryStore } from "../domain/ports/MemoryStore";
 import { queryListNodes, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode, querySearchText, querySearchBM25 } from "./queries/nodes";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
@@ -19,7 +19,7 @@ import { CompressionHelper, COMPRESSION_LEVELS } from "./summarization";
 export { CompressionHelper, COMPRESSION_LEVELS };
 import { memLog } from "../logging";
 import { getExpiredNodes as getExpiredNodesFn, deleteExpiredNodes as deleteExpiredNodesFn, pruneNodes as pruneNodesFn } from "./expiration";
-import { backfillLinks as backfillLinksFn, backfillBinaryEmbeddingsAndBM25 as backfillBinaryEmbeddingsAndBM25Fn, rebuildHNSWIndex as rebuildHNSWIndexFn } from "./maintenance";
+import { backfillLinks as backfillLinksFn, backfillBinaryEmbeddingsAndBM25 as backfillBinaryEmbeddingsAndBM25Fn, backfillSupertype as backfillSupertypeFn, rebuildHNSWIndex as rebuildHNSWIndexFn } from "./maintenance";
 import { searchByEmbedding as searchByEmbeddingFn, detectTopicBoundaries as detectTopicBoundariesFn, drilldownQuery as drilldownQueryFn, getDrilldownPath as getDrilldownPathFn } from "./search";
 import { retrieveFractal as retrieveFractalFn, getFractalStats as getFractalStatsFn } from "./navigation";
 import { getCompressionCandidates as getCompressionCandidatesFn, runCompression as runCompressionFn, runPatternExtraction as runPatternExtractionFn } from "./compress-ops";
@@ -339,6 +339,11 @@ class SqliteMemoryStore implements MemoryStore {
     return backfillBinaryEmbeddingsAndBM25Fn(db, scope);
   }
 
+  async backfillSupertype(scope: MemoryScope): Promise<void> {
+    const db = await this.getDb(scope);
+    return backfillSupertypeFn(db);
+  }
+
   async rebuildHNSWIndex(scope?: MemoryScope | "all"): Promise<void> {
     return rebuildHNSWIndexFn((s) => this.getDb(s), scope);
   }
@@ -346,7 +351,7 @@ class SqliteMemoryStore implements MemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined }
+    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
   }

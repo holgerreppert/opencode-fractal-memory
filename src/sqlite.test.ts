@@ -1580,7 +1580,7 @@ describe("sqlite store", () => {
 
       const verifiedAgain = await store.verifyNode(node.id);
       expect(verifiedAgain.verificationCount).toBe(2);
-      expect(verifiedAgain.confidence).toBeCloseTo(0.9);
+      expect(verifiedAgain.confidence).toBeCloseTo(0.8); // diminishing returns: 0.7 + 0.2/2 = 0.8
     });
   });
 });

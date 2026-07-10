@@ -92,6 +92,8 @@ export async function runCompression(
           embedding: summaryEmbedding,
           importance: Math.max(...cluster.map((n: MemoryNode) => n.importance)) * 0.9,
           type: "summary",
+          source: "llm_compress",
+          tags: ["fractal-summary", "compression"],
           metadata: null,
         });
 
@@ -167,6 +169,8 @@ export async function runPatternExtraction(
       embedding: summaryEmbedding,
       importance: 0.7,
       type: "summary",
+      source: "llm_compress",
+      tags: ["extracted-patterns"],
       metadata: {
         patternTypes: [
           patterns.decisions.size > 0 ? "decisions" : null,

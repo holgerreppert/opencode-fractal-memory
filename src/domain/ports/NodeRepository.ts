@@ -23,6 +23,7 @@ export interface NodeRepository {
     temporalHops?: number | undefined;
     categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined;
     intent?: SearchIntent | undefined;
+    tagsFilter?: string[] | undefined;
   }): Promise<MemoryNode[]>;
   getFractalStats(scope: MemoryScope | "all", projectName?: string | undefined): Promise<FractalStats>;
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;

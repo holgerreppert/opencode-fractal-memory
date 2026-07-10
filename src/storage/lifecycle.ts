@@ -21,8 +21,8 @@ export async function ensureSeed(
     try {
       await withRetry(() => {
         db.run(
-          "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, metadata, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [randomUUID(), seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", null, seed.scope === "project" ? projectName ?? null : null],
+          "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, created_at, updated_at, importance, access_count, last_accessed, type, supertype, tags, source, metadata, project_name, confidence, verification_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [randomUUID(), seed.scope, seed.label, "", null, 0, null, null, now, now, 0.5, 0, null, "note", "experiential", "[]", "auto_extract", null, seed.scope === "project" ? projectName ?? null : null, 0.5, 0],
         );
       });
     } catch {
@@ -99,8 +99,10 @@ export async function verifyNode(
     const existing = db.query("SELECT * FROM memory_nodes WHERE id = ?").get(id) as SqliteNode | null;
 
     if (existing) {
-      const newConfidence = Math.min(1, (existing.confidence ?? 0.5) + 0.2);
-      const newVerificationCount = (existing.verification_count ?? 0) + 1;
+      const oldVerificationCount = existing.verification_count ?? 0;
+      const confidenceDelta = 0.2 / (1 + oldVerificationCount);
+      const newConfidence = Math.min(1, (existing.confidence ?? 0.5) + confidenceDelta);
+      const newVerificationCount = oldVerificationCount + 1;
       await withRetry(() => {
         db.run(
           "UPDATE memory_nodes SET confidence = ?, last_verified = ?, verification_count = ? WHERE id = ?",

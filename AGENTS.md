@@ -148,6 +148,9 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `rule:feature:command-compression` | rule | Compression feature details |
 | `rule:feature:file-skeletonization` | rule | Skeletonization feature details |
 | `rule:feature:auto-retrieve` | rule | Auto-retrieve reranking details |
+| `rule:feature:tag-intersection-search` | rule | tagsFilter option in searchByEmbedding — intersection semantics |
+| `rule:feature:source-propagation` | rule | Source must be set on ALL node creation — values table |
+| `rule:feature:confidence-diminishing-returns` | rule | verifyNode uses 0.2/(1+vc) formula |
 | `output-token-control` | howto | Output token control — config, strategies, levels |
 | `sdk-llm-judge-auto-retrieve` | note | LLM judge via client.session.prompt({noReply:true}) |
 | `memory-llm-compress-session-fix` | note | sessionId threading fix for memory_llm_compress |
@@ -164,3 +167,17 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `file:src/application/graph/query.test.ts` | file | Tests for callers/callees/callChain |
 | `plan:memory-categorization-improvements` | plan | Full memory categorization improvement plan (project scope) |
 | `pattern:multi-phase-implementation` | pattern | Batch implementation pattern for multi-file schema changes |
+| `feat:source-propagation` | implementation | Source auto-fill in compaction/compress/lifecycle creation sites |
+| `feat:confidence-diminishing-returns` | implementation | verifyNode uses 0.2/(1+vc) instead of flat +0.2 |
+| `feat:tag-intersection-search` | implementation | tagsFilter option in searchByEmbedding with tag intersection filtering |
+| `feat:management-dashboard-charts` | implementation | Supertype/tag cloud/confidence histogram/stratum breakdown cards |
+| `feat:management-tag-editing` | implementation | Inline tag add/remove and source dropdown in detail panel |
+| `file:management/public/app.js` | file | Full management app frontend (3393+ lines, vanilla JS) |
+| `file:src/management/helpers.ts` | file | Stats computation, rowToNode, computeStats with new aggregations |
+
+## Rules
+
+- `source` should be set on ALL node creation: `manual` for user-initiated, `tool_result` for tool output, `auto_extract` for automatic capture, `web_search` for web results, `reflection` for agent reflection, `llm_compress` for compression summaries
+- After schema migrations that add columns, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) AND mapNode in routes.ts AND NodeLike in helpers.ts AND computeStats aggregations
+- Management UI chart data flows: backend computeStats → StatsResult → /api/stats → app.js buildDashboardCharts() → DOM
+- Tag editing pattern: inline DOM manipulation + PUT /api/nodes/:id with {tags: [...]} + showDetailPanel refresh

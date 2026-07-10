@@ -2,6 +2,24 @@
 
 Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, automatic compression, and multi-level retrieval.
 
+## Changelog
+
+### v0.7.2
+- **System prompt merging**: Rule injection now merges into primary block (1 system message instead of 2+) — fixes compatibility with strict backends (Qwen/vLLM) that reject multiple system messages
+- **Auto-seed**: All 6 `rule:feature:*` nodes (`command-compression`, `file-skeletonization`, `auto-retrieve`, `tag-intersection-search`, `source-propagation`, `confidence-diminishing-returns`) now auto-seed on fresh databases via `src/seed-nodes.ts`
+- **Brain layout mode**: New "Brain" layout in the 3D graph viewer — nodes arranged into 5 brain regions (Frontal/Parietal/Temporal/Prefrontal/Occipital) by supertype, with colored region indicators and labels
+- **Sortable node list**: Node sidebar list now sortable by 9 fields (Level, Importance, Created, Updated, Label, Type, Usefulness, Access Count, Confidence) with direction toggle
+- **Improved 3D visibility**: Reduced fog density 3×, increased node size + emissive for better visibility at zoom distance
+- **Source propagation** — All node creation hooks now set `source` field: compaction middle-term (`auto_extract`), storedcontext archive (`auto_extract`), compression summaries (`llm_compress`), pattern extraction (`llm_compress`), seed initialization (`auto_extract`)
+- **Confidence diminishing returns** — `verifyNode` now uses diminishing-returns curve: each verification adds `0.2 / (1 + verificationCount)` instead of flat +0.2
+- **Tag intersection search** — `searchByEmbedding` accepts `tagsFilter` option for tag-based filtering (intersection semantics). 2 new tests
+- **Management dashboard charts** — Supertype distribution bar chart, tag cloud (top 20, font-scaled), confidence histogram, stratum breakdown (hot/warm/cold)
+- **Management filters** — Supertype and source dropdown filters, wired to client-side `NodeFilterEngine`
+- **Tag editing in detail panel** — Inline tag add/remove with Enter key support
+- **Source editing in detail panel** — Source field as dropdown with Save on change
+- **Stats API extended** — `/api/stats` now returns `nodesPerSupertype`, `nodesPerSource`, `tagsFrequency`, `confidenceHistogram`, `stratumBreakdown`
+- 129 tests pass, 0 lint errors, 0 typecheck errors
+
 # about me and the usage
 
 I made this because I needed a longterm memory at first.
@@ -965,13 +983,6 @@ Unified SQLite database with `project_name` discriminator:
 MIT
 
 ## Changelog
-
-### v0.7.1 (current)
-- **Pull-based graph tool** — replaced push-based banner injection + system rule with a single `graph` tool the agent calls on demand. Relations: `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. JSON output with `truncated` field. Available as both plugin tool and MCP tool. Files: `src/tools/graph.ts` (shared impl), `src/plugin/tools.ts` (plugin registration), `src/mcp/server.ts` (MCP registration).
-- **`graph.ruleEnabled` → `graph.refreshEnabled`** — renamed and repurposed. No longer controls system rule injection (removed). Controls auto-re-extract on edit/write.
-- **Banner injection removed** — no more `[Graph: ... exports | used by: ...]` prepended to file reads. No more system rule spamming.
-- **`graph-tools.ts` → `graph-refresh.ts`** — stripped read annotations, kept auto-refresh on edit/write.
-- **New query functions** — `callers()`, `callees()`, `callChain()` in `src/application/graph/query.ts`. 9 tests.
 
 ### v0.6.49 (2026-07-10)
 - **Hierarchical Type System (supertypes)** — All nodes auto-derived to a supertype (declarative/procedural/experiential/meta) from their type. Migration v29 adds `supertype` column. Search scoring uses supertype for smarter intent-aware weighting.

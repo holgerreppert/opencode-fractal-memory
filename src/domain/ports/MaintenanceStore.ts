@@ -13,6 +13,7 @@ export interface MaintenanceStore {
     projectName?: string | undefined;
   }): Promise<{ prunable: MemoryNode[]; pruned: number }>;
   backfillBinaryEmbeddingsAndBM25(scope: MemoryScope): Promise<void>;
+  backfillSupertype(scope: MemoryScope): Promise<void>;
   rebuildHNSWIndex(scope?: MemoryScope | "all"): Promise<void>;
   close(): Promise<void>;
 }

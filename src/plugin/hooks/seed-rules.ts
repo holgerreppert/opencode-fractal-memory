@@ -16,6 +16,9 @@ const RULE_LABELS = [
   { label: "rule:feature:command-compression", type: "info" },
   { label: "rule:feature:file-skeletonization", type: "info" },
   { label: "rule:feature:auto-retrieve", type: "info" },
+  { label: "rule:feature:tag-intersection-search", type: "info" },
+  { label: "rule:feature:source-propagation", type: "info" },
+  { label: "rule:feature:confidence-diminishing-returns", type: "info" },
 ];
 
 function extractKeywords(text: string): Set<string> {
@@ -112,8 +115,12 @@ export function createSeedRulesHandler(
         }
 
         if (reminders.length > 0) {
-          const insertAt = out.system.length > 0 ? 1 : 0;
-          out.system.splice(insertAt, 0, reminders.join("\n\n"));
+          const merged = reminders.join("\n\n");
+          if (out.system.length > 0) {
+            out.system[0] += "\n\n" + merged;
+          } else {
+            out.system.push(merged);
+          }
         }
 
         if (reminders.length < ruleCache.size) {
@@ -153,7 +160,11 @@ export function createSeedRulesHandler(
             const cachedSnippets = CROSS_SESSION_CACHE.get(sessionId);
             if (cachedSnippets && cachedSnippets.length > 0) {
               const crossSessionBlock = `<system_reminder type="info">\n<prior_sessions>\n${cachedSnippets.join("\n")}\n</prior_sessions>\n</system_reminder>`;
-              out.system.splice(out.system.length, 0, crossSessionBlock);
+              if (out.system.length > 0) {
+                out.system[0] += "\n\n" + crossSessionBlock;
+              } else {
+                out.system.push(crossSessionBlock);
+              }
               memLog("debug", "seed-rules", `Injected ${cachedSnippets.length} cross-session context snippets`, {
                 sessionId,
                 snippets: cachedSnippets.length,

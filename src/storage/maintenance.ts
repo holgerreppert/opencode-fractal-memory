@@ -72,6 +72,27 @@ export async function backfillBinaryEmbeddingsAndBM25(
   }
 }
 
+export async function backfillSupertype(db: Database): Promise<void> {
+  const SUPERTYPE_MAP: Record<string, string> = {
+    concept: "declarative", fact: "declarative", knowledge: "declarative",
+    architecture: "declarative", convention: "declarative", research: "declarative",
+    lesson: "procedural", howto: "procedural", skill: "procedural", playbook: "procedural",
+    event: "experiential", note: "experiential", session: "experiential",
+    task: "experiential", plan: "experiential", exploration: "experiential",
+    "debug-investigation": "experiential", improvement: "experiential",
+    review: "experiential", bug: "experiential",
+    summary: "meta", core: "meta", fix: "meta",
+  };
+
+  const rows = db.query("SELECT id, type FROM memory_nodes WHERE supertype IS NULL AND type IS NOT NULL").all() as { id: string; type: string }[];
+  for (const row of rows) {
+    const supertype = SUPERTYPE_MAP[row.type] ?? null;
+    if (supertype) {
+      db.run("UPDATE memory_nodes SET supertype = ? WHERE id = ?", [supertype, row.id]);
+    }
+  }
+}
+
 export async function rebuildHNSWIndex(
   getDb: (scope: MemoryScope) => Promise<Database>,
   scope?: MemoryScope | "all"

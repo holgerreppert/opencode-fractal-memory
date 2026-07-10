@@ -60,6 +60,12 @@ interface NodeLike {
   projectName: string | null;
   metadata: Record<string, unknown> | null;
   parentIds: string[] | null;
+  supertype: string | null;
+  tags: string[] | null;
+  confidence: number | null;
+  verificationCount: number | null;
+  lastAccessed: Date | null;
+  source: string | null;
 }
 
 function getDbPath(): string {
@@ -193,6 +199,11 @@ export interface StatsResult {
   nodesPerCustomType: Record<string, number>;
   nodesPerShape: Record<string, number>;
   nodesPerProject: Record<string, number>;
+  nodesPerSupertype: Record<string, number>;
+  nodesPerSource: Record<string, number>;
+  tagsFrequency: Record<string, number>;
+  confidenceHistogram: Record<string, number>;
+  stratumBreakdown: Record<string, number>;
   avgImportance: number;
   avgUsefulness: number;
   totalAccessCount: number;
@@ -216,6 +227,11 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
   const nodesPerCustomType: Record<string, number> = {};
   const nodesPerShape: Record<string, number> = {};
   const nodesPerProject: Record<string, number> = {};
+  const nodesPerSupertype: Record<string, number> = {};
+  const nodesPerSource: Record<string, number> = {};
+  const tagsFrequency: Record<string, number> = {};
+  const confidenceHistogram: Record<string, number> = {};
+  const stratumBreakdown: Record<string, number> = {};
   let totalImportance = 0;
   let totalUsefulness = 0;
   let totalAccessCount = 0;
@@ -232,6 +248,23 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
     nodesPerShape[shape] = (nodesPerShape[shape] ?? 0) + 1;
     const project = node.projectName || "(default)";
     nodesPerProject[project] = (nodesPerProject[project] ?? 0) + 1;
+    if (node.supertype) {
+      nodesPerSupertype[node.supertype] = (nodesPerSupertype[node.supertype] ?? 0) + 1;
+    }
+    const sourceKey = node.source || "auto";
+    nodesPerSource[sourceKey] = (nodesPerSource[sourceKey] ?? 0) + 1;
+    if (node.tags) {
+      for (const tag of node.tags) {
+        tagsFrequency[tag] = (tagsFrequency[tag] ?? 0) + 1;
+      }
+    }
+    const confidence = node.confidence ?? 0.5;
+    const confBucket = Math.round(confidence * 10) / 10;
+    const confKey = `${confBucket.toFixed(1)}-${(confBucket + 0.1).toFixed(1)}`;
+    confidenceHistogram[confKey] = (confidenceHistogram[confKey] ?? 0) + 1;
+    const daysSinceAccess = node.lastAccessed ? (Date.now() - node.lastAccessed.getTime()) / (1000 * 60 * 60 * 24) : Infinity;
+    const stratum = daysSinceAccess < 1 ? "hot" : daysSinceAccess < 7 ? "warm" : "cold";
+    stratumBreakdown[stratum] = (stratumBreakdown[stratum] ?? 0) + 1;
     totalImportance += node.importance;
     totalUsefulness += (node.usefulnessScore ?? 0);
     totalAccessCount += (node.accessCount ?? 0);
@@ -245,6 +278,11 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
     nodesPerCustomType,
     nodesPerShape,
     nodesPerProject,
+    nodesPerSupertype,
+    nodesPerSource,
+    tagsFrequency,
+    confidenceHistogram,
+    stratumBreakdown,
     avgImportance: Math.round((totalImportance / n) * 100) / 100,
     avgUsefulness: Math.round((totalUsefulness / n) * 100) / 100,
     totalAccessCount,

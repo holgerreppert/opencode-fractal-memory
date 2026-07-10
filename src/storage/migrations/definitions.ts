@@ -1,5 +1,31 @@
 import { Database } from "bun:sqlite";
 
+const SUPERTYPE_BACKFILL: Record<string, string> = {
+  concept: "declarative",
+  fact: "declarative",
+  knowledge: "declarative",
+  architecture: "declarative",
+  convention: "declarative",
+  research: "declarative",
+  lesson: "procedural",
+  howto: "procedural",
+  skill: "procedural",
+  playbook: "procedural",
+  event: "experiential",
+  note: "experiential",
+  session: "experiential",
+  task: "experiential",
+  plan: "experiential",
+  exploration: "experiential",
+  "debug-investigation": "experiential",
+  improvement: "experiential",
+  review: "experiential",
+  bug: "experiential",
+  summary: "meta",
+  core: "meta",
+  fix: "meta",
+};
+
 export type Migration = {
   version: number;
   name: string;
@@ -544,6 +570,14 @@ export const MIGRATIONS: Migration[] = [
         if (!existing.has("supertype")) {
           db.run("ALTER TABLE memory_nodes ADD COLUMN supertype TEXT");
           db.run("CREATE INDEX IF NOT EXISTS idx_nodes_supertype ON memory_nodes(supertype)");
+        }
+        // Backfill supertype for existing nodes where type is known
+        const untyped = db.query("SELECT id, type FROM memory_nodes WHERE supertype IS NULL AND type IS NOT NULL").all() as { id: string; type: string }[];
+        for (const row of untyped) {
+          const supertype = SUPERTYPE_BACKFILL[row.type] ?? null;
+          if (supertype) {
+            db.run("UPDATE memory_nodes SET supertype = ? WHERE id = ?", [supertype, row.id]);
+          }
         }
       } catch { /* table may not exist yet */ }
     },

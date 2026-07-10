@@ -47,6 +47,7 @@ function setup() {
       type?: string | null;
       expiresAt?: number | null;
       projectName?: string | null;
+      tags?: string[] | null;
     },
   ) {
     const now = Date.now();
@@ -55,8 +56,8 @@ function setup() {
     const embBlob = embedding ? Buffer.from(new Float32Array(embedding).buffer) : null;
 
     db.run(
-      `INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, confidence, last_verified, usefulness_score, category, expires_at, project_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, metadata, sticky, confidence, last_verified, usefulness_score, category, expires_at, project_name, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         overrides.id,
         overrides.scope ?? "project",
@@ -81,6 +82,7 @@ function setup() {
         overrides.category ?? null,
         overrides.expiresAt ?? null,
         overrides.projectName ?? null,
+        overrides.tags ? JSON.stringify(overrides.tags) : null,
       ],
     );
   }
@@ -520,6 +522,44 @@ describe("searchByEmbedding BM25 integration", () => {
     });
     expect(results.length).toBeGreaterThan(5);
     expect(results.some(n => n.id === "n-5")).toBe(true);
+  });
+
+  describe("tagsFilter", () => {
+    test("filters by tag intersection", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const commonEmb = makeEmbedding(0.5);
+      insertNode(projectDb, { id: "tag-a", embedding: commonEmb, tags: ["alpha", "beta"], scope: "project" });
+      insertNode(projectDb, { id: "tag-b", embedding: commonEmb, tags: ["alpha"], scope: "project" });
+      insertNode(projectDb, { id: "tag-c", embedding: commonEmb, tags: ["gamma"], scope: "project" });
+      insertNode(projectDb, { id: "tag-d", embedding: commonEmb, tags: null, scope: "project" });
+      await getHNSWIndex().rebuild([
+        { id: "tag-a", embedding: commonEmb },
+        { id: "tag-b", embedding: commonEmb },
+        { id: "tag-c", embedding: commonEmb },
+        { id: "tag-d", embedding: commonEmb },
+      ]);
+
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { tagsFilter: ["alpha"] });
+      const ids = results.map(n => n.id);
+      expect(ids).toContain("tag-a");
+      expect(ids).toContain("tag-b");
+      expect(ids).not.toContain("tag-c");
+      expect(ids).not.toContain("tag-d");
+    });
+
+    test("returns all nodes when tagsFilter is empty", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const commonEmb = makeEmbedding(0.5);
+      insertNode(projectDb, { id: "all-a", embedding: commonEmb, tags: ["foo"], scope: "project" });
+      insertNode(projectDb, { id: "all-b", embedding: commonEmb, tags: null, scope: "project" });
+      await getHNSWIndex().rebuild([
+        { id: "all-a", embedding: commonEmb },
+        { id: "all-b", embedding: commonEmb },
+      ]);
+
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { tagsFilter: [] });
+      expect(results.length).toBe(2);
+    });
   });
 
   describe("intent biasing", () => {
