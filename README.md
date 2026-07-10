@@ -4,7 +4,7 @@ Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, 
 
 ## Changelog
 
-### v0.7.2
+### v0.7.3
 - **System prompt merging**: Rule injection now merges into primary block (1 system message instead of 2+) — fixes compatibility with strict backends (Qwen/vLLM) that reject multiple system messages
 - **Auto-seed**: All 6 `rule:feature:*` nodes (`command-compression`, `file-skeletonization`, `auto-retrieve`, `tag-intersection-search`, `source-propagation`, `confidence-diminishing-returns`) now auto-seed on fresh databases via `src/seed-nodes.ts`
 - **Brain layout mode**: New "Brain" layout in the 3D graph viewer — nodes arranged into 5 brain regions (Frontal/Parietal/Temporal/Prefrontal/Occipital) by supertype, with colored region indicators and labels
