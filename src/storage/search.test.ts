@@ -521,4 +521,46 @@ describe("searchByEmbedding BM25 integration", () => {
     expect(results.length).toBeGreaterThan(5);
     expect(results.some(n => n.id === "n-5")).toBe(true);
   });
+
+  describe("intent biasing", () => {
+    test("read/edit intent boosts semantic over episodic", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const commonEmb = makeEmbedding(0.5, 0.5);
+      insertNode(projectDb, { id: "sem-node", embedding: commonEmb, category: "semantic", scope: "project" });
+      insertNode(projectDb, { id: "epi-node", embedding: commonEmb, category: "episodic", scope: "project" });
+      await getHNSWIndex().rebuild([{ id: "sem-node", embedding: commonEmb }, { id: "epi-node", embedding: commonEmb }]);
+
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { intent: "read" });
+      const semIdx = results.findIndex(n => n.id === "sem-node");
+      const epiIdx = results.findIndex(n => n.id === "epi-node");
+      expect(semIdx).toBeLessThan(epiIdx);
+    });
+
+    test("debug intent boosts episodic over semantic", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const commonEmb = makeEmbedding(0.5, 0.5);
+      insertNode(projectDb, { id: "sem-node", embedding: commonEmb, category: "semantic", scope: "project" });
+      insertNode(projectDb, { id: "epi-node", embedding: commonEmb, category: "episodic", scope: "project" });
+      await getHNSWIndex().rebuild([{ id: "sem-node", embedding: commonEmb }, { id: "epi-node", embedding: commonEmb }]);
+
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { intent: "debug" });
+      const epiIdx = results.findIndex(n => n.id === "epi-node");
+      const semIdx = results.findIndex(n => n.id === "sem-node");
+      expect(epiIdx).toBeLessThan(semIdx);
+    });
+
+    test("discovery intent uses uniform weights", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const commonEmb = makeEmbedding(0.5, 0.5);
+      insertNode(projectDb, { id: "sem-node", embedding: commonEmb, category: "semantic", scope: "project" });
+      insertNode(projectDb, { id: "epi-node", embedding: commonEmb, category: "episodic", scope: "project" });
+      await getHNSWIndex().rebuild([{ id: "sem-node", embedding: commonEmb }, { id: "epi-node", embedding: commonEmb }]);
+
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { intent: "discovery" });
+      const seen = new Map(results.map((n, i) => [n.id, i]));
+      // Both nodes should appear (discovery doesn't penalize either)
+      expect(seen.has("sem-node")).toBe(true);
+      expect(seen.has("epi-node")).toBe(true);
+    });
+  });
 });

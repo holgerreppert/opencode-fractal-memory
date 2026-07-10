@@ -1448,4 +1448,139 @@ describe("sqlite store", () => {
 
     expect(result2!.importance).toBeGreaterThan(result1!.importance);
   });
+
+  describe("supertype auto-derivation", () => {
+    test("concept node gets declarative supertype", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "A concept",
+        type: "concept",
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.supertype).toBe("declarative");
+    });
+
+    test("howto node gets procedural supertype", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "A howto",
+        type: "howto",
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.supertype).toBe("procedural");
+    });
+
+    test("event node gets experiential supertype", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "An event",
+        type: "event",
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.supertype).toBe("experiential");
+    });
+
+    test("summary node gets meta supertype", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "A summary",
+        type: "summary",
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.supertype).toBe("meta");
+    });
+  });
+
+  describe("tags support", () => {
+    test("createNode stores and retrieves tags", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "Tagged content",
+        tags: ["test", "example", "demo"],
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.tags).toEqual(["test", "example", "demo"]);
+
+      const retrieved = await store.getNode(node.id);
+      expect(retrieved.tags).toEqual(["test", "example", "demo"]);
+    });
+  });
+
+  describe("source tracking", () => {
+    test("createNode stores source field", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "Sourced content",
+        source: "manual",
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.source).toBe("manual");
+
+      const retrieved = await store.getNode(node.id);
+      expect(retrieved.source).toBe("manual");
+    });
+  });
+
+  describe("verification count", () => {
+    test("verifyNode increments verificationCount and boosts confidence", async () => {
+      const { dir, globalDbPath } = await mkTmpDir();
+      const store = createMemoryStore(dir, globalDbPath);
+      await store.ensureSeed();
+
+      const node = await store.createNode({
+        scope: "project",
+        content: "Verifiable content",
+        type: "fact",
+        level: 0,
+        embedding: null,
+      });
+
+      expect(node.verificationCount).toBe(0);
+      expect(node.confidence).toBe(0.5);
+
+      const verified = await store.verifyNode(node.id);
+      expect(verified.verificationCount).toBe(1);
+      expect(verified.confidence).toBe(0.7);
+
+      const verifiedAgain = await store.verifyNode(node.id);
+      expect(verifiedAgain.verificationCount).toBe(2);
+      expect(verifiedAgain.confidence).toBeCloseTo(0.9);
+    });
+  });
 });
