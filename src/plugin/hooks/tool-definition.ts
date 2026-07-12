@@ -16,6 +16,7 @@ const TIPS: Record<string, string> = {
   grep: "\n\nTip: Use `graph(relation='search', query='<symbol>')` for symbol-aware search — it understands code structure and finds definitions/references.",
   glob: "\n\nTip: Use `graph(relation='search', query='<name>')` to find symbols by name across the codebase — faster and more precise than glob.",
   bash: "\n\nTip: For code exploration, prefer `grep`/`glob`/`graph` tools over shell commands — they're more token-efficient and safer.",
+  memory_set: "\n\nTip: Worth storing: architecture decisions (why), bug root causes, project conventions, user preferences, config workarounds, anti-patterns. Skip: code content (in files), verbose logs, ephemeral details. Use semantic type for permanent knowledge, episodic type for session-scoped traces.",
 };
 
 export function createToolDefinitionHandler(): HookHandler {

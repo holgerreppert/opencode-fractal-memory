@@ -141,6 +141,80 @@ tag: rule:mandatory
 - When a task matches known triggers (debug, test, refactor, three.js, etc.),
   proactively call memory_skill_load(name="<skill-name>") to load relevant skill instructions`,
   },
+  // Storage curation rule
+  {
+    label: "rule:mandatory:what-to-store",
+    tag: "rule:mandatory",
+    content: `What to Store in Memory — and Why
+tag: rule:mandatory
+never_strip: true
+
+### HIGH VALUE — Store These
+Every node should make future-you smarter or faster. Decision framework: "Will this help me avoid a mistake, make a better choice, or save time next session?"
+
+1. Architecture decisions + rationale
+   → "We chose SQLite over Postgres because zero-provisioning for local dev"
+   → WHY it matters: Prevents re-litigation, preserves context for new contributors
+
+2. Bug root causes + fix patterns
+   → "Error X at line Y means Z config is missing. Fix: add W to package.json"
+   → WHY it matters: Next occurrence is 10× faster to fix
+
+3. Project conventions
+   → "All API routes use kebab-case, error responses use {error, code} shape"
+   → WHY it matters: AI output matches project style without correction
+
+4. User preferences
+   → "User prefers bullet-point summaries, not paragraphs"
+   → WHY it matters: Personalizes output, reduces friction
+
+5. Config workarounds and gotchas
+   → "Package X v3 needs --legacy-peer-deps or it fails with error Y"
+   → WHY it matters: Saves future debugging hours
+
+6. Anti-patterns and dead ends
+   → "We tried approach X in PR #42. It failed because Y. Don't repeat."
+   → WHY it matters: Learns from past mistakes
+
+7. Dependency relationships
+   → "Service A depends on module B, which requires config C"
+   → WHY it matters: Prevents breaking changes from unaware edits
+
+8. Session summaries
+   → "Session 2026-07-12: Implemented X. Next: Y. Decision: Z."
+   → WHY it matters: Continuity across sessions, context recovery after compaction
+
+### LOW VALUE — Skip These
+Why they hurt: waste token budget, bury relevant results, degrade retrieval precision
+
+1. Code content (function bodies, class implementations)
+   → Already in source files — code IS the source of truth, don't duplicate it
+   → Exception: store the file's purpose, not its content (e.g. "file:src/foo.ts → validation utilities")
+
+2. Verbose logs / command output
+   → Transient, token-expensive, nearly zero reuse value
+   → Exception: a specific error signature with fix
+
+3. Ephemeral conversation details
+   → "User asked about X then changed their mind" — decays fast, low reuse
+
+4. Information already in seed rules
+   → Duplicate rules waste injection budget. Check ruleCache first.
+
+5. Transient state
+   → Cursor position, temp variable values, one-time debugging breadcrumbs
+
+### Category Assignment
+- Semantic type (365d half-life): concept, fact, lesson, howto, preference, decision, architecture, best-practices, convention, knowledge, rule:*, bug, fix
+  → USE for permanent knowledge that should persist indefinitely
+- Episodic type (7d half-life, 30d TTL): event, note, session, task, plan, exploration, debug-investigation, improvement, review
+  → USE for session-scoped traces that decay automatically
+
+### Quick Decision Tree
+Will this help future-you? → YES → Is it already in a file? → NO → Store (semantic if permanent, episodic if session-scoped)
+Will this help future-you? → YES → Is it already in a file? → YES → Store only as a summary/reference, not the full content
+Will this help future-you? → NO → Skip it`,
+  },
   // Feature info nodes (auto-injected as info reminders)
   {
     label: "rule:feature:command-compression",

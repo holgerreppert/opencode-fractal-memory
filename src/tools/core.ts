@@ -63,7 +63,7 @@ export function MemoryList(store: MemoryStore) {
 
 export function MemorySet(store: MemoryStore) {
   const t = tool({
-    description: "Create or update a memory node. If label is provided and a node with that label exists, updates it instead of creating new. Embeddings are auto-generated for semantic search (use no_embedding=true to disable). Use sticky=true to prevent a node from being compressed.",
+    description: "Create or update a memory node. If label is provided and a node with that label exists, updates it instead of creating new. Embeddings are auto-generated for semantic search (use no_embedding=true to disable). Use sticky=true to prevent a node from being compressed. Worth storing: architecture decisions (why), bug root causes, project conventions, user preferences, config workarounds, anti-patterns. Skip: code content (already in files), verbose logs, ephemeral chat details.",
     args: {
       scope: tool.schema.enum(["global", "project"]).optional(),
       label: tool.schema.string().optional(),
