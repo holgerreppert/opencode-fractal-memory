@@ -261,6 +261,7 @@ class SceneController {
     this.regionObjects = [];
     this.nodePositions = new Map();
     this.nodeVelocities = new Map();
+    this.brainMeshGroup = null;
     this.hoveredNode = null;
     this.selectedNode = null;
 
@@ -282,15 +283,53 @@ class SceneController {
     this._bindEvents();
   }
 
+  async loadBrainMesh() {
+    if (this.brainMeshGroup) return this.brainMeshGroup;
+    try {
+      const regions = await GLBLoader.load("models/brain-atlas.glb");
+      const group = new THREE.Group();
+
+      for (const r of regions) {
+        r.geometry.computeVertexNormals();
+        const mat = new THREE.MeshStandardMaterial({
+          color: r.color,
+          roughness: 0.5,
+          metalness: 0.0,
+          transparent: true,
+          opacity: 0.12,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          emissive: r.color,
+          emissiveIntensity: 0.12,
+        });
+        const mesh = new THREE.Mesh(r.geometry, mat);
+        mesh.name = r.name;
+        mesh.userData.brainRegion = r.name;
+        group.add(mesh);
+      }
+
+      this.brainMeshGroup = group;
+      return group;
+    } catch (err) {
+      console.error("[brain] Failed to load brain mesh:", err);
+      return null;
+    }
+  }
+
   _addLights() {
-    const a = new THREE.AmbientLight(0x404060, 0.6);
-    this.scene.add(a);
-    const l1 = new THREE.PointLight(0xffffff, 0.8, 1000);
-    l1.position.set(200, 200, 200);
+    const ambient = new THREE.AmbientLight(0x8888cc, 0.8);
+    this.scene.add(ambient);
+    const hemisphere = new THREE.HemisphereLight(0x87ceeb, 0x3a3a5a, 0.6);
+    this.scene.add(hemisphere);
+    const l1 = new THREE.DirectionalLight(0xffffff, 1.0);
+    l1.position.set(200, 300, 200);
     this.scene.add(l1);
-    const l2 = new THREE.PointLight(0x4a9eff, 0.4, 800);
+    const l2 = new THREE.DirectionalLight(0x4a9eff, 0.5);
     l2.position.set(-200, -100, -200);
     this.scene.add(l2);
+    const l3 = new THREE.DirectionalLight(0xff8844, 0.3);
+    l3.position.set(-100, 50, 300);
+    this.scene.add(l3);
   }
 
   _updateCamera() {
@@ -333,7 +372,7 @@ class SceneController {
     });
 
     el.addEventListener("mousemove", (e) => this._onMouseMove(e));
-    el.addEventListener("click", () => this._onClick());
+    el.addEventListener("click", (e) => this._onClick(e));
 
     window.addEventListener("keydown", (e) => this._onKeyDown(e));
     window.addEventListener("keyup", (e) => this._onKeyUp(e));
@@ -384,12 +423,23 @@ class SceneController {
   }
 
   _onMouseMove(event) {
-    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    this._lastMouseX = (event.clientX / window.innerWidth) * 2 - 1;
+    this._lastMouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.mouse.x = this._lastMouseX;
+    this.mouse.y = this._lastMouseY;
     this.raycaster.setFromCamera(this.mouse, this.camera);
     const meshes = this.nodeObjects.filter(o => o.isMesh);
     const hits = this.raycaster.intersectObjects(meshes);
     const tooltip = document.getElementById("tooltip");
+
+    // Also check brain mesh
+    let brainHit = null;
+    if (this.brainMeshGroup && this.layoutMode === "brain") {
+      const brainMeshes = [];
+      this.brainMeshGroup.traverse(c => { if (c.isMesh) brainMeshes.push(c); });
+      const brainHits = this.raycaster.intersectObjects(brainMeshes);
+      if (brainHits.length > 0) brainHit = brainHits[0].object;
+    }
 
     if (hits.length > 0) {
       const obj = hits[0].object;
@@ -407,6 +457,16 @@ class SceneController {
       tooltip.style.left = event.clientX + 15 + "px";
       tooltip.style.top = event.clientY + 15 + "px";
       tooltip.innerHTML = `<strong>${nd.label || "Unnamed"}</strong><br>Level: ${nd.level} | Importance: ${nd.importance}`;
+    } else if (brainHit) {
+      const regionName = brainHit.userData.brainRegion || brainHit.name;
+      if (this.hoveredNode && this.hoveredNode !== this.selectedNode) {
+        this.hoveredNode.material.emissiveIntensity = 0.2;
+      }
+      this.hoveredNode = null;
+      tooltip.style.display = "block";
+      tooltip.style.left = event.clientX + 15 + "px";
+      tooltip.style.top = event.clientY + 15 + "px";
+      tooltip.innerHTML = `<strong>${regionName}</strong><br><em>Click to filter nodes</em>`;
     } else {
       if (this.hoveredNode && this.hoveredNode !== this.selectedNode) {
         this.hoveredNode.material.emissiveIntensity = 0.2;
@@ -416,11 +476,33 @@ class SceneController {
     }
   }
 
-  _onClick() {
+  _onClick(event) {
     if (this.hoveredNode) {
       this.selectedNode = this.hoveredNode;
       this._updateHighlight();
       showDetailPanel(this.hoveredNode.userData.nodeData);
+      return;
+    }
+
+    // Check brain region click
+    if (this.brainMeshGroup && this.layoutMode === "brain") {
+      this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      this.raycaster.setFromCamera(this.mouse, this.camera);
+      const brainMeshes = [];
+      this.brainMeshGroup.traverse(c => { if (c.isMesh) brainMeshes.push(c); });
+      const hits = this.raycaster.intersectObjects(brainMeshes);
+      if (hits.length > 0) {
+        const region = hits[0].object.userData.brainRegion || hits[0].object.name;
+        const filterEngine = window.filterEngine;
+        if (filterEngine) {
+          filterEngine.customTypes = new Set([region]);
+          document.querySelectorAll(".filter-btn.custom-type").forEach(b => {
+            b.classList.toggle("active", b.dataset.customType === region);
+          });
+          this.updateVisibility(filterEngine);
+        }
+      }
     }
   }
 
@@ -440,6 +522,9 @@ class SceneController {
     this.nodeObjects.forEach(obj => this.scene.remove(obj));
     this.edgeObjects.forEach(obj => this.scene.remove(obj));
     this.regionObjects.forEach(obj => this.scene.remove(obj));
+    if (this.brainMeshGroup) {
+      this.scene.remove(this.brainMeshGroup);
+    }
     this.nodeObjects = [];
     this.edgeObjects = [];
     this.regionObjects = [];
@@ -461,7 +546,7 @@ class SceneController {
     } else if (layoutMode === "type-cluster") {
       this._computeTypeClusterPositions(data);
     } else if (layoutMode === "brain") {
-      this._computeBrainPositions(data);
+      this._showBrainLayout(data); // positions nodes synchronously, loads brain mesh async
     } else {
       this._computeForcePositions(data);
     }
@@ -563,81 +648,187 @@ class SceneController {
     this.shellRadii = {};
   }
 
-  _computeBrainPositions(data) {
-    const BRAIN_REGIONS = {
-      procedural:  { center: new THREE.Vector3(0, 30, -90), label: "Frontal Lobe", color: 0x4a9eff },
-      declarative: { center: new THREE.Vector3(70, 20, 10),  label: "Parietal Lobe", color: 0xfb923c },
-      experiential:{ center: new THREE.Vector3(-60, -20, 60), label: "Temporal Lobe", color: 0xa78bfa },
-      meta:        { center: new THREE.Vector3(-50, 60, -60), label: "Prefrontal Cortex", color: 0xf472b6 },
-      other:       { center: new THREE.Vector3(30, -10, 100), label: "Occipital Lobe", color: 0x34d399 },
+  _showBrainLayout(data) {
+    const TYPE_REGION = {
+      skill: "prefrontal", playbook: "prefrontal", rule: "prefrontal",
+      howto: "prefrontal", bug: "prefrontal", fix: "prefrontal",
+      fact: "occipital", concept: "occipital", knowledge: "occipital", research: "occipital",
+      lesson: "temporal", improvement: "temporal", review: "temporal",
+      event: "temporal", session: "temporal", episode: "temporal",
+      decision: "frontal", architecture: "frontal", convention: "frontal",
+      preference: "frontal", plan: "frontal", task: "frontal",
+      summary: "parietal", core: "parietal",
     };
 
-    const TYPE_REGION = {
-      skill: "procedural", playbook: "procedural", rule: "procedural",
-      howto: "procedural", bug: "procedural", fix: "procedural",
-      fact: "other", concept: "other", knowledge: "other", research: "other",
-      lesson: "experiential", improvement: "experiential", review: "experiential",
-      event: "experiential", session: "experiential", episode: "experiential",
-      decision: "declarative", architecture: "declarative", convention: "declarative",
-      preference: "declarative", plan: "declarative", task: "declarative",
-      summary: "meta", core: "meta",
+    const REGION_META = {
+      prefrontal: { center: new THREE.Vector3(-45, 55, -55), label: "Prefrontal Cortex", color: 0x4a9eff },
+      frontal:    { center: new THREE.Vector3(0, 25, -80),    label: "Frontal Lobe",       color: 0x38cc80 },
+      parietal:   { center: new THREE.Vector3(60, 15, 10),    label: "Parietal Lobe",      color: 0xfb923c },
+      temporal:   { center: new THREE.Vector3(-55, -15, 55),  label: "Temporal Lobe",      color: 0xa78bfa },
+      occipital:  { center: new THREE.Vector3(25, -5, 90),    label: "Occipital Lobe",     color: 0x34d399 },
     };
 
     function getRegion(node) {
-      const supertype = node.supertype;
-      if (supertype && BRAIN_REGIONS[supertype]) return supertype;
-      const type = node.type || "unknown";
-      return TYPE_REGION[type] || "other";
+      const s = node.supertype;
+      if (s && TYPE_REGION[s]) return s;
+      return TYPE_REGION[node.type || "unknown"] || "frontal";
     }
 
     const regionNodes = {};
     for (const node of data) {
       if (!node) continue;
-      const region = getRegion(node);
-      if (!regionNodes[region]) regionNodes[region] = [];
-      regionNodes[region].push(node);
+      const r = getRegion(node);
+      if (!regionNodes[r]) regionNodes[r] = [];
+      regionNodes[r].push(node);
     }
 
+    const scale = 2.5;
+    this._brainScale = scale;
+    this._brainNodeRegions = new Map();
+    this._brainRegionCentroids = {};
+    this._brainRegionLabels = {};
+
     for (const [region, nodes] of Object.entries(regionNodes)) {
-      const regionInfo = BRAIN_REGIONS[region] || BRAIN_REGIONS.other;
-      const center = regionInfo.center;
+      const info = REGION_META[region] || REGION_META.frontal;
+      const center = info.center.clone().multiplyScalar(scale);
+      this._brainRegionCentroids[region] = center;
       const count = nodes.length;
-      const clusterRadius = Math.max(15, Math.sqrt(count) * 6);
+      const radius = Math.max(15, Math.sqrt(count) * 6);
 
-      // Semi-transparent region indicator sphere
-      const indicatorGeom = new THREE.SphereGeometry(clusterRadius + 10, 24, 24);
-      const indicatorMat = new THREE.MeshBasicMaterial({
-        color: regionInfo.color, transparent: true, opacity: 0.08, wireframe: false,
-      });
-      const indicator = new THREE.Mesh(indicatorGeom, indicatorMat);
-      indicator.position.copy(center);
-      this.scene.add(indicator);
-      this.regionObjects.push(indicator);
-
-      // Region wireframe ring
-      const wireGeom = new THREE.SphereGeometry(clusterRadius + 12, 16, 16);
-      const wireMat = new THREE.MeshBasicMaterial({
-        color: regionInfo.color, transparent: true, opacity: 0.15, wireframe: true,
-      });
-      const wire = new THREE.Mesh(wireGeom, wireMat);
-      wire.position.copy(center);
-      this.scene.add(wire);
-      this.regionObjects.push(wire);
-
-      // Region label
-      const labelSprite = createTextSprite(regionInfo.label, regionInfo.color, true);
-      labelSprite.position.copy(center);
-      labelSprite.position.y += clusterRadius + 18;
-      this.scene.add(labelSprite);
-      this.regionObjects.push(labelSprite);
+      const label = createTextSprite(info.label, info.color, true);
+      label.position.set(center.x, center.y + 50, center.z);
+      this.scene.add(label);
+      this.regionObjects.push(label);
+      this._brainRegionLabels[region] = label;
 
       nodes.forEach((node, idx) => {
-        const localPos = fibonacciSphere(idx, count, clusterRadius);
+        this._brainNodeRegions.set(node.id, region);
+        const localPos = fibonacciSphere(idx, count, radius);
         const pos = new THREE.Vector3().copy(center).add(localPos);
         this.nodePositions.set(node.id, pos);
         this.nodeVelocities.set(node.id, new THREE.Vector3(0, 0, 0));
       });
     }
+
+    // Load brain mesh as transparent overlay, then reposition nodes to actual centroids
+    this.loadBrainMesh().then(group => {
+      if (!group || this.layoutMode !== "brain") return;
+      group.scale.set(scale, scale, scale);
+      this.scene.add(group);
+      this.brainMeshGroup = group;
+
+      const actualCentroids = {};
+      for (const child of group.children) {
+        if (!child.isMesh) continue;
+        const posAttr = child.geometry.attributes.position;
+        if (!posAttr) continue;
+        const vertCount = posAttr.count;
+        const vc = new THREE.Vector3();
+        for (let i = 0; i < vertCount; i++) {
+          vc.x += posAttr.getX(i);
+          vc.y += posAttr.getY(i);
+          vc.z += posAttr.getZ(i);
+        }
+        vc.divideScalar(vertCount);
+        vc.multiplyScalar(scale);
+        actualCentroids[child.name] = vc;
+      }
+
+      const updatedPositions = new Map();
+
+      for (const obj of this.nodeObjects) {
+        const nodeId = obj.userData.nodeId;
+        if (!nodeId) continue;
+        const region = this._brainNodeRegions.get(nodeId);
+        if (!region) continue;
+        const actual = actualCentroids[region];
+        const hardcoded = this._brainRegionCentroids[region];
+        if (!actual || !hardcoded) continue;
+
+        let newPos;
+        if (obj.isMesh) {
+          const offset = obj.position.clone().sub(hardcoded);
+          if (offset.length() > 80) offset.setLength(80);
+          newPos = actual.clone().add(offset);
+          obj.position.copy(newPos);
+        } else if (obj.isSprite) {
+          const meshPos = updatedPositions.get(nodeId) || this.nodePositions.get(nodeId);
+          if (meshPos) {
+            const size = getNodeSize(obj.userData.nodeData);
+            newPos = meshPos.clone();
+            newPos.y += size + 5;
+            obj.position.copy(newPos);
+          }
+          continue;
+        } else {
+          continue;
+        }
+        updatedPositions.set(nodeId, newPos);
+      }
+
+      // Sync all nodePositions
+      for (const [id, pos] of updatedPositions) {
+        this.nodePositions.set(id, pos);
+      }
+
+      // Overlap resolution — 5 push-apart passes within each region
+      for (let pass = 0; pass < 5; pass++) {
+        for (const region of Object.keys(actualCentroids)) {
+          const ids = [];
+          for (const [id, r] of this._brainNodeRegions) {
+            if (r === region) ids.push(id);
+          }
+          for (let i = 0; i < ids.length; i++) {
+            const pi = this.nodePositions.get(ids[i]);
+            if (!pi) continue;
+            for (let j = i + 1; j < ids.length; j++) {
+              const pj = this.nodePositions.get(ids[j]);
+              if (!pj) continue;
+              const dx = pi.x - pj.x, dy = pi.y - pj.y, dz = pi.z - pj.z;
+              const distSq = dx * dx + dy * dy + dz * dz;
+              const minDist = 20;
+              if (distSq < minDist * minDist && distSq > 0.01) {
+                const dist = Math.sqrt(distSq);
+                const push = (minDist - dist) * 0.4;
+                const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+                pi.x += nx * push;
+                pi.y += ny * push;
+                pi.z += nz * push;
+                pj.x -= nx * push;
+                pj.y -= ny * push;
+                pj.z -= nz * push;
+              }
+            }
+          }
+        }
+      }
+
+      // Sync meshes + sprites to resolved positions
+      for (const obj of this.nodeObjects) {
+        const nodeId = obj.userData.nodeId;
+        if (!nodeId) continue;
+        const pos = this.nodePositions.get(nodeId);
+        if (!pos) continue;
+        if (obj.isMesh) {
+          obj.position.copy(pos);
+        } else if (obj.isSprite) {
+          const size = getNodeSize(obj.userData.nodeData);
+          obj.position.set(pos.x, pos.y + size + 5, pos.z);
+        }
+      }
+
+      // Reposition region labels to actual centroids
+      for (const [region, label] of Object.entries(this._brainRegionLabels)) {
+        const actual = actualCentroids[region];
+        if (actual) label.position.set(actual.x, actual.y + 50, actual.z);
+      }
+
+      this._syncEdges();
+
+      this._spherical.radius = 250;
+      this._target.set(0, 0, 0);
+      this._updateCamera();
+    });
 
     this.shellRadii = {};
   }
@@ -665,7 +856,7 @@ class SceneController {
 
       const geometry = getGeometry(shape, size);
       const material = new THREE.MeshPhongMaterial({
-        color, emissive: color, emissiveIntensity: 0.35, transparent: true, opacity: 0.95,
+        color, emissive: color, emissiveIntensity: 0.5, transparent: true, opacity: 0.95,
       });
 
       const mesh = new THREE.Mesh(geometry, material);
@@ -911,7 +1102,8 @@ class SceneController {
 
       // --- Shell constraint (gentle centering) ---
       const shellMultiplier = this.layoutMode === "shell" ? 1.0 :
-                              (this.layoutMode === "type-cluster" || this.layoutMode === "brain") ? 0.15 : 0.03;
+                              this.layoutMode === "type-cluster" ? 0.15 :
+                              this.layoutMode === "brain" ? 0 : 0.03;
       const forceTargetRadius = 400;
       for (const id of ids) {
         const pos = this.nodePositions.get(id);

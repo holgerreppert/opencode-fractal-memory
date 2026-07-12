@@ -4,6 +4,14 @@ Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, 
 
 ## Changelog
 
+### v0.7.4
+- **Brain mesh 3D layout**: Replaced procedural sphere indicators with actual Desikan-Killiany atlas brain mesh. 70 DK parcels → 5 regions (prefrontal/frontal/parietal/temporal/occipital) merged into a ~101 KB GLB via `scripts/build-brain-glb.ts`. Standalone GLB 2.0 parser at `management/public/glb-loader.js`. Built at `management/public/models/brain-atlas.glb`.
+- **Vertex-centroid node positioning**: Nodes positioned at vertex-averaged centroids of each brain region mesh (not bounding-box centers), ensuring accurate in-region placement.
+- **Overlap resolution**: 5-pass push-apart per region (minDist=20) after centroid repositioning prevents node clustering.
+- **Sprite-label sync**: Node sprites (descriptions) now track mesh positions with correct Y offset. Previously sprites were left at old positions due to `!obj.isMesh` filter skipping them.
+- **Brain scale 2.5×**: Mesh and node positions scaled 2.5× for better visibility, camera radius reduced to 250.
+- **Region click filtering**: Clicking a brain region mesh filters node list via `filterEngine.customTypes`.
+
 ### v0.7.3
 - **System prompt merging**: Rule injection now merges into primary block (1 system message instead of 2+) — fixes compatibility with strict backends (Qwen/vLLM) that reject multiple system messages
 - **Auto-seed**: All 6 `rule:feature:*` nodes (`command-compression`, `file-skeletonization`, `auto-retrieve`, `tag-intersection-search`, `source-propagation`, `confidence-diminishing-returns`) now auto-seed on fresh databases via `src/seed-nodes.ts`
