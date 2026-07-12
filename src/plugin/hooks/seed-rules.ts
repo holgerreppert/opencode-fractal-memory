@@ -86,12 +86,19 @@ export function createSeedRulesHandler(
         const allowStandard = pressurePct < 85;
         const allowSuggestion = pressurePct < 75;
 
+        const neverStrip: Array<{ label: string; content: string; type: string }> = [];
         const scoredRules: Array<{ label: string; content: string; type: string; score: number }> = [];
 
         for (const [label, cached] of ruleCache) {
           if (!["mandatory", "standard", "suggestion", "info"].includes(cached.type)) continue;
           if (seenLabels.has(label)) continue;
           seenLabels.add(label);
+
+          // C2: never_strip rules bypass pressure filtering entirely
+          if (cached.content.includes("never_strip: true")) {
+            neverStrip.push({ label, content: cached.content, type: cached.type });
+            continue;
+          }
 
           const score = userKeywords.size > 0
             ? scoreKeywordOverlap(userKeywords, cached.content)
@@ -101,6 +108,11 @@ export function createSeedRulesHandler(
         }
 
         scoredRules.sort((a, b) => b.score - a.score);
+
+        // C2: never_strip rules always injected, never filtered
+        for (const { content, type } of neverStrip) {
+          reminders.push(`<system_reminder type="${type}">\n${content}\n</system_reminder>`);
+        }
 
         for (const { label: _label, content, type, score } of scoredRules) {
           if (type === "mandatory") {
@@ -114,12 +126,31 @@ export function createSeedRulesHandler(
           }
         }
 
+        // C3: Front-load critical rules to the beginning of system[0]
+        // Never-strip rules are prepended, normal rules appended
         if (reminders.length > 0) {
-          const merged = reminders.join("\n\n");
+          const neverStripCount = neverStrip.length;
+          const neverStripReminders = reminders.slice(0, neverStripCount);
+          const normalReminders = reminders.slice(neverStripCount);
+
+          const neverStripBlock = neverStripReminders.length > 0
+            ? neverStripReminders.join("\n\n")
+            : "";
+          const normalBlock = normalReminders.length > 0
+            ? normalReminders.join("\n\n")
+            : "";
+
           if (out.system.length > 0) {
-            out.system[0] += "\n\n" + merged;
+            // C3: Prepend never_strip rules to the very start of system[0]
+            if (neverStripBlock) {
+              out.system[0] = neverStripBlock + "\n\n" + out.system[0];
+            }
+            // Append normal rules at the end (existing behavior)
+            if (normalBlock) {
+              out.system[0] += "\n\n" + normalBlock;
+            }
           } else {
-            out.system.push(merged);
+            out.system.push([neverStripBlock, normalBlock].filter(Boolean).join("\n\n"));
           }
         }
 
@@ -128,6 +159,7 @@ export function createSeedRulesHandler(
             total: ruleCache.size,
             injected: reminders.length,
             userQueryLength: userMessage.length,
+            neverStrip: neverStrip.length,
           });
         }
 

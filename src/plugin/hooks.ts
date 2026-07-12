@@ -17,6 +17,7 @@ import { createMessagesTransformHandler } from "./hooks/messages-transform";
 import { createGraphRefreshHandler } from "./hooks/graph-refresh";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
+import { createToolDefinitionHandler } from "./hooks/tool-definition";
 import type { HookHandler } from "./hooks/types";
 
 export function createHookHandlers(
@@ -32,6 +33,7 @@ export function createHookHandlers(
   const handlers: HookHandler[] = [
     createToolDedupHandler(memConfig),
     createErrorPruneHandler(memConfig),
+    createToolDefinitionHandler(),
     createRecordingHandler(store, memConfig),
     createWorkingCacheHandler(store),
     createCompressionHandler(store, memConfig),
@@ -68,6 +70,8 @@ export function createHookHandlers(
       callHooks("tool.before", input, output),
     "tool.execute.after": (input: unknown, output: unknown) =>
       callHooks("tool.after", input, output),
+    "tool.definition": (input: unknown, output: unknown) =>
+      callHooks("tool.definition", input, output),
     "experimental.session.compacting": (input: unknown, output: unknown) =>
       callHooks("compacting", input, output),
     "experimental.compaction.autocontinue": async (input: unknown, output: { enabled: boolean }) => {

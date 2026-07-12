@@ -5,6 +5,7 @@ import { createToolMap } from "./tools";
 import { memLog, perfNow } from "../logging";
 import { stopManagementServer, ensureManagementServer } from "../management-server";
 import { setupJournal } from "./init";
+import { createRegisterAgentsHandler } from "./hooks/register-agents";
 
 export const MemoryPlugin: Plugin = async (ctx) => {
   const { directory, client } = ctx;
@@ -53,11 +54,13 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   memLog("info", "init", "Plugin initialization completed", { totalDurationMs: perfNow() - t0 });
 
+  const registerAgentsHandler = createRegisterAgentsHandler();
   const smallModelMap = (memConfig.smallModel ?? {}) as Record<string, string>;
 
   return {
     ...handlers,
     ...autoRetrieveHook,
+    config: registerAgentsHandler,
     tool: toolMap,
     "chat.message": async (input: { sessionID: string }) => {
       currentSessionId.value = input.sessionID;

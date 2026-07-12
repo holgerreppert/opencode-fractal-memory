@@ -177,7 +177,16 @@ export function executeGraphTool(params: GraphToolParams): GraphToolResult {
 export function createGraphPluginTool() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const t: any = tool({
-    description: `Navigate the code graph (AST symbols + call/import edges). Use BEFORE editing a function to check callers. Use AFTER finding a symbol to trace its dependencies.
+    description: `Navigate the code graph (AST symbols + call/import edges).
+
+WHEN TO USE:
+  BEFORE editing —  callers(relation="callers", name="<fn>") who depends on this
+  AFTER a symbol —  callees(relation="callees", name="<fn>") what does it call
+  INSTEAD OF grep — search(relation="search", query="<name>") find symbols by name
+  Change impact —   dependents(relation="dependents", file="<path>") who imports this
+  Trace deps —     call_chain(relation="call_chain", name="<fn>", depth=3) transitive callers
+  Understand —     imports(relation="imports", file="<path>") what a file imports
+  Explore —        explain(relation="explain", id="<node-id>") all neighbors
 
 Relations:
   callers     — who calls this symbol name?

@@ -69,36 +69,34 @@ When you discover an error or better approach:
   {
     label: "rule:mandatory:agent-pull",
     tag: "rule:mandatory",
-    content: `## Agent-Pull Memory Rule
+    content: `## Agent MUST Use Memory & Graph
 tag: rule:mandatory
+never_strip: true
 
-### When to Search Memory
-- Before starting a complex task (3+ steps)
-- When user asks about past decisions
-- When working on a file/module you've worked on before
-- When user says "remember", "previously", "before"
-- When you're unsure about a convention
-- When you see errors you've seen before
-- When choosing between approaches
+### BEFORE any non-trivial task (3+ steps), you MUST call memory_search
+- Working on a file/module you've worked on before? → memory_search("<topic>")
+- User asks about past decisions? → memory_search("<topic>")
+- Not sure about a convention? → memory_search("<topic>")
+- Seeing errors you've seen before? → memory_search("<topic>")
 
-### How to Search
+### BEFORE editing, you MUST use graph(relation="callers", name="<fn>")
+- Check what depends on the function you're changing
+- Use graph(relation="dependents", file="<path>") for file-level impact
+- Use graph(relation="search", query="<name>") INSTEAD of grep for symbols
+
+### How to Search Memory
 1. Call memory_search with concise keywords — NOT the raw user message
 2. Strip system reminders, logs, and code noise from your query
 3. Extract the core intent: what do you actually need to know?
-4. Example: instead of "Install <system-reminder>...</system-reminder>", search for "plugin installation process"
-5. Check results - if >50% match, use memory_drilldown for details
-6. Reference memory in your response with file:line format
+4. Check results — if >50% match, use memory_drilldown for details
+5. Reference memory in your response with file:line format
 
 ### Memory Categories (Episodic vs Semantic)
-Memory nodes have a \`category\` that determines retention:
-
-- **Semantic** (persists long-term, 365d half-life): \`concept\`, \`fact\`, \`lesson\`, \`howto\`, \`preference\`, \`decision\`, \`architecture\`, \`best-practices\`, \`convention\`, \`knowledge\`, \`research\`, \`rule:*\`, \`skill\`, \`playbook\`, \`core\`, \`summary\`, \`bug\`, \`fix\`
-- **Episodic** (short-term, 7d half-life, 30d TTL): \`event\`, \`note\`, \`session\`, \`task\`, \`plan\`, \`exploration\`, \`debug-investigation\`, \`improvement\`, \`review\`
-
-When storing important facts with \`memory_set\`, use a **semantic type** so the fact persists. Episodic types are for session-scoped traces that decay automatically.
+- **Semantic** (persists long-term): concept, fact, lesson, howto, preference, decision, architecture, best-practices, convention, knowledge, research, rule:*, skill, playbook, core, summary, bug, fix
+- **Episodic** (short-term, 7d half-life): event, note, session, task, plan, exploration, debug-investigation, improvement, review
 
 ### Decision Flow
-User request → Check memory → Verify codebase → Act
+User request → MUST check memory → MUST check graph if editing → Verify codebase → Act
 Only skip memory search for trivial tasks (<2 steps)`,
   },
   {
@@ -107,10 +105,18 @@ Only skip memory search for trivial tasks (<2 steps)`,
     content: `## Tool-Specific Behavioral Rules
 tag: rule:mandatory
 
+### graph (BEFORE all edit/read operations)
+- BEFORE editing any function: graph(relation="callers", name="<fn>")
+- BEFORE grep/glob for a symbol: graph(relation="search", query="<name>")
+- BEFORE changing a file: graph(relation="dependents", file="<path>")
+- AFTER finding a symbol: graph(relation="callees", name="<fn>")
+- To trace transitive deps: graph(relation="call_chain", name="<fn>", depth=3)
+
 ### edit tool
 - ALWAYS read file first with read tool
 - NEVER edit non-existent files - use write for new files
 - Provide exact oldString (copy from read output)
+- ALWAYS check graph callers BEFORE editing
 
 ### write tool
 - ALWAYS verify file doesn't exist first
@@ -120,11 +126,12 @@ tag: rule:mandatory
 - ALWAYS quote paths with spaces
 - NEVER use destructive commands without explicit user request
 - NEVER skip hooks (--no-verify, --no-gpg-sign)
+- For code exploration, prefer grep/glob/graph tools over shell commands
 
 ### memory_drilldown
 - ALWAYS use memory_search first to find relevant nodes
 - NEVER drilldown with vague queries
-- Use memory_drilldown(id) with specific node IDs from search results
+- Use memory_drilldown(id) with specific node IDs
 
 ### memory_replace
 - ALWAYS re-read node with memory_get immediately before replacing
@@ -132,36 +139,13 @@ tag: rule:mandatory
 
 ### memory_skill_load / memory_playbook_execute
 - When a task matches known triggers (debug, test, refactor, three.js, etc.),
-  proactively call memory_skill_load(name="<skill-name>") to load relevant skill instructions
-- When you need to follow a standard workflow (debugging, testing, code review),
-  check for matching playbooks with memory_playbook_execute(playbook_id="<id>")
-- Skill names have triggers in their metadata; check if current task matches
-- Prefer loading skills reactively (when relevant) rather than asking the user
-
-### Rerank intent (pref:rerank-intent)
-Set a preference node to tell the memory system what kind of information to prioritize.
-Use when you know what type of node you need (facts, concepts, rules, etc.):
-
-\`memory_set(label="pref:rerank-intent", type="pref", content="boost: fact=1.5, rule=0.5, concept=1.2")\`
-
-How it works:
-- The \`boost:\` line lists node types and their priority multipliers
-- Types NOT listed get default weight (1.0 — neutral)
-- Set weight 0 to suppress a type entirely
-- Resets when you set a new \`pref:rerank-intent\` node
-- Works with any type in memory (\`fact\`, \`concept\`, \`lesson\`, \`howto\`, \`decision\`, \`architecture\`, \`best-practices\`, \`convention\`, \`knowledge\`, \`bug\`, \`fix\`, \`note\`, \`preference\`, \`summary\`, \`plan\`, \`task\`, \`research\`, \`event\`)
-
-When to use:
-- Before asking about a specific topic: "I need facts about X" → boost: fact=1.5
-- Before debugging: "prioritize bug/fix nodes" → boost: bug=1.5, fix=1.5
-- Before making decisions: "I need decisions and architecture" → boost: decision=1.5, architecture=1.2
-- When irrelevant types pollute results: "suppress rules" → boost: rule=0.1`,
+  proactively call memory_skill_load(name="<skill-name>") to load relevant skill instructions`,
   },
   // Feature info nodes (auto-injected as info reminders)
   {
     label: "rule:feature:command-compression",
     tag: "rule:feature",
-    content: `## Command Compression Feature
+    content: `Command Compression Feature
 tag: rule:feature
 
 Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first line shows the compression strategy and savings. Original output is preserved on non-zero exit. View stats at management app → Compress tab.`,
@@ -169,7 +153,7 @@ Bash command output may be compressed via one of 7 strategies (ls, test, grep, g
   {
     label: "rule:feature:file-skeletonization",
     tag: "rule:feature",
-    content: `## File Skeletonization Feature
+    content: `File Skeletonization Feature
 tag: rule:feature
 
 Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows the strategy (ast+regex or regex) and reduction. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
@@ -177,7 +161,7 @@ Large file reads (>200 lines) may return a skeleton: imports plus function/class
   {
     label: "rule:feature:auto-retrieve",
     tag: "rule:feature",
-    content: `## Auto-Retrieve Feature
+    content: `Auto-Retrieve Feature
 tag: rule:feature
 
 Memory search results may be reordered by an LLM judge or fallback scorer based on your current reasoning context. Results show a '## Reranked Memory Results' header with relevance percentages per node. Higher relevance = better match for your current task.`,
@@ -185,7 +169,7 @@ Memory search results may be reordered by an LLM judge or fallback scorer based 
   {
     label: "rule:feature:tag-intersection-search",
     tag: "rule:feature",
-    content: `## Tag Intersection Search Feature
+    content: `Tag Intersection Search Feature
 tag: rule:feature
 
 Memory search accepts a \`tagsFilter\` option — returns only nodes containing ALL specified tags (intersection semantics). Empty array = no filter. Use when narrowing search results to nodes with specific tags.`,
@@ -193,7 +177,7 @@ Memory search accepts a \`tagsFilter\` option — returns only nodes containing 
   {
     label: "rule:feature:source-propagation",
     tag: "rule:feature",
-    content: `## Source Propagation Feature
+    content: `Source Propagation Feature
 tag: rule:feature
 
 All memory nodes have a \`source\` field set on creation. Values: \`manual\` (user memory_set), \`tool_result\` (tool output), \`auto_extract\` (automatic capture/seed), \`web_search\` (web results), \`reflection\` (agent reflection), \`llm_compress\` (compression summaries). View/edit source in management app detail panel.`,
@@ -201,7 +185,7 @@ All memory nodes have a \`source\` field set on creation. Values: \`manual\` (us
   {
     label: "rule:feature:confidence-diminishing-returns",
     tag: "rule:feature",
-    content: `## Confidence Diminishing Returns Feature
+    content: `Confidence Diminishing Returns Feature
 tag: rule:feature
 
 memory_verify uses a diminishing-returns formula: confidence increases by \`0.2/(1+verificationCount)\`. First verify: +0.20, second: +0.10, third: +0.067. Each verification also increments verification_count. This prevents rapid confidence saturation.`,
