@@ -16,7 +16,7 @@ Uses the **Desikan-Killiany (DK) atlas** from [Brain for Blender](https://braind
    - **occipital**: lateraloccipital, cuneus, pericalcarine, lingual
 3. OBJ files are parsed (vertices + faces) and grouped by bucket
 4. Aggressive **spatial vertex merging** reduces ~360k verts -> ~3.6k verts
-5. Outputs a **single GLB** (~101 KB) with 5 named meshes, each with per-vertex color
+5. Outputs a **single GLB** (~101 KB) with 5 named meshes, each with material color per region
 
 Run: `bun run scripts/build-brain-glb.ts`
 
@@ -24,24 +24,27 @@ Run: `bun run scripts/build-brain-glb.ts`
 
 `management/public/glb-loader.js` — standalone GLB 2.0 parser (no GLTFLoader dependency).
 Parses the binary format directly: header, JSON chunk (accessors/bufferViews/meshes), BIN chunk.
-Builds `THREE.BufferGeometry[]` with position + color attributes.
+Builds `THREE.BufferGeometry[]` with position + material color.
 
 Loaded in `management/public/app.js:SceneController.loadBrainMesh()`.
 
 ## Scene Integration
 
-In `_showBrainLayout(data)`:
+In `_showBrainLayout(data)` (line 651+):
 - `TYPE_REGION` maps memory node types -> 5 brain region names
-- Starts `loadBrainMesh()` async, adds the GLB group to the scene
-- Computes region centroids from mesh bounding boxes
-- Positions memory nodes via `fibonacciSphere` around each region centroid
-- Adds `createTextSprite` labels above each region
+- Mesh group is scaled 2.5× and camera radius set to 250 for optimal viewport fill
+- After async load, **vertex centroids** are computed (average of all mesh vertices per region, not bounding-box centers)
+- Nodes are repositioned from hardcoded centroids to actual vertex centroids
+- **Overlap resolution**: 5 push-apart passes (minDist=20) within each region after centroid repositioning
+- Region labels repositioned to match actual centroids
+- Node sprite labels (descriptions) synced with correct Y offset (`size + 5`)
+- `shellMultiplier: 0` in simulation to prevent centering force from collapsing region clusters
 
 ## Interaction
 
 - **Hover**: brain region meshes show tooltip with region name
-- **Click**: brain region mesh filters the node list to show only nodes in that region
-- Node meshes are positioned inside their region's volume
+- **Click**: brain region mesh filters the node list to show only nodes in that region via `filterEngine.customTypes`
+- Node meshes are scattered via `fibonacciSphere` around each region's vertex centroid
 
 ## File Layout
 

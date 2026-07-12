@@ -24,6 +24,8 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 **Code Graph** (pull-based `graph` tool): Navigate code dependencies on demand. Relations: `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. Builds AST knowledge graph via tree-sitter WASM (32 languages). Auto-refreshes on edit/write. Available as both plugin tool and MCP tool. Impl at `src/tools/graph.ts`, `src/application/graph/`.
 
+**Brain Mesh 3D Layout** (management app): Replaced procedural sphere indicators with actual Desikan-Killiany atlas brain mesh (70 DK parcels → 5 regions in ~101 KB GLB). Nodes positioned at vertex-averaged region centroids with Fibonacci sphere scattering + 5-pass overlap resolution. Build pipeline at `scripts/build-brain-glb.ts`, standalone GLB 2.0 parser at `management/public/glb-loader.js`, scene integration at `app.js:_showBrainLayout()` (lines 651+). Impl at `management/public/`. See `docs/threejs/brainregions.md`.
+
 ## Graph Tool Usage
 
 Before editing a function, use `graph` with `relation=callers name=<function>` to know what depends on it. After finding a symbol, use `relation=callees` or `relation=call_chain depth=3` to trace dependencies. Use `relation=dependents file=<path>` for change impact analysis. All results are JSON with a `truncated` field indicating if results were capped.
@@ -116,6 +118,10 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `src/management-standalone.ts` | Management server entry point (subprocess) |
 | `management/public/index.html` | Management app HTML |
 | `management/public/app.js` | Management app JS |
+| `management/public/glb-loader.js` | Standalone GLB 2.0 binary parser — no GLTFLoader dep |
+| `management/public/models/brain-atlas.glb` | Generated DK atlas brain mesh (~101 KB) |
+| `scripts/build-brain-glb.ts` | Build pipeline merging 70 DK OBJ files into 5-region GLB |
+| `docs/threejs/brainregions.md` | Brain mesh implementation doc |
 
 ## Rules
 
@@ -172,8 +178,9 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `feat:tag-intersection-search` | implementation | tagsFilter option in searchByEmbedding with tag intersection filtering |
 | `feat:management-dashboard-charts` | implementation | Supertype/tag cloud/confidence histogram/stratum breakdown cards |
 | `feat:management-tag-editing` | implementation | Inline tag add/remove and source dropdown in detail panel |
-| `file:management/public/app.js` | file | Full management app frontend (3393+ lines, vanilla JS) |
+| `file:management/public/app.js` | file | Full management app frontend (3818+ lines, vanilla JS) — brain mesh layout, 3D scene controller |
 | `file:src/management/helpers.ts` | file | Stats computation, rowToNode, computeStats with new aggregations |
+| `feat:brain-layout-adjustments` | implementation | Brain mesh 2.5× scale, vertex centroids, overlap resolution, sprite-label sync |
 
 ## Rules
 

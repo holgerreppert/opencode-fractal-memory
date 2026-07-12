@@ -127,21 +127,16 @@
 
       const result = new TypedArray(count * numComp);
 
-      if (byteStride === compSize * numComp) {
-        // Contiguous - bulk read
-        const src = new Uint8Array(binData, byteOffset, count * byteStride);
-        result.set(new TypedArray(src.buffer, src.byteOffset, result.length));
-      } else {
-        // Strided - read per element
-        for (let i = 0; i < count; i++) {
-          for (let j = 0; j < numComp; j++) {
-            const off = byteOffset + i * byteStride + j * compSize;
-            switch (accessor.componentType) {
-              case 5126: result[i * numComp + j] = view.getFloat32(i * byteStride + j * 4, true); break;
-              case 5125: result[i * numComp + j] = view.getUint32(i * byteStride + j * 4, true); break;
-              case 5123: result[i * numComp + j] = view.getUint16(i * byteStride + j * 2, true); break;
-              default: result[i * numComp + j] = view.getFloat32(i * byteStride + j * 4, true);
-            }
+      for (let i = 0; i < count; i++) {
+        for (let j = 0; j < numComp; j++) {
+          const off = i * byteStride + j * compSize;
+          switch (accessor.componentType) {
+            case 5126: result[i * numComp + j] = view.getFloat32(off, true); break;
+            case 5125: result[i * numComp + j] = view.getUint32(off, true); break;
+            case 5123: result[i * numComp + j] = view.getUint16(off, true); break;
+            case 5122: result[i * numComp + j] = view.getInt16(off, true); break;
+            case 5121: result[i * numComp + j] = view.getUint8(off); break;
+            default:   result[i * numComp + j] = view.getFloat32(off, true);
           }
         }
       }

@@ -112,10 +112,11 @@ function toGLB(regions: { name: string; pos: number[]; idx: number[]; hex: numbe
     });
     bo += posLen;
 
+    const idxPadLen = (4 - (idxLen % 4)) % 4;
     bvs.push({ buffer: 0, byteOffset: bo, byteLength: idxLen, target: 34963 });
     const ia = accessors.length;
     accessors.push({ bufferView: ia, componentType: 5123, count: r.idx.length, type: "SCALAR" });
-    bo += idxLen;
+    bo += idxLen + idxPadLen;
 
     const mi = meshes.length;
     const matIdx = mats.length;
@@ -125,14 +126,17 @@ function toGLB(regions: { name: string; pos: number[]; idx: number[]; hex: numbe
     nodes[0].children.push(nodes.length);
     nodes.push({ mesh: mi, name: r.name });
 
-    // Bin data
+    // Bin data — positions (float32)
     const pBuf = Buffer.alloc(posLen);
     for (let j = 0; j < r.pos.length; j++) pBuf.writeFloatLE(r.pos[j], j * 4);
     binChunks.push(pBuf);
 
+    // Indices (uint16) — pad to 4-byte boundary so next region's float32 is aligned
     const iBuf = Buffer.alloc(idxLen);
     for (let j = 0; j < r.idx.length; j++) iBuf.writeUInt16LE(r.idx[j], j * 2);
     binChunks.push(iBuf);
+    const idxPad = (4 - (idxLen % 4)) % 4;
+    if (idxPad) binChunks.push(Buffer.alloc(idxPad));
   }
 
   const gltf = {
