@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
+import { getPressurePhase } from "../../application/adaptive-pressure";
 import { memLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -57,7 +58,19 @@ export function createMessagesTransformHandler(store: MemoryStore, config: MemCo
 
       try {
         const results = (await store.drilldownQuery(userText, 5)) as QueryResult[];
-        const filtered = results.filter(r => r.node?.content);
+
+        const apConfig = config.adaptivePressure;
+        const phase = apConfig?.enabled ? getPressurePhase(apConfig) : "normal";
+
+        let filtered = results.filter(r => r.node?.content);
+        if (phase === "aggressive" || phase === "critical") {
+          const minImp = phase === "critical" ? 0.8 : 0.6;
+          filtered = filtered.filter(r => (r.node?.importance ?? 0) >= minImp);
+          if (results.length - filtered.length > 0) {
+            memLog("debug", "messages-transform", `Pressure-aware filter: skipped ${results.length - filtered.length}/${results.length} low-importance nodes (phase=${phase})`);
+          }
+        }
+
         if (filtered.length === 0) return;
 
         const memoryBlock = formatMemoryBlock(filtered.slice(0, 3));

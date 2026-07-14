@@ -9,8 +9,8 @@ function hasGraph(graph: ReturnType<typeof getActiveGraph>): boolean {
 }
 
 export function createGraphEditCheckHandler(config: MemConfig): HookHandler {
-  const graphConfig = config.graph ?? { enabled: false, maxFiles: 5000, refreshEnabled: true };
-  if (!graphConfig.enabled) return {};
+  const graphConfig = config.graph;
+  if (!graphConfig?.enabled) return {};
 
   const root = process.cwd();
   const maxFiles = graphConfig.maxFiles ?? 5000;

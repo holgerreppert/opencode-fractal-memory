@@ -16,6 +16,7 @@ import { createMessagesTransformHandler } from "./hooks/messages-transform";
 import { createGraphRefreshHandler } from "./hooks/graph-refresh";
 import { createGraphContextHandler } from "./hooks/graph-context";
 import { createGraphEditCheckHandler } from "./hooks/graph-edit-check";
+import { createGraphSearchHintHandler } from "./hooks/graph-search-hint";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
 import { createToolDefinitionHandler } from "./hooks/tool-definition";
@@ -50,6 +51,7 @@ export function createHookHandlers(
     createGraphRefreshHandler(memConfig),
     createGraphContextHandler(memConfig),
     createGraphEditCheckHandler(memConfig),
+    createGraphSearchHintHandler(memConfig),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {

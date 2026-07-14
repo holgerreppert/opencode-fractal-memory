@@ -114,6 +114,7 @@ export interface MemConfig {
     enabled: boolean;
     maxFiles: number;
     refreshEnabled: boolean;
+    autoSkeletonizeMinLines: number;
   } | undefined;
   outputTokenControl?: {
     enabled: boolean;
@@ -441,6 +442,7 @@ const DEFAULT_CONFIG: MemConfig = {
     enabled: true,
     maxFiles: 5000,
     refreshEnabled: true,
+    autoSkeletonizeMinLines: 300,
   },
   smallModel: {},
 };
@@ -470,6 +472,7 @@ const GraphSchema = z.object({
   enabled: z.boolean().default(true),
   maxFiles: z.number().positive().int().default(5000),
   refreshEnabled: z.boolean().default(true),
+  autoSkeletonizeMinLines: z.number().int().min(0).default(300),
 });
 
 const SmallModelSchema = z.record(z.string(), z.string()).default({});
