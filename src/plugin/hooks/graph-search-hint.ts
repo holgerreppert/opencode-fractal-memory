@@ -10,6 +10,13 @@ function hasGraph(graph: ReturnType<typeof getActiveGraph>): boolean {
   return graph !== null && graph.nodeCount() >= 10;
 }
 
+function extractBashQuery(command: string): string | null {
+  const trimmed = command.trim();
+  const grepMatch = /^(?:grep|rg|ripgrep|ag)\b.*?(-[^-]+\s+)?['"]?([a-zA-Z_]\w+)['"]?/.exec(trimmed);
+  if (grepMatch) return grepMatch[2]!;
+  return null;
+}
+
 export function createGraphSearchHintHandler(config: MemConfig): HookHandler {
   const graphConfig = config.graph;
   if (!graphConfig?.enabled) return {};
@@ -20,9 +27,19 @@ export function createGraphSearchHintHandler(config: MemConfig): HookHandler {
   return {
     "tool.after": async (_input: unknown, output: unknown) => {
       const input = _input as { tool?: string; args?: Record<string, unknown> };
-      if (!input.tool || !SEARCH_TOOLS.has(input.tool)) return;
+      const tool = input.tool;
+      if (!tool) return;
 
-      const query = (input.args?.query ?? input.args?.pattern ?? input.args?.text ?? "") as string;
+      let query = "";
+
+      if (SEARCH_TOOLS.has(tool)) {
+        query = (input.args?.query ?? input.args?.pattern ?? input.args?.text ?? "") as string;
+      } else if (tool === "bash") {
+        const command = (input.args?.command ?? "") as string;
+        const extracted = extractBashQuery(command);
+        if (extracted) query = extracted;
+      }
+
       if (!query || query.length < 2) return;
 
       let graph = getActiveGraph();
