@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.6
+- **Auto graph hints on search** (`src/plugin/hooks/graph-search-hint.ts`): After `grep`, `glob`, or `search` tools, calls `searchNodes` on the code graph and appends up to 3 matching symbol suggestions (function/class/interface) as a compact `[code-graph-search-hint]` block. Dedup guard: only fires if output doesn't already contain a graph context. Gated by `graph.enabled`.
+- **Auto-skeletonize on large reads** (`src/plugin/hooks/graph-context.ts`): When reading a file with ≥ `autoSkeletonizeMinLines` lines (default 300), generates a skeleton via `extractSkeleton` and prepends it before the file content. Guards: skipped on offset reads, skipped when skeleton extraction returns empty/zero length. Config via `graph.autoSkeletonizeMinLines`.
+- **Pressure-aware injection filtering** (`src/plugin/hooks/messages-transform.ts`): At aggressive pressure phase (≥ warn threshold), filters injection candidates to importance ≥ 0.6. At critical phase, filters to importance ≥ 0.8. Logs skipped count per phase.
+- **Config**: New `graph.autoSkeletonizeMinLines` field (int, default 300) in both `MemConfig` interface and `GraphSchema` Zod schema.
+- Lint + build clean.
+
 ## v0.7.5
 - **Skeletonization → standalone tool**: Removed automatic skeletonization hook (`src/plugin/hooks/skeletonization.ts`). Replaced with explicit `skeletonize(path)` consolidated tool. Core logic kept at `src/application/skeletonize.ts`. Config field `fileSkeletonization` removed.
 - **Graph preamble on read** (`src/plugin/hooks/graph-context.ts`): After every `read`, auto-injects code graph context (imports, symbols, dependents) as a comment-block preamble. Gated by `graph.enabled`.

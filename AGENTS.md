@@ -5,7 +5,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 ## Architecture
 
 - **Storage**: SQLite (`~/.config/opencode/memory.db`), sqlite-vec (cosine sim), FTS5 (BM25)
-- **Hooks**: `tool.execute.before` (re-read elimination), `tool.execute.after` (memory + compression + graph-context + graph-edit-check), `experimental.chat.system.transform` (rule injection), `experimental.chat.messages.transform` (auto-retrieve reranking + memory injection), `chat.message` (session ID tracking), `event` (lifecycle)
+- **Hooks**: `tool.execute.before` (re-read elimination), `tool.execute.after` (memory + compression + graph-context + graph-edit-check + graph-search-hint), `experimental.chat.system.transform` (rule injection), `experimental.chat.messages.transform` (auto-retrieve reranking + memory injection), `chat.message` (session ID tracking), `event` (lifecycle)
 - **Management app**: Served on `http://localhost:8787`, spawned as subprocess. API at `src/management/routes.ts`, UI at `management/public/`
 - **Config**: `~/.config/opencode/opencode-mem.json`, Zod schema at `src/config.ts`
 - **Logging**: Per-feature logs at `~/.config/opencode/logs/` — `memory-plugin.log`, `compress.log`, `sessionlog.log`, `graph-usage.log` (`src/logging.ts`)
@@ -18,7 +18,11 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 **Re-Read Elimination** (`tool.execute.before` for `read`): Serves cached file content when mtime unchanged. Impl at `src/hooks/re-read-elimination.ts`.
 
-**Auto-Retrieve** (`experimental.chat.messages.transform`): Reranking pipeline with LLM judge scoring (via `client.session.prompt({noReply:true})`), Ollama fallback, ONNX cross-encoder. Impl at `src/hooks/auto-retrieve/`.
+**Auto Graph Hints** (`tool.execute.after` for `grep`/`glob`/`search`): After search tools, searches the code graph for matching symbols (functions/classes/interfaces) and appends up to 3 suggestions as a compact `[code-graph-search-hint]` block. Dedup guard skips if output already has graph context. Impl at `src/plugin/hooks/graph-search-hint.ts`.
+
+**Auto-Skeletonize on Large Reads** (`tool.execute.after` for `read`): When reading files ≥ `autoSkeletonizeMinLines` lines (default 300), generates a skeleton via `extractSkeleton` and prepends it before content. Skipped on offset reads and empty skeletons. Impl at `src/plugin/hooks/graph-context.ts`.
+
+**Auto-Retrieve** (`experimental.chat.messages.transform`): Reranking pipeline with LLM judge scoring (via `client.session.prompt({noReply:true})`), Ollama fallback, ONNX cross-encoder. Pressure-aware injection filtering: at aggressive phase filters by importance ≥ 0.6; at critical phase ≥ 0.8. Impl at `src/hooks/auto-retrieve/`.
 
 **Memory Categorization** (multi-phase): Nodes have `type` → auto-derived `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (`read`/`edit`/`debug`/`discovery`) for intent-aware biasing. Temporal stratification (hot/warm/cold) penalizes stale nodes. Tags (`string[]`), source provenance, and verification count tracked. Management UI shows all fields. Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`, `src/domain/ports/MemoryStore.ts`.
 
@@ -90,10 +94,11 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | File | Purpose |
 |---|---|---|
 | `src/config.ts` | MemConfig interface + Zod schema + defaults |
-| `src/plugin/hooks.ts` | Thin orchestration — calls 10 extracted handlers |
+| `src/plugin/hooks.ts` | Thin orchestration — calls 11 extracted handlers |
 | `src/plugin/hooks/compression.ts` | Compression handler + feature banner |
-| `src/plugin/hooks/graph-context.ts` | Read-time graph preamble injection |
+| `src/plugin/hooks/graph-context.ts` | Read-time graph preamble injection + auto-skeletonize |
 | `src/plugin/hooks/graph-edit-check.ts` | Edit-time dependency warning |
+| `src/plugin/hooks/graph-search-hint.ts` | Auto graph hints on grep/glob/search |
 | `src/plugin/hooks/seed-rules.ts` | Rule loading + system transform injection |
 | `src/plugin/hooks/working-cache.ts` | Working cache population from tool results |
 | `src/plugin/hooks/recording.ts` | Memory tool call recording + predictive rating |

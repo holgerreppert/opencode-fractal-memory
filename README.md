@@ -4,6 +4,13 @@ Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, 
 
 ## Changelog
 
+### v0.7.6
+- **Auto graph hints on search** (`src/plugin/hooks/graph-search-hint.ts`): After `grep`, `glob`, or `search` tools, calls `searchNodes` on the code graph and appends up to 3 matching symbol suggestions (function/class/interface) as a compact `[code-graph-search-hint]` block. Dedup guard: only fires if output doesn't already contain a graph context. Gated by `graph.enabled`.
+- **Auto-skeletonize on large reads** (`src/plugin/hooks/graph-context.ts`): When reading a file with ≥ `autoSkeletonizeMinLines` lines (default 300), generates a skeleton via `extractSkeleton` and prepends it before the file content. Guards: skipped on offset reads, skipped when skeleton extraction returns empty/zero length. Config via `graph.autoSkeletonizeMinLines`.
+- **Pressure-aware injection filtering** (`src/plugin/hooks/messages-transform.ts`): At aggressive pressure phase (≥ warn threshold), filters injection candidates to importance ≥ 0.6. At critical phase, filters to importance ≥ 0.8. Logs skipped count per phase.
+- **Config**: New `graph.autoSkeletonizeMinLines` field (int, default 300) in both `MemConfig` interface and `GraphSchema` Zod schema.
+- Lint + build clean.
+
 ### v0.7.5
 - **Skeletonization → standalone tool**: Removed automatic skeletonization hook (`src/plugin/hooks/skeletonization.ts`). Replaced with explicit `skeletonize(path)` consolidated tool. Core logic kept at `src/application/skeletonize.ts`. Config field `fileSkeletonization` removed.
 - **Graph preamble on read** (`src/plugin/hooks/graph-context.ts`): After every `read`, auto-injects code graph context (imports, symbols, dependents) as a comment-block preamble. Gated by `graph.enabled`.
@@ -112,6 +119,8 @@ if you find bugs or if you just want to suggest improvements
 - **Progressive rule disclosure** — at context pressure thresholds, strips non-essential rules: >75% removes suggestion/info, >85% removes standard, >95% requires ≥0.50 relevance for any non-mandatory rule. Reads global `__pressureState` from output-token-control
 - **Proactive compaction nudge** — when context pressure hits warn(75%)/aggressive(85%)/critical(95%), injects a context-pressure warning into the system prompt urging the agent to use `context(mode="recall")`, `context(mode="middle_term")`, or `memory(mode="search")` to reduce token usage
 - **Graph preamble on read** — auto-injects code dependency context (imports, symbols, dependents) when reading files. Gated by `graph.enabled`. Impl at `src/plugin/hooks/graph-context.ts`
+- **Auto-skeletonize on large reads** — when reading files ≥ `autoSkeletonizeMinLines` lines, generates a skeleton (imports + symbols) before the content. Impl at `src/plugin/hooks/graph-context.ts`
+- **Auto graph hints on grep/glob/search** — after search tools, appends up to 3 matching code graph symbol suggestions. Impl at `src/plugin/hooks/graph-search-hint.ts`
 - **Edit-time dependency warning** — warns when editing a file that has dependents in the code graph. Impl at `src/plugin/hooks/graph-edit-check.ts`
 - **Skeletonize tool** — standalone explicit `skeletonize(path)` tool to extract file skeleton on demand. Core logic at `src/application/skeletonize.ts`
 - **Code knowledge graph** — builds a directed graph of code symbols (functions, classes, interfaces, types) and their relationships (calls, imports, references, defined_in, extends) via tree-sitter WASM AST extraction. 32 supported languages. Louvain community detection clusters related code; god-node and surprising-connections analysis highlight architectural hotspots
@@ -256,7 +265,8 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
   "enableMiddleTermCapture": true,
   "graph": {
     "enabled": true,
-    "maxFiles": 5000
+    "maxFiles": 5000,
+    "autoSkeletonizeMinLines": 300
   },
   "commandCompression": {
     "enabled": true,
@@ -320,6 +330,7 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `graph.enabled` | bool | `true` | Enable code knowledge graph (AST extraction + `graph` tool + auto-refresh) |
 | `graph.maxFiles` | int | `5000` | Max files to extract in background build |
 | `graph.refreshEnabled` | bool | `true` | Auto-re-extract on edit/write |
+| `graph.autoSkeletonizeMinLines` | int | `300` | Min file lines to auto-generate skeleton on read |
 | `commandCompression.enabled` | bool | `true` | Compress bash tool output |
 | `commandCompression.maxLines` | int | `50` | Max lines for generic truncation |
 | `commandCompression.excludeCommands` | string[] | `["curl","wget"]` | Commands to never compress |
@@ -768,7 +779,9 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │                                                                   │
 │  read tool:                                                       │
 │    graph-context      Auto-inject dependency context (imports,    │
-│                       symbols, dependents) from code graph         │
+│                       symbols, dependents) from code graph;       │
+│                       if file ≥ autoSkeletonizeMinLines, prepends │
+│                       a skeleton (imports + symbols) as well      │
 │    re-read-           Caches result + mtime for future re-read    │
 │    elimination        elimination checks                          │
 │    graph-refresh      Auto-re-extract on edit/write               │
@@ -777,6 +790,10 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │    graph-refresh      Re-extracts changed file into the graph     │
 │                       (single-file incremental update, ~1-5ms)    │
 │    graph-edit-check   Warns when edited file has dependents       │
+│                                                                   │
+│  grep/glob/search tool:                                          │
+│    graph-search-hint  Searches code graph for matching symbols   │
+│                       and appends up to 3 suggestions to output   │
 │                                                                   │
 │  memory_* tools:                                                  │
 │    recording          Logs memory tool calls to store +            │
@@ -821,7 +838,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 | `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts`, `tool-dedup.ts`, `error-prune.ts` |
 | `chat.params` | `src/plugin/hooks.ts:73` | `chat-params.ts` |
 | `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts` |
-| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `graph-context.ts`, `graph-edit-check.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
+| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `graph-context.ts`, `graph-edit-check.ts`, `graph-search-hint.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
 | `experimental.session.compacting` | `src/plugin/hooks.ts:67` | `compaction.ts` |
 | `event` | `src/plugin/hooks.ts:77` | `events.ts` |
 
