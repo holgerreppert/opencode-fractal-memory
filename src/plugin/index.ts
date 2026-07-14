@@ -6,6 +6,7 @@ import { memLog, perfNow } from "../logging";
 import { stopManagementServer, ensureManagementServer } from "../management-server";
 import { setupJournal } from "./init";
 import { createRegisterAgentsHandler } from "./hooks/register-agents";
+import { createJournalStore } from "../application/journal";
 
 export const MemoryPlugin: Plugin = async (ctx) => {
   const { directory, client } = ctx;
@@ -40,6 +41,8 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   t = perfNow();
   const journalTools = await setupJournal(directory, memConfig);
+  const journalStore = memConfig.journal?.enabled ? createJournalStore() : null;
+  const journalCtx = { directory, model: "", provider: "" };
   memLog("info", "init", "Journal setup completed", { durationMs: perfNow() - t });
 
   const currentSessionId: { value: string } = { value: "" };
@@ -50,7 +53,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     ruleCache, ruleCacheDirty, sessionInjectionLock, latestUserMessage,
     { start: ensureManagementServer, stop: stopManagementServer },
   );
-  const toolMap = createToolMap(store, journalTools, client);
+  const toolMap = createToolMap(store, journalTools, client, journalStore, journalCtx);
 
   memLog("info", "init", "Plugin initialization completed", { totalDurationMs: perfNow() - t0 });
 

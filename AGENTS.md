@@ -5,10 +5,10 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 ## Architecture
 
 - **Storage**: SQLite (`~/.config/opencode/memory.db`), sqlite-vec (cosine sim), FTS5 (BM25)
-- **Hooks**: `tool.execute.before` (skeletonization, re-read elimination), `tool.execute.after` (memory + compression), `experimental.chat.system.transform` (rule injection), `experimental.chat.messages.transform` (auto-retrieve reranking + memory injection), `chat.message` (session ID tracking), `event` (lifecycle)
+- **Hooks**: `tool.execute.before` (re-read elimination), `tool.execute.after` (memory + compression + graph-context + graph-edit-check), `experimental.chat.system.transform` (rule injection), `experimental.chat.messages.transform` (auto-retrieve reranking + memory injection), `chat.message` (session ID tracking), `event` (lifecycle)
 - **Management app**: Served on `http://localhost:8787`, spawned as subprocess. API at `src/management/routes.ts`, UI at `management/public/`
 - **Config**: `~/.config/opencode/opencode-mem.json`, Zod schema at `src/config.ts`
-- **Logging**: Per-feature logs at `~/.config/opencode/logs/` — `memory-plugin.log`, `filesum.log`, `compress.log`, `sessionlog.log` (`src/logging.ts`)
+- **Logging**: Per-feature logs at `~/.config/opencode/logs/` — `memory-plugin.log`, `compress.log`, `sessionlog.log`, `graph-usage.log` (`src/logging.ts`)
 
 ## Core Features
 
@@ -92,27 +92,36 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `src/config.ts` | MemConfig interface + Zod schema + defaults |
 | `src/plugin/hooks.ts` | Thin orchestration — calls 10 extracted handlers |
 | `src/plugin/hooks/compression.ts` | Compression handler + feature banner |
-| `src/plugin/hooks/skeletonization.ts` | File read skeletonization handler + banner |
+| `src/plugin/hooks/graph-context.ts` | Read-time graph preamble injection |
+| `src/plugin/hooks/graph-edit-check.ts` | Edit-time dependency warning |
 | `src/plugin/hooks/seed-rules.ts` | Rule loading + system transform injection |
 | `src/plugin/hooks/working-cache.ts` | Working cache population from tool results |
 | `src/plugin/hooks/recording.ts` | Memory tool call recording + predictive rating |
 | `src/plugin/hooks/compaction.ts` | Middle-term capture + stored context archiving |
 | `src/plugin/hooks/events.ts` | Session lifecycle event handling |
 | `src/hooks/compress-output.ts` | 7 compression strategies + generic fallback |
-| `src/hooks/skeletonize.ts` | Tree-sitter AST skeleton (32 languages) + regex fallback |
 | `src/hooks/auto-retrieve/index.ts` | Multi-reasoning reranking pipeline |
 | `src/hooks/auto-retrieve/scoring.ts` | Fallback scoring (metadata + keyword overlap) |
 | `src/hooks/output-token-control.ts` | Output token control — rule generation |
 | `src/hooks/re-read-elimination.ts` | Read cache + mtime check |
 | `src/hooks/adaptive-pressure.ts` | Token estimation + pressure phase tracking |
+| `src/storage/sqlite.ts` | SqliteMemoryStore class |
+| `src/storage/migrations/definitions.ts` | DB migrations (increment version, never modify existing) |
+| `src/storage/search.ts` | searchByEmbedding with intent biasing, temporal stratification, BM25 hybrid, entity boosting |
+| `src/storage/queries/nodes.ts` | Node CRUD — Zod schema, TYPE_CATEGORY, TYPE_SUPERTYPE, TYPE_METADATA maps |
+| `src/storage/queries/search-helpers.ts` | BM25 scoring, entity boosting, recency, final score computation |
+| `src/domain/ports/MemoryStore.ts` | MemoryStore interface (hexagonal domain port) |
+| `src/application/entities.ts` | Entity extraction + overlap scoring for multi-signal retrieval |
 | `src/infrastructure/llm/onnx-runtime.ts` | ONNX runtime adapter — tries onnxruntime-node first, falls back to onnxruntime-web |
 | `src/infrastructure/llm/embeddings.ts` | ONNX embedding model (all-MiniLM-L6-v2, 384d) |
 | `src/infrastructure/llm/cross-encoder.ts` | ONNX cross-encoder reranker (ms-marco-MiniLM-L-6-v2) |
-| `src/storage/sqlite.ts` | SqliteMemoryStore class |
-| `src/storage/migrations/definitions.ts` | DB migrations (increment version, never modify existing) |
+| `src/infrastructure/composition-root.ts` | Composition root — wires all dependencies by concern |
 | `src/logging.ts` | Per-feature logging functions |
-| `src/storage/queries/nodes.ts` | Node CRUD — Zod schema, TYPE_CATEGORY, TYPE_SUPERTYPE, TYPE_METADATA maps |
-| `src/storage/search.ts` | searchByEmbedding with intent biasing, temporal stratification, BM25 hybrid |
+| `src/tools/consolidated/memory.ts` | Consolidated memory tool (search/get/set/delete/list/drilldown/etc.) |
+| `src/tools/consolidated/context.ts` | Consolidated context tool (check/compress/inject/recall/etc.) |
+| `src/tools/consolidated/learn.ts` | Consolidated learn tool (reflect/distill/verify/rate/stats/etc.) |
+| `src/tools/consolidated/journal.ts` | Consolidated journal tool (write/read/search/migrate) |
+| `src/tools/consolidated/journal-migrate.ts` | One-time migration: file-based journal entries → memory nodes |
 | `src/management/routes.ts` | All API route handlers |
 | `src/management/helpers.ts` | withDb, rowToNode, JSON serialization |
 | `src/management-standalone.ts` | Management server entry point (subprocess) |
@@ -131,7 +140,6 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 - Migration version in `definitions.ts` must increment; never modify existing migrations
 - Management app config fields: `id` = kebab-case in HTML, load/save in app.js with same pattern
 - Strategy name in compress-output.ts must be a short string (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic)
-- Skeletonize strategy in skeletonize.ts: `ast-only`, `regex-only`, or `ast+regex`
 - When graph build has silent failures (file nodes << expected), check the `@kreuzberg/tree-sitter-language-pack-wasm` type definitions (`*.d.ts`) and docs first — `getParser(name)` **throws** on unknown language, returns parser pre-configured (no `setLanguage` needed), module uses `FinalizationRegistry` for auto-cleanup
 - When adding new log files: add write function to `src/logging.ts`, register in section map, create file path constant
 - When adding columns to `memory_nodes`, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) or rowToNode will break
@@ -140,7 +148,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 
 ## Critical Memory Nodes
 
-`memory_drilldown(label="<label>")` to retrieve full context:
+`memory(mode="drilldown", label="<label>")` to retrieve full context:
 
 | Label | Type | Why |
 |---|---|---|
@@ -152,7 +160,6 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `rule:mandatory:memory` | rule | Memory tool rules (search→get→set chain) |
 | `rule:mandatory:agent-pull` | rule | No auto-injection |
 | `rule:feature:command-compression` | rule | Compression feature details |
-| `rule:feature:file-skeletonization` | rule | Skeletonization feature details |
 | `rule:feature:auto-retrieve` | rule | Auto-retrieve reranking details |
 | `rule:feature:tag-intersection-search` | rule | tagsFilter option in searchByEmbedding — intersection semantics |
 | `rule:feature:source-propagation` | rule | Source must be set on ALL node creation — values table |

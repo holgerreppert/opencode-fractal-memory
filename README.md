@@ -4,6 +4,14 @@ Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, 
 
 ## Changelog
 
+### v0.7.5
+- **Skeletonization → standalone tool**: Removed automatic skeletonization hook (`src/plugin/hooks/skeletonization.ts`). Replaced with explicit `skeletonize(path)` consolidated tool. Core logic kept at `src/application/skeletonize.ts`. Config field `fileSkeletonization` removed.
+- **Graph preamble on read** (`src/plugin/hooks/graph-context.ts`): After every `read`, auto-injects code graph context (imports, symbols, dependents) as a comment-block preamble. Gated by `graph.enabled`.
+- **Edit-time dependency warning** (`src/plugin/hooks/graph-edit-check.ts`): After `edit`/`write`, appends a warning listing dependents if the file is tracked in the code graph. Gated by `graph.enabled`.
+- **Injection logging**: `logInjectionMetrics` wired into `auto-injection.ts` and `inject.ts`.
+- **Grep compression fix**: small results (≤30 lines) pass through raw instead of being summarized.
+- Lint + build clean.
+
 ### v0.7.4
 - **Brain mesh 3D layout**: Replaced procedural sphere indicators with actual Desikan-Killiany atlas brain mesh. 70 DK parcels → 5 regions (prefrontal/frontal/parietal/temporal/occipital) merged into a ~101 KB GLB via `scripts/build-brain-glb.ts`. Standalone GLB 2.0 parser at `management/public/glb-loader.js`. Built at `management/public/models/brain-atlas.glb`.
 - **Vertex-centroid node positioning**: Nodes positioned at vertex-averaged centroids of each brain region mesh (not bounding-box centers), ensuring accurate in-region placement.
@@ -14,7 +22,7 @@ Fractal memory system for [OpenCode](https://opencode.ai) with semantic search, 
 
 ### v0.7.3
 - **System prompt merging**: Rule injection now merges into primary block (1 system message instead of 2+) — fixes compatibility with strict backends (Qwen/vLLM) that reject multiple system messages
-- **Auto-seed**: All 6 `rule:feature:*` nodes (`command-compression`, `file-skeletonization`, `auto-retrieve`, `tag-intersection-search`, `source-propagation`, `confidence-diminishing-returns`) now auto-seed on fresh databases via `src/seed-nodes.ts`
+- **Auto-seed**: All 6 `rule:feature:*` nodes (`command-compression`, `auto-retrieve`, `tag-intersection-search`, `source-propagation`, `confidence-diminishing-returns`, `graph-context`) now auto-seed on fresh databases via `src/seed-nodes.ts`
 - **Brain layout mode**: New "Brain" layout in the 3D graph viewer — nodes arranged into 5 brain regions (Frontal/Parietal/Temporal/Prefrontal/Occipital) by supertype, with colored region indicators and labels
 - **Sortable node list**: Node sidebar list now sortable by 9 fields (Level, Importance, Created, Updated, Label, Type, Usefulness, Access Count, Confidence) with direction toggle
 - **Improved 3D visibility**: Reduced fog density 3×, increased node size + emissive for better visibility at zoom distance
@@ -73,7 +81,7 @@ if you find bugs or if you just want to suggest improvements
 - **Multi-hop temporal expansion** — temporally adjacent nodes (NEXT / DURING_SESSION edges) expanded up to 3 hops with 0.7^depth score decay, configurable via `temporal_hops` arg
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
 - **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels + LLM-powered summaries)
-- **Auto-retrieve (agent-pull model)** — reranks agent's `memory_search` results via Ollama LLM judge, in-process ONNX cross-encoder, or pure-JS fallback scoring (keyword overlap + metadata). No auto-injection — the agent pulls what it needs
+- **Auto-retrieve (agent-pull model)** — reranks agent's `memory(mode="search")` results via Ollama LLM judge, in-process ONNX cross-encoder, or pure-JS fallback scoring (keyword overlap + metadata). No auto-injection — the agent pulls what it needs
 - **Ollama / cross-encoder reranking** — dual-strategy reranking: LLM judge (via Ollama) or in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) for better relevance, plus a zero-dep fallback scorer when neither is available
 - **Rerank intent system** — agents can signal what type of information to prioritize (facts, concepts, rules, etc.) via `pref:rerank-intent` preference node; scoring boosts matching node types
 - **LLM compression** — uses LLM to generate richer summaries instead of regex extraction
@@ -102,19 +110,19 @@ if you find bugs or if you just want to suggest improvements
 - **Cross-session context injection** — on new sessions, searches `storedcontext` nodes via `searchText` and injects structured summaries of prior sessions as `<system_reminder type="info">` blocks. 60s throttle between fetches
 - **Adaptive rule selection** — scores each rule against the current user message via keyword-overlap similarity. Mandatory rules always inject; standard/suggestion/info need ≥0.15 relevance threshold. Logged with injected/total counts
 - **Progressive rule disclosure** — at context pressure thresholds, strips non-essential rules: >75% removes suggestion/info, >85% removes standard, >95% requires ≥0.50 relevance for any non-mandatory rule. Reads global `__pressureState` from output-token-control
-- **Proactive compaction nudge** — when context pressure hits warn(75%)/aggressive(85%)/critical(95%), injects a context-pressure warning into the system prompt urging the agent to use `memory_recall_context`, `memory_middle_term`, or `memory_search` to reduce token usage
-- **File skeletonization** — inline AST skeleton extraction for large file reads (>200 lines). Extracts imports, function/class signatures with line numbers via tree-sitter WASM (32 languages) + regex fallback. 40-95% reduction on file reads
-- **Re-read elimination** — when a file is read multiple times and hasn't changed on disk, serves the cached content with `[File unchanged since turn N]` banner, eliminating redundant reads entirely. Logged to filesum.log (RE-READ component)
+- **Proactive compaction nudge** — when context pressure hits warn(75%)/aggressive(85%)/critical(95%), injects a context-pressure warning into the system prompt urging the agent to use `context(mode="recall")`, `context(mode="middle_term")`, or `memory(mode="search")` to reduce token usage
+- **Graph preamble on read** — auto-injects code dependency context (imports, symbols, dependents) when reading files. Gated by `graph.enabled`. Impl at `src/plugin/hooks/graph-context.ts`
+- **Edit-time dependency warning** — warns when editing a file that has dependents in the code graph. Impl at `src/plugin/hooks/graph-edit-check.ts`
+- **Skeletonize tool** — standalone explicit `skeletonize(path)` tool to extract file skeleton on demand. Core logic at `src/application/skeletonize.ts`
 - **Code knowledge graph** — builds a directed graph of code symbols (functions, classes, interfaces, types) and their relationships (calls, imports, references, defined_in, extends) via tree-sitter WASM AST extraction. 32 supported languages. Louvain community detection clusters related code; god-node and surprising-connections analysis highlight architectural hotspots
 - **Pull-based code graph** — graph builds automatically on plugin init and auto-refreshes on `edit`/`write` (configurable via `graph.refreshEnabled`). No banner injection on reads, no system rule spamming. Agents call the `graph` tool on demand with `relation=callers|callees|call_chain|imports|dependents|search|explain|path`. Incremental rebuild on `session.idle` catches external changes.
 - **Graph usage tracking** — every graph action (build, search, path, explain, graph tool call, background build) is counted in-memory and logged to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID for audit
-- **Dedicated log files** — separate `filesum.log` for skeletonization events and `compress.log` for command compression events, auto-rotating
 - **Session logging** — opt-in session log with 1MB rotation for observability
-- **Journal** — append-only searchable journal entries with semantic search
+- **Journal** — searchable journal entries (type: `journal` memory nodes) with semantic search
 - **Playbooks** — reusable workflow templates (sticky memory nodes) proposed by the agent
 - **Management server** — local web UI (port 8787) for browsing, searching, editing, backup/restore, and 3D visualization with temporal edge rendering. Settings panel organized into 5 collapsible categories, resizable sidebar with persisted width
 - **Multi-graph retrieval** — temporal edges (NEXT, DURING_SESSION, CAUSAL, REFERENCES, RELATED_TO) expanded during search with confidence-weighted hop decay
-- **Auto-edge creation** — `memory_set` auto-creates NEXT edges (session chaining) and REFERENCES edges (from `label:xxx` patterns) during active sessions
+- **Auto-edge creation** — `memory(mode="set")` auto-creates NEXT edges (session chaining) and REFERENCES edges (from `label:xxx` patterns) during active sessions
 - **Synthetic evaluation** — 79-node/175-QA benchmark dataset for reproducible retrieval quality metrics (HitRate, Recall, Precision, MRR)
 - **Sub-agents** — `memory-hints`, `memory-researcher`, and `translate` agents for guided interaction
 
@@ -246,11 +254,6 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
   "criticalContextThreshold": 0.8,
   "defaultTtlDays": 0,
   "enableMiddleTermCapture": true,
-  "fileSkeletonization": {
-    "enabled": true,
-    "minLines": 200,
-    "strategy": "ast+regex"
-  },
   "graph": {
     "enabled": true,
     "maxFiles": 5000
@@ -314,9 +317,6 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `management.enabled` | bool | `false` | Auto-start the management web UI on plugin init |
 | `management.port` | int | `8787` | Port for the management server |
 | `journal.enabled` | bool | `false` | Enable append-only searchable journal entries |
-| `fileSkeletonization.enabled` | bool | `true` | Inline AST skeleton for large file reads |
-| `fileSkeletonization.minLines` | int | `200` | Min file lines to trigger skeletonization |
-| `fileSkeletonization.strategy` | enum | `"ast+regex"` | `"ast+regex"` (tree-sitter + regex fallback) or `"regex"` only |
 | `graph.enabled` | bool | `true` | Enable code knowledge graph (AST extraction + `graph` tool + auto-refresh) |
 | `graph.maxFiles` | int | `5000` | Max files to extract in background build |
 | `graph.refreshEnabled` | bool | `true` | Auto-re-extract on edit/write |
@@ -386,7 +386,7 @@ Auto-retrieve results can be re-ranked for better relevance using one of two str
 Agents can tell the memory system what kind of information to prioritize by setting a preference node:
 
 ```
-memory_set(
+memory(mode="set",
   label: "pref:rerank-intent",
   content: "boost: fact=1.5, rule=0.5, concept=1.2",
   type: "pref"
@@ -440,7 +440,7 @@ Every memory node is auto-categorized on creation based on its type. This affect
 
 - **Episodic** nodes decay fast and are weighted lower in search — they represent session-level traces.
 - **Semantic** nodes persist long-term and are boosted in search — they represent learned knowledge.
-- Use `category_filter` on `memory_search` to scope searches (e.g. `memory_search(category_filter="semantic")`).
+- Use `category_filter` on `memory(mode="search")` to scope searches (e.g. `memory(mode="search", query="...", category_filter="semantic")`).
 - Dashboard shows the category distribution.
 
 ### Consolidation
@@ -516,85 +516,18 @@ Stats tracked in the `compression_stats` table. View at management app → **Com
 
 Configure via `~/.config/opencode/opencode-mem.json` or the management app Settings → AI & Compression.
 
-### File Skeletonization
-
-When reading large source files (>200 lines), the plugin can inline a skeleton: imports, function/class/interface/trait/enum signatures with line numbers, and nested members. This replaces verbose full-file content with just the structure.
-
-Uses **tree-sitter WASM** (`@kreuzberg/tree-sitter-language-pack-wasm`, 32 languages) for deterministic AST extraction — no AI, no external binary. Falls back to regex for unsupported languages.
-
-Offset/limit reads always pass through untouched. Skeleton is only applied when it reduces file size by at least 50%.
-
-```json
-{
-  "fileSkeletonization": {
-    "enabled": true,
-    "minLines": 200,
-    "strategy": "ast+regex"
-  }
-}
-```
-
-Configure via `~/.config/opencode/opencode-mem.json` or the management app Settings → Memory & Storage.
-
 ## Commands
 
-### Memory tools
+All memory operations go through four consolidated tools:
 
-| Command | Description |
-|---|---|
-| `memory_set` | Create or update a memory node |
-| `memory_get` | Get a single node by ID or label |
-| `memory_fetch` | Fetch a node by exact label |
-| `memory_search` | Search nodes by text, embedding, or BM25 — supports `category_filter`, `expand_links`, `expand_temporal` |
-| `memory_delete` | Delete a node by ID or label |
-| `memory_list` | List nodes with optional scope/level filters |
-| `memory_replace` | Replace content in a memory node |
-| `memory_rate` | Rate a node's usefulness (helps ranking) |
-| `memory_prune` | Find and remove stale/unused nodes |
-| `memory_temporal_edges` | Inspect temporal edges between nodes (conversation flow) |
-| `memory_inject` | Inject relevant memories into the prompt with token budgeting |
-| `memory_injection_debug` | Show what was injected in the last session |
-| `memory_injection_feedback` | Rate injected memory usefulness |
-| `memory_injection_stats` | View injection efficiency metrics |
-| `memory_drilldown` | Retrieve a node with its source chain (fractal retrieval) |
-| `memory_drilldown_query` | Top-down drilldown by query (find + expand) |
-| `memory_detect_topics` | Detect topic clusters in memory |
-| `memory_stats` | Show memory statistics (nodes per level, compression ratios) |
-| `memory_dashboard` | Display memory dashboard with visual overview |
-| `memory_tool_stats` | View tool call statistics and efficiency |
-| `memory_session_stats` | Get statistics about the current session |
-| `memory_compress` | Compress old nodes into higher-level summaries |
-| `memory_llm_compress` | LLM-powered compression (richer summaries) |
-| `memory_extract_patterns` | Extract cross-topic pattern summaries |
-| `memory_distill` | Extract actionable rules from lesson nodes |
-| `memory_summarize` | Generate an LLM prompt to summarize a node |
-| `memory_check_context` | Check token usage of memory nodes |
-| `memory_total_tokens` | Complete token analysis (memory + conversation) |
-| `memory_generate_embeddings` | Generate embeddings for nodes that lack them |
-| `memory_middle_term` | View context snapshots before compaction |
-| `memory_cache_status` | Show working-memory cache usage |
-| `memory_skill_load` | Load a skill's instructions by name |
-| `memory_playbook_execute` | Execute a playbook workflow |
-| `memory_verify` | Verify that a node's information is correct |
-| `memory_reflect` | Analyze a session and create lesson nodes |
-| `memory_help` | Show all available memory commands |
-| `memory_version` | Show installed plugin version |
+| Tool | Description |
+|------|-------------|
+| `memory(mode)` | Core CRUD — search, get, set, delete, list, drilldown, drilldown_query, fetch, replace |
+| `context(mode)` | Context management — check, compress, llm_compress, total_tokens, inject, middle_term, recall, cache_status, tool_stats, session_stats |
+| `learn(mode)` | Learning & quality — reflect, distill, verify, rate, stats, dashboard, temporal_edges, extract_patterns, injection_feedback |
+| `journal(mode)` | Session journaling — write, read, search, migrate |
 
-### Playbook tools
-
-| Command | Description |
-|---|---|
-| `memory_playbook_execute` | Execute a playbook (returns steps for the agent to run) |
-
-Playbooks are stored as `type: "playbook"` memory nodes with steps in `metadata`. CRUD uses generic `memory_set` / `memory_get` / `memory_search` tools. The agent proposes playbooks when it spots repeated multi-step patterns.
-
-### Journal tools
-
-| Command | Description |
-|---|---|
-| `journal_write` | Write a new journal entry |
-| `journal_read` | Read a journal entry by ID |
-| `journal_search` | Search journal entries semantically |
+Playbooks are stored as `type: "playbook"` memory nodes with steps in `metadata`. CRUD uses generic `memory(mode="set")` / `memory(mode="get")` / `memory(mode="search")`.
 
 ### MCP tools
 
@@ -631,17 +564,17 @@ Skills are specialized instruction sets stored as memory nodes. When a task matc
 ### Loading a skill
 
 ```ts
-memory_skill_load(name="debug-workflow")
+memory(mode="set", label="skill:debug-workflow", content="## Instructions...", type="skill", metadata='{"triggers":["bug","error","fix","crash"]}', sticky=true)
 ```
 
-Skills are auto-injected when triggers match the task context. You can also load them explicitly with `memory_skill_load`.
+Skills are auto-injected when triggers match the task context. You can also load them explicitly with `memory(mode="set", label="skill:<name>", ...)`.
 
 ### Creating a skill
 
 Skills are memory nodes with `type: "skill"`. Create one with:
 
 ```ts
-memory_set(
+memory(mode="set",
   label: "skill:my-skill",
   content: "## Skill instructions...",
   type: "skill",
@@ -657,7 +590,7 @@ The plugin ships with two agent instruction files for specialized memory interac
 | Agent | File | Purpose |
 |---|---|---|
 | `memory-hints` | `agent/memory-hints.md` | System-level hints for using memory effectively — injected by the agent when memory-related context is needed |
-| `memory-researcher` | `agent/memory-researcher.md` | Analyzes and reports on fractal memory state — invoked via `memory_skill_load(name="memory-researcher")` |
+| `memory-researcher` | `agent/memory-researcher.md` | Analyzes and reports on fractal memory state |
 
 These are loaded by OpenCode's agent system and provide structured guidance for memory operations.
 
@@ -777,7 +710,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  transform         injection into the message list — uses            │
 │                    structured <memory_context> XML format             │
 │                                                                     │
-│  auto-retrieve     Finds memory_search tool results in pending       │
+│  auto-retrieve     Finds memory(mode="search") tool results in pending       │
 │                    messages → re-ranks candidates via Ollama /       │
 │                    LLM judge / fallback scorer → rewrites order      │
 │                                                                     │
@@ -834,8 +767,8 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │                        >8KB to scratch dir                         │
 │                                                                   │
 │  read tool:                                                       │
-│    skeletonization    If >200 lines → tree-sitter AST skeleton    │
-│                       or regex fallback replaces full content      │
+│    graph-context      Auto-inject dependency context (imports,    │
+│                       symbols, dependents) from code graph         │
 │    re-read-           Caches result + mtime for future re-read    │
 │    elimination        elimination checks                          │
 │    graph-refresh      Auto-re-extract on edit/write               │
@@ -843,6 +776,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │  edit/write tool:                                                 │
 │    graph-refresh      Re-extracts changed file into the graph     │
 │                       (single-file incremental update, ~1-5ms)    │
+│    graph-edit-check   Warns when edited file has dependents       │
 │                                                                   │
 │  memory_* tools:                                                  │
 │    recording          Logs memory tool calls to store +            │
@@ -877,7 +811,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 | **Tool execution can be skipped** | Only `tool.execute.before` handlers (re-read-elimination, graph-tools) can short-circuit execution by pre-filling the output |
 | **Post-processing feeds the next turn** | `tool.execute.after` modifies tool results that will be sent back to the LLM on the *next* iteration of Phase 2 |
 | **Graceful degradation** | Every handler is wrapped in a try/catch in `hooks.ts` — a single handler failure never crashes the agent |
-| **No auto-injection for memory** | By default, memory retrieval is agent-driven (`memory_search`/`memory_get`). The `messages.transform` hook is an opt-in alternative |
+| **No auto-injection for memory** | By default, memory retrieval is agent-driven (`memory(mode="search")`/`memory(mode="get")`). The `messages.transform` hook is an opt-in alternative |
 
 ### Source Map
 
@@ -887,7 +821,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 | `experimental.chat.messages.transform` | `src/plugin/hooks.ts:75` + `src/plugin/index.ts:58` | `messages-transform.ts`, `auto-retrieve/index.ts`, `tool-dedup.ts`, `error-prune.ts` |
 | `chat.params` | `src/plugin/hooks.ts:73` | `chat-params.ts` |
 | `tool.execute.before` | `src/plugin/hooks.ts:63` | `re-read-elimination.ts` |
-| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `skeletonization.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
+| `tool.execute.after` | `src/plugin/hooks.ts:65` | `compression.ts`, `adaptive-pressure.ts`, `graph-context.ts`, `graph-edit-check.ts`, `re-read-elimination.ts`, `recording.ts`, `working-cache.ts` |
 | `experimental.session.compacting` | `src/plugin/hooks.ts:67` | `compaction.ts` |
 | `event` | `src/plugin/hooks.ts:77` | `events.ts` |
 
@@ -901,7 +835,6 @@ All plugin logs are consolidated under `~/.config/opencode/logs/`:
 | MCP server | `logs/mcp-server.log` | MCP tool calls, resources, errors |
 | Injection debug | `logs/memory-injection.log` | Full auto-retrieve injection payloads (rotated at 1 MB) |
 | Context dump | `logs/context-dump.log` | Full context snapshots for debugging |
-| Skeletonization | `logs/filesum.log` | Skeletonization apply/skip/error (auto-rotated at 2 MB) |
 | Command compression | `logs/compress.log` | Compression events per command: strategy, original/compressed sizes, reduction pct, duration (auto-rotated at 2 MB) |
 | Graph usage | `logs/graph-usage.log` | Graph tool calls with source, action type, and session ID (auto-rotated at 2 MB) |
 | Session log | `logs/sessionlog.log` | Session lifecycle events (enabled via `sessionLog.enabled`) |

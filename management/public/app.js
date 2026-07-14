@@ -2764,9 +2764,6 @@ async function loadSettings() {
     document.getElementById('llmCompression-enabled').value = String(config.llmCompression?.enabled ?? false);
     document.getElementById('llmCompression-maxSummaryTokens').value = config.llmCompression?.maxSummaryTokens ?? 500;
     document.getElementById('llmCompression-model').value = config.llmCompression?.model ?? '';
-    document.getElementById('fileSkeletonization-enabled').value = String(config.fileSkeletonization?.enabled ?? true);
-    document.getElementById('fileSkeletonization-minLines').value = config.fileSkeletonization?.minLines ?? 200;
-    document.getElementById('fileSkeletonization-strategy').value = config.fileSkeletonization?.strategy ?? 'ast+regex';
     document.getElementById('commandCompression-enabled').value = String(config.commandCompression?.enabled ?? true);
     document.getElementById('commandCompression-maxLines').value = config.commandCompression?.maxLines ?? 50;
     document.getElementById('commandCompression-excludeCommands').value = (config.commandCompression?.excludeCommands ?? []).join(', ');
@@ -2880,11 +2877,6 @@ async function saveSettings() {
       enabled: document.getElementById('llmCompression-enabled').value === 'true',
       maxSummaryTokens: parseInt(document.getElementById('llmCompression-maxSummaryTokens').value) || 500,
       model: document.getElementById('llmCompression-model').value || undefined,
-    },
-    fileSkeletonization: {
-      enabled: document.getElementById('fileSkeletonization-enabled').value === 'true',
-      minLines: parseInt(document.getElementById('fileSkeletonization-minLines').value) || 200,
-      strategy: document.getElementById('fileSkeletonization-strategy').value || 'ast+regex',
     },
     commandCompression: {
       enabled: document.getElementById('commandCompression-enabled').value === 'true',

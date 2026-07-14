@@ -5,7 +5,6 @@ import { createRecordingHandler } from "./hooks/recording";
 import { createWorkingCacheHandler } from "./hooks/working-cache";
 import { createCompressionHandler } from "./hooks/compression";
 import { createNonBashCompressionHandler } from "./hooks/tool-compression";
-import { createSkeletonizationHandler } from "./hooks/skeletonization";
 import { createReReadEliminationHandler } from "./hooks/re-read-elimination";
 import { createAdaptivePressureHandler } from "./hooks/adaptive-pressure";
 import { createSeedRulesHandler } from "./hooks/seed-rules";
@@ -15,6 +14,8 @@ import { createOutputTokenControlHandler } from "./hooks/output-token-control";
 import { createChatParamsHandler } from "./hooks/chat-params";
 import { createMessagesTransformHandler } from "./hooks/messages-transform";
 import { createGraphRefreshHandler } from "./hooks/graph-refresh";
+import { createGraphContextHandler } from "./hooks/graph-context";
+import { createGraphEditCheckHandler } from "./hooks/graph-edit-check";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
 import { createToolDefinitionHandler } from "./hooks/tool-definition";
@@ -38,7 +39,6 @@ export function createHookHandlers(
     createWorkingCacheHandler(store),
     createCompressionHandler(store, memConfig),
     createNonBashCompressionHandler(),
-    createSkeletonizationHandler(memConfig),
     createReReadEliminationHandler(memConfig),
     createAdaptivePressureHandler(memConfig),
     createSeedRulesHandler(store, memConfig, ruleCache, ruleCacheDirty, sessionInjectionLock),
@@ -48,6 +48,8 @@ export function createHookHandlers(
     createChatParamsHandler(memConfig),
     createMessagesTransformHandler(store, memConfig),
     createGraphRefreshHandler(memConfig),
+    createGraphContextHandler(memConfig),
+    createGraphEditCheckHandler(memConfig),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {

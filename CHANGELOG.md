@@ -1,18 +1,33 @@
 # Changelog
 
-## 0.7.1 — 2026-07-08
+## v0.7.5
+- **Skeletonization → standalone tool**: Removed automatic skeletonization hook (`src/plugin/hooks/skeletonization.ts`). Replaced with explicit `skeletonize(path)` consolidated tool. Core logic kept at `src/application/skeletonize.ts`. Config field `fileSkeletonization` removed.
+- **Graph preamble on read** (`src/plugin/hooks/graph-context.ts`): After every `read`, auto-injects code graph context (imports, symbols, dependents) as a comment-block preamble. Gated by `graph.enabled`.
+- **Edit-time dependency warning** (`src/plugin/hooks/graph-edit-check.ts`): After `edit`/`write`, appends a warning listing dependents if the file is tracked in the code graph. Gated by `graph.enabled`.
+- **Injection logging**: `logInjectionMetrics` wired into `auto-injection.ts` and `inject.ts`.
+- **Grep compression fix**: small results (≤30 lines) pass through raw instead of being summarized.
+- Lint + build clean.
 
-### Removed
+## v0.7.4
+- **Brain mesh 3D layout**: Replaced procedural sphere indicators with actual Desikan-Killiany atlas brain mesh. 70 DK parcels → 5 regions (prefrontal/frontal/parietal/temporal/occipital) merged into a ~101 KB GLB via `scripts/build-brain-glb.ts`. Standalone GLB 2.0 parser at `management/public/glb-loader.js`. Built at `management/public/models/brain-atlas.glb`.
+- **Vertex-centroid node positioning**: Nodes positioned at vertex-averaged centroids of each brain region mesh (not bounding-box centers), ensuring accurate in-region placement.
+- **Overlap resolution**: 5-pass push-apart per region (minDist=20) after centroid repositioning prevents node clustering.
+- **Sprite-label sync**: Node sprites (descriptions) now track mesh positions with correct Y offset. Previously sprites were left at old positions due to `!obj.isMesh` filter skipping them.
+- **Brain scale 2.5×**: Mesh and node positions scaled 2.5× for better visibility, camera radius reduced to 250.
+- **Region click filtering**: Clicking a brain region mesh filters node list via `filterEngine.customTypes`.
 
-- **File summarization** — removed dead feature. Deleted 3 source files, removed `autoFileSummarization` from config/Zod/UI/hooks/seed nodes, updated all docs. DB cleaned: 626 stale file-summary memory nodes deleted.
-
-## 0.7.0 — 2026-07-07
-
-### Context Quality Layer Improvements (P0–P2)
-
-- **Layer 1: Context Quality**: Tool call dedup (LRU cache, turn-protected), error input pruning (replaces failed tool args), structured memory injection (XML `<memory_context>` blocks), cross-session context injection (storedcontext summaries), adaptive rule selection (keyword-overlap scoring)
-- **Layer 2: Progressive Rule Disclosure**: Strips non-essential rules at context pressure thresholds (>75%/85%/95%), proactive compaction nudges
-- **Layer 3: Structured Summaries**: YAML headers on storedcontext nodes with tools, files, errors, token usage, turn count
-- **Layer 4–5: Structural Shapes**: 4 new output-type detectors (compiler-diagnostics, test-output, npm-install, coverage-log) with tailored compressors; `compressByType` delegation in generic strategies
-- **Management UI**: New "Context Quality" settings category with toolDedup + errorPruning toggles
-- **Testing**: 37 new tests (tool-dedup, session-cache, error-prune, messages-transform, tool-dedup-handler); 108 total, 0 lint
+## v0.7.3
+- **System prompt merging**: Rule injection now merges into primary block (1 system message instead of 2+) — fixes compatibility with strict backends (Qwen/vLLM) that reject multiple system messages
+- **Auto-seed**: All 6 `rule:feature:*` nodes (`command-compression`, `auto-retrieve`, `tag-intersection-search`, `source-propagation`, `confidence-diminishing-returns`, `graph-context`) now auto-seed on fresh databases via `src/seed-nodes.ts`
+- **Brain layout mode**: New "Brain" layout in the 3D graph viewer — nodes arranged into 5 brain regions (Frontal/Parietal/Temporal/Prefrontal/Occipital) by supertype, with colored region indicators and labels
+- **Sortable node list**: Node sidebar list now sortable by 9 fields (Level, Importance, Created, Updated, Label, Type, Usefulness, Access Count, Confidence) with direction toggle
+- **Improved 3D visibility**: Reduced fog density 3×, increased node size + emissive for better visibility at zoom distance
+- **Source propagation** — All node creation hooks now set `source` field: compaction middle-term (`auto_extract`), storedcontext archive (`auto_extract`), compression summaries (`llm_compress`), pattern extraction (`llm_compress`), seed initialization (`auto_extract`)
+- **Confidence diminishing returns** — `verifyNode` now uses diminishing-returns curve: each verification adds `0.2 / (1 + verificationCount)` instead of flat +0.2
+- **Tag intersection search** — `searchByEmbedding` accepts `tagsFilter` option for tag-based filtering (intersection semantics). 2 new tests
+- **Management dashboard charts** — Supertype distribution bar chart, tag cloud (top 20, font-scaled), confidence histogram, stratum breakdown (hot/warm/cold)
+- **Management filters** — Supertype and source dropdown filters, wired to client-side `NodeFilterEngine`
+- **Tag editing in detail panel** — Inline tag add/remove with Enter key support
+- **Source editing in detail panel** — Source field as dropdown with Save on change
+- **Stats API extended** — `/api/stats` now returns `nodesPerSupertype`, `nodesPerSource`, `tagsFrequency`, `confidenceHistogram`, `stratumBreakdown`
+- 129 tests pass, 0 lint errors, 0 typecheck errors

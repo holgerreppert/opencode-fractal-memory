@@ -44,11 +44,6 @@ export interface MemConfig {
       timeoutMs: number;
     } | undefined;
   } | undefined;
-  fileSkeletonization?: {
-    enabled: boolean;
-    minLines: number;
-    strategy: string;
-  } | undefined;
   autoRetrieve?: {
     enabled: boolean;
     candidateCount: number;
@@ -155,6 +150,13 @@ export interface MemConfig {
     turns: number;
     protectedTools: string[];
   } | undefined;
+  autoInjection?: {
+    enabled: boolean;
+    injectOn: "first" | "always";
+    maxResults: number;
+    maxTokens: number;
+    minScore: number;
+  } | undefined;
 }
 
 const AutoRetrieveSchema = z.object({
@@ -250,12 +252,6 @@ const CommandCompressionSchema = z.object({
   deltaMaxCacheSize: z.number().positive().int().default(50),
   deltaMinSimilarity: z.number().min(0).max(1).default(0.5),
   ollamaExtraction: OllamaExtractionSchema.optional(),
-});
-
-const FileSkeletonizationSchema = z.object({
-  enabled: z.boolean().default(true),
-  minLines: z.number().positive().int().default(200),
-  strategy: z.string().default("ast+regex"),
 });
 
 const SessionLogSchema = z.object({
@@ -423,11 +419,6 @@ const DEFAULT_CONFIG: MemConfig = {
     deltaMaxCacheSize: 50,
     deltaMinSimilarity: 0.5,
   },
-  fileSkeletonization: {
-    enabled: true,
-    minLines: 200,
-    strategy: "ast+regex",
-  },
   toolDedup: {
     enabled: false,
     maxCacheEntries: 500,
@@ -439,6 +430,13 @@ const DEFAULT_CONFIG: MemConfig = {
     turns: 4,
     protectedTools: ["edit", "write", "task"],
   },
+  autoInjection: {
+    enabled: false,
+    injectOn: "first",
+    maxResults: 3,
+    maxTokens: 2000,
+    minScore: 0.5,
+  },
   graph: {
     enabled: true,
     maxFiles: 5000,
@@ -446,6 +444,14 @@ const DEFAULT_CONFIG: MemConfig = {
   },
   smallModel: {},
 };
+
+const AutoInjectionSchema = z.object({
+  enabled: z.boolean().default(false),
+  injectOn: z.enum(["first", "always"]).default("first"),
+  maxResults: z.number().positive().int().default(3),
+  maxTokens: z.number().positive().int().default(2000),
+  minScore: z.number().min(0).max(1).default(0.5),
+});
 
 const ToolDedupSchema = z.object({
   enabled: z.boolean().default(false),
@@ -495,9 +501,9 @@ const MemConfigSchema = z.object({
   smallModel: SmallModelSchema,
   graph: GraphSchema.optional(),
   commandCompression: CommandCompressionSchema.optional(),
-  fileSkeletonization: FileSkeletonizationSchema.optional(),
   toolDedup: ToolDedupSchema.optional(),
   errorPruning: ErrorPruningSchema.optional(),
+  autoInjection: AutoInjectionSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

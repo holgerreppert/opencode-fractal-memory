@@ -23,9 +23,9 @@ tag: rule:mandatory
 
 ### Auto-Learned
 - Review tool arguments and ensure correct format
-- Avoid memory_drilldown with vague queries - use memory_search first
+- Avoid memory(mode="drilldown") with vague queries - use memory(mode="search") first
 - Re-read file before replace to ensure content is current
-- Verify node exists before memory_delete
+- Verify node exists before memory(mode="delete")
 - Use ripgrep (rg) for direct code search instead of slow tools with timeouts`,
   },
   {
@@ -73,11 +73,11 @@ When you discover an error or better approach:
 tag: rule:mandatory
 never_strip: true
 
-### BEFORE any non-trivial task (3+ steps), you MUST call memory_search
-- Working on a file/module you've worked on before? → memory_search("<topic>")
-- User asks about past decisions? → memory_search("<topic>")
-- Not sure about a convention? → memory_search("<topic>")
-- Seeing errors you've seen before? → memory_search("<topic>")
+### BEFORE any non-trivial task (3+ steps), you MUST call memory(mode="search")
+- Working on a file/module you've worked on before? → memory(mode="search", query="<topic>")
+- User asks about past decisions? → memory(mode="search", query="<topic>")
+- Not sure about a convention? → memory(mode="search", query="<topic>")
+- Seeing errors you've seen before? → memory(mode="search", query="<topic>")
 
 ### BEFORE editing, you MUST use graph(relation="callers", name="<fn>")
 - Check what depends on the function you're changing
@@ -85,10 +85,10 @@ never_strip: true
 - Use graph(relation="search", query="<name>") INSTEAD of grep for symbols
 
 ### How to Search Memory
-1. Call memory_search with concise keywords — NOT the raw user message
+1. Call memory(mode="search") with concise keywords — NOT the raw user message
 2. Strip system reminders, logs, and code noise from your query
 3. Extract the core intent: what do you actually need to know?
-4. Check results — if >50% match, use memory_drilldown for details
+4. Check results — if >50% match, use memory(mode="drilldown") for details
 5. Reference memory in your response with file:line format
 
 ### Memory Categories (Episodic vs Semantic)
@@ -128,18 +128,27 @@ tag: rule:mandatory
 - NEVER skip hooks (--no-verify, --no-gpg-sign)
 - For code exploration, prefer grep/glob/graph tools over shell commands
 
-### memory_drilldown
-- ALWAYS use memory_search first to find relevant nodes
-- NEVER drilldown with vague queries
-- Use memory_drilldown(id) with specific node IDs
+### memory (consolidated tool)
+- USE memory(mode="search") FIRST before any get/drilldown
+- NEVER drilldown with vague queries - search first
+- After search/memory, then use memory(mode="get") or memory(mode="drilldown")
+- Before memory(mode="replace"), re-read with memory(mode="get") first
+- USE memory(mode="search") BEFORE edit/bash/write to find relevant context
 
-### memory_replace
-- ALWAYS re-read node with memory_get immediately before replacing
-- NEVER use cached content - content may change between operations
+### context (consolidated tool)
+- USE context(mode="check") at start of complex tasks (>3 steps)
+- If >60% pressure: context(mode="compress") OR context(mode="llm_compress")
+- After compaction: use context(mode="recall") to recover state
+- Use context(mode="inject") for automatic memory injection
 
-### memory_skill_load / memory_playbook_execute
-- When a task matches known triggers (debug, test, refactor, three.js, etc.),
-  proactively call memory_skill_load(name="<skill-name>") to load relevant skill instructions`,
+### learn (consolidated tool)
+- USE learn(mode="reflect") after session ends to learn from mistakes
+- USE learn(mode="verify") after storing important information
+- USE learn(mode="dashboard") weekly for system health
+
+### journal (consolidated tool)
+- USE journal(mode="write") after completing significant tasks to capture decisions
+  `,
   },
   // Storage curation rule
   {
@@ -223,14 +232,6 @@ Will this help future-you? → NO → Skip it`,
 tag: rule:feature
 
 Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first line shows the compression strategy and savings. Original output is preserved on non-zero exit. View stats at management app → Compress tab.`,
-  },
-  {
-    label: "rule:feature:file-skeletonization",
-    tag: "rule:feature",
-    content: `File Skeletonization Feature
-tag: rule:feature
-
-Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows the strategy (ast+regex or regex) and reduction. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
   },
   {
     label: "rule:feature:auto-retrieve",
@@ -1475,13 +1476,6 @@ As of npm v12 (July 2026), \`--ignore-scripts\` is the default — \`postinstall
     type: "rule",
     summary: "Bash tool output may be compressed. First line shows [Compressed via <strategy>]. Full output on non-zero exit. Use ! to bypass.",
     content: `Bash command output may be compressed via one of 7 strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic). The first line shows [Compressed via <strategy> — original: N chars, now: M chars]. Full output is preserved on non-zero exit (tee mode). View stats at management app → Compress tab.`,
-  },
-  {
-    label: "rule:feature:file-skeletonization",
-    tag: "rule:feature",
-    type: "rule",
-    summary: "Large file reads may return skeleton (imports + signatures with line numbers). Use Read with offset for full content.",
-    content: `Large file reads (>200 lines) may return a skeleton: imports plus function/class/enum/interface signatures with line numbers. The first line shows [Skeletonized via <strategy> — original: N lines, now: M lines]. Use Read with offset to get full content. Skeleton is skipped for small files, offset reads, and when reduction <50%.`,
   },
   {
     label: "rule:feature:auto-retrieve",
