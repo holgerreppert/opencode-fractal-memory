@@ -1,11 +1,11 @@
 import type { MemConfig } from "../../infrastructure/config/config";
-import { ensureBackgroundGraph, getActiveGraph, buildGraph } from "../../application/graph/build";
+import { getActiveGraph } from "../../application/graph/build";
 import { getFileContext } from "../../application/graph/query";
 import { extractSkeleton } from "../../application/skeletonize";
 import { writeGraphLog } from "../../logging";
 import type { HookHandler } from "./types";
 
-function hasGraph(graph: ReturnType<typeof getActiveGraph>): boolean {
+function hasGraph(graph: ReturnType<typeof getActiveGraph>): graph is NonNullable<ReturnType<typeof getActiveGraph>> {
   return graph !== null && graph.nodeCount() >= 10;
 }
 
@@ -13,8 +13,6 @@ export function createGraphContextHandler(config: MemConfig): HookHandler {
   const graphConfig = config.graph;
   if (!graphConfig?.enabled) return {};
 
-  const root = process.cwd();
-  const maxFiles = graphConfig.maxFiles ?? 5000;
   const autoSkeletonMinLines = graphConfig.autoSkeletonizeMinLines;
 
   return {
@@ -33,22 +31,8 @@ export function createGraphContextHandler(config: MemConfig): HookHandler {
 
       let preamble = "";
 
-      let graph = getActiveGraph();
-      if (!hasGraph(graph)) {
-        ensureBackgroundGraph(root, maxFiles);
-        graph = getActiveGraph();
-      }
-      if (!hasGraph(graph)) {
-        try {
-          const result = buildGraph(root, maxFiles);
-          graph = result.graph;
-          writeGraphLog("info", "Graph built for preamble", { files: result.fileCount });
-        } catch {
-          writeGraphLog("warn", "Graph preamble: synchronous build failed", { file: filePath });
-        }
-      }
-
-      if (graph) {
+      const graph = getActiveGraph();
+      if (hasGraph(graph)) {
         const context = getFileContext(graph, filePath);
         if (context) {
           const graphLines: string[] = [];

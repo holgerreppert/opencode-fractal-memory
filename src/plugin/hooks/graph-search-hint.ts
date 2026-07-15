@@ -1,4 +1,4 @@
-import { ensureBackgroundGraph, getActiveGraph, buildGraph } from "../../application/graph/build";
+import { ensureBackgroundGraph, getActiveGraph } from "../../application/graph/build";
 import { searchNodes } from "../../application/graph/query";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { writeGraphLog } from "../../logging";
@@ -6,7 +6,7 @@ import type { HookHandler } from "./types";
 
 const SEARCH_TOOLS = new Set(["grep", "glob", "search"]);
 
-function hasGraph(graph: ReturnType<typeof getActiveGraph>): boolean {
+function hasGraph(graph: ReturnType<typeof getActiveGraph>): graph is NonNullable<ReturnType<typeof getActiveGraph>> {
   return graph !== null && graph.nodeCount() >= 10;
 }
 
@@ -42,20 +42,11 @@ export function createGraphSearchHintHandler(config: MemConfig): HookHandler {
 
       if (!query || query.length < 2) return;
 
-      let graph = getActiveGraph();
+      const graph = getActiveGraph();
       if (!hasGraph(graph)) {
         ensureBackgroundGraph(root, maxFiles);
-        graph = getActiveGraph();
+        return;
       }
-      if (!hasGraph(graph)) {
-        try {
-          const result = buildGraph(root, maxFiles);
-          graph = result.graph;
-        } catch {
-          return;
-        }
-      }
-      if (!graph) return;
 
       const matches = searchNodes(graph, query).filter(n => n.type === "symbol");
       if (matches.length === 0) return;
