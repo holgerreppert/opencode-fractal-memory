@@ -134,6 +134,8 @@ cp -r dist management package.json LICENSE README.md commands agent \
   ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
 ```
 
+This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#10546](https://github.com/anomalyco/opencode/issues/10546), [#25293](https://github.com/anomalyco/opencode/issues/25293).
+
 ### For development / manual install
 
 ```bash

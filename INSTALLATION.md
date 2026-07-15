@@ -59,6 +59,8 @@ bun add opencode-fractal-memory@latest
 
 Or copy the build directly as described above.
 
+This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#25293](https://github.com/anomalyco/opencode/issues/25293).
+
 ## How model download works
 
 OpenCode uses `bun install` at startup, which **skips lifecycle scripts** (`postinstall`) by default. To handle this, the plugin downloads model files during its initialization phase:
