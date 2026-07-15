@@ -4,7 +4,7 @@
 
 | Requirement | Version | Notes |
 |---|---|---|
-| **OpenCode** | v1.15.13+ | SDK peer dependency |
+| **OpenCode** | v1.17.0+ | SDK peer dependency |
 | **Bun** | >=1.0.0 | Plugin runtime |
 | **Node.js** | >=18 | For npm-based installs only |
 
@@ -29,7 +29,7 @@ Build from source or install a `.tgz`:
 ```bash
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.6.22.tgz
+npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.7.6.tgz
 ```
 
 Use `--ignore-scripts` to avoid Bun trust prompts (npm v12 defaults to this behavior). Models download on first plugin load instead.
@@ -40,7 +40,7 @@ After rebuilding, copy directly to the cached plugin directory:
 
 ```bash
 cd /path/to/opencode-fractal-memory
-npm run build
+bun run build
 cp -r dist management package.json LICENSE README.md commands agent \
   ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
 ```
@@ -57,7 +57,7 @@ cd ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/openco
 bun add opencode-fractal-memory@latest
 ```
 
-This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#25293](https://github.com/anomalyco/opencode/issues/25293).
+Or copy the build directly as described above.
 
 ## How model download works
 
@@ -166,7 +166,7 @@ memory_set(content="## Skill content...", label="skill:my-skill", type="skill", 
 ### Model Download Fails
 The plugin uses HuggingFace CDN. If downloads fail:
 ```bash
-bun run ~/.config/opencode/node_modules/opencode-fractal-memory/scripts/download-models.ts
+bun run ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/scripts/download-models.ts
 ```
 
 ### Database Errors
@@ -179,10 +179,10 @@ rm ~/.config/opencode/memory.db
 ## Uninstallation
 
 ```bash
-cd ~/.config/opencode
-rm -rf node_modules/opencode-fractal-memory
+# Remove from opencode.json plugins array first
+rm -rf ~/.config/opencode/node_modules/opencode-fractal-memory
+rm -rf ~/.cache/opencode/packages/opencode-fractal-memory@latest
 rm ~/.config/opencode/memory.db
-# Remove from opencode.json plugins array
 ```
 
 ## Next Steps

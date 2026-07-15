@@ -98,7 +98,7 @@ if you find bugs or if you just want to suggest improvements
 
 | Requirement | Version | Notes |
 |---|---|---|
-| **OpenCode** | v1.15.13+ | SDK peer dependency |
+| **OpenCode** | v1.17.0+ | SDK peer dependency |
 | **Bun** | >=1.0.0 | Plugin runtime |
 | **Node.js** | >=18 | For npm-based installs only |
 
@@ -118,25 +118,21 @@ OpenCode installs it automatically at startup from npm. Model files (~24 MB) dow
 
 ### Updating
 
-OpenCode caches plugins at `~/.cache/opencode/packages/`. When a new version is published to npm, the cache may stay pinned to the old version due to bun's dual caching (lockfile + global metadata cache):
+OpenCode caches plugins at `~/.cache/opencode/packages/`. After publishing a new version, force a cache refresh:
 
 ```bash
-# Clear bun's global metadata cache and force re-resolve
-rm -rf ~/.bun/install/cache/
 cd ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
 bun add opencode-fractal-memory@latest
 ```
 
-If that doesn't work, copy the published files manually:
+Or copy the build directly (for development):
 
 ```bash
 cd <your-local-clone>
-npm run build
+bun run build
 cp -r dist management package.json LICENSE README.md commands agent \
   ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
 ```
-
-This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#10546](https://github.com/anomalyco/opencode/issues/10546), [#25293](https://github.com/anomalyco/opencode/issues/25293).
 
 ### For development / manual install
 
@@ -155,7 +151,7 @@ Enables memory tools in IDEs that support the Model Context Protocol (Cursor, Wi
   "mcp": {
     "fractal-memory": {
       "type": "local",
-      "command": ["bun", "run", "~/.config/opencode/node_modules/opencode-fractal-memory/dist/mcp-server.js"],
+      "command": ["bun", "run", "~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/dist/mcp-server.js"],
       "enabled": true
     }
   }
