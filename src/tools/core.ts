@@ -220,7 +220,7 @@ ${node.content}${node.summary ? "\n\nSummary:\n" + node.summary : ""}`;
 
 export function MemoryFetch(store: MemoryStore) {
   const t = tool({
-    description: "Fetch a specific memory node by exact label. File summaries are stored with label prefix 'file:' — use memory_search('file:<filename>') to find them.",
+    description: `Fetch a specific memory node by exact label. File summaries are stored with label prefix 'file:' — use memory(mode="search", query="file:<filename>") to find them.`,
     args: {
       label: tool.schema.string(),
       scope: tool.schema.enum(["global", "project"]).optional(),
@@ -329,7 +329,7 @@ export function MemoryReplace(store: MemoryStore) {
         return `Updated memory node ${node.id.slice(0,8)} (fuzzy match)${embedding ? " (embedding refreshed)" : ""}.`;
       }
 
-      throw new Error(`Old text not found in node ${node.id}. Re-read the node with memory_get to get exact content.`);
+      throw new Error(`Old text not found in node ${node.id}. Re-read the node with memory(mode="get") to get exact content.`);
     },
   });
   return wrapWithTracking(t, store, "memory_replace");

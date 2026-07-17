@@ -131,12 +131,28 @@ export class SqliteCompressionStore implements CompressionStore {
     ).get() as { calls: number; raw: number | null; comp: number | null } | undefined;
 
     const recentInjections = queryInjectionMetrics(db, 5);
+    const allInjections = queryInjectionMetrics(db, 1000);
 
     const totalMemoryTokens = nodesByLevel.reduce((s, r) => s + ((r.total_chars ?? 0) / 4), 0);
 
     const compressedSavings = compressTotal && compressTotal.raw
       ? Math.round((1 - (compressTotal.comp ?? 0) / (compressTotal.raw ?? 1)) * 100)
       : 0;
+
+    // Compute injection aggregate
+    const stratMap = new Map<string, number>();
+    let totalInjTokens = 0;
+    let totalInjNodes = 0;
+    for (const m of allInjections) {
+      const s = m.rerankStrategy || m.injectionMode || "unknown";
+      stratMap.set(s, (stratMap.get(s) ?? 0) + 1);
+      totalInjTokens += m.injectedTokens;
+      totalInjNodes += m.injectedNodeCount;
+    }
+    const topStrategies = [...stratMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([strategy, count]) => ({ strategy, count }));
 
     return {
       memory: {
@@ -169,6 +185,12 @@ export class SqliteCompressionStore implements CompressionStore {
         mode: m.injectionMode,
         strategy: m.rerankStrategy,
       })),
+      injectionAggregate: {
+        total: allInjections.length,
+        topStrategies,
+        avgTokens: allInjections.length > 0 ? Math.round(totalInjTokens / allInjections.length) : 0,
+        avgNodes: allInjections.length > 0 ? Math.round((totalInjNodes / allInjections.length) * 10) / 10 : 0,
+      },
       overhead: {
         systemPromptTokens: 3000,
         toolDefTokens: 4000,

@@ -24,6 +24,12 @@ export interface ContextDashboardResult {
     sessionId: string; timestamp: number; nodeCount: number;
     tokens: number; mode: string; strategy: string | null;
   }>;
+  injectionAggregate: {
+    total: number;
+    topStrategies: Array<{ strategy: string; count: number }>;
+    avgTokens: number;
+    avgNodes: number;
+  };
   overhead: { systemPromptTokens: number; toolDefTokens: number };
 }
 

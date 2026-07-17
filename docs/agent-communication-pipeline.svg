@@ -124,43 +124,43 @@
 <polygon fill="#8957e5" stroke="transparent" points="1145,-247.5 1145,-614.5 1361,-614.5 1361,-247.5 1145,-247.5"/>
 <text text-anchor="start" x="1170.5" y="-602.2" font-family="Helvetica,Arial,sans-serif" font-weight="bold" font-size="11.00" fill="white">48 Tools (agent&#45;visible, explicit)</text>
 <polygon fill="#bc8cff" stroke="transparent" points="1146,-588 1146,-594 1360,-594 1360,-588 1146,-588"/>
-<text text-anchor="start" x="1165" y="-576.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_set</text>
+<text text-anchor="start" x="1165" y="-576.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="set")</text>
 <text text-anchor="start" x="1254.5" y="-576.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Create / update node</text>
-<text text-anchor="start" x="1164.5" y="-559.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_get</text>
+<text text-anchor="start" x="1164.5" y="-559.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="get")</text>
 <text text-anchor="start" x="1263.5" y="-559.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Read node by ID</text>
-<text text-anchor="start" x="1161.5" y="-542.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_fetch</text>
+<text text-anchor="start" x="1161.5" y="-542.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="fetch")</text>
 <text text-anchor="start" x="1258" y="-542.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Read node by label</text>
-<text text-anchor="start" x="1157" y="-525.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_search</text>
+<text text-anchor="start" x="1157" y="-525.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="search")</text>
 <text text-anchor="start" x="1239" y="-525.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Semantic + BM25 + temporal</text>
-<text text-anchor="start" x="1158.5" y="-508.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_delete</text>
+<text text-anchor="start" x="1158.5" y="-508.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="delete")</text>
 <text text-anchor="start" x="1272.5" y="-508.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Delete node</text>
-<text text-anchor="start" x="1155.5" y="-491.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_replace</text>
+<text text-anchor="start" x="1155.5" y="-491.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="replace")</text>
 <text text-anchor="start" x="1273.5" y="-491.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Edit content</text>
-<text text-anchor="start" x="1163" y="-474.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_rate</text>
+<text text-anchor="start" x="1163" y="-474.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="rate")</text>
 <text text-anchor="start" x="1251" y="-474.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Mark helpful / set score</text>
-<text text-anchor="start" x="1165.5" y="-457.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_list</text>
+<text text-anchor="start" x="1165.5" y="-457.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="list")</text>
 <text text-anchor="start" x="1276.5" y="-457.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">List nodes</text>
-<text text-anchor="start" x="1152.5" y="-440.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_drilldown</text>
+<text text-anchor="start" x="1152.5" y="-440.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="drilldown")</text>
 <text text-anchor="start" x="1266.5" y="-440.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Fractal retrieval</text>
-<text text-anchor="start" x="1160" y="-423.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_inject</text>
+<text text-anchor="start" x="1160" y="-423.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="inject")</text>
 <text text-anchor="start" x="1251" y="-423.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Budget&#45;aware injection</text>
-<text text-anchor="start" x="1159" y="-406.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_prune</text>
+<text text-anchor="start" x="1159" y="-406.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="prune")</text>
 <text text-anchor="start" x="1254.5" y="-406.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Agent&#45;driven pruning</text>
-<text text-anchor="start" x="1151" y="-389.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_compress</text>
+<text text-anchor="start" x="1151" y="-389.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="compress")</text>
 <text text-anchor="start" x="1251.5" y="-389.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">L0→L1 summarization</text>
-<text text-anchor="start" x="1160" y="-372.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_verify</text>
+<text text-anchor="start" x="1160" y="-372.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="verify")</text>
 <text text-anchor="start" x="1257" y="-372.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Confirm correctness</text>
-<text text-anchor="start" x="1161.5" y="-355.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_stats</text>
+<text text-anchor="start" x="1161.5" y="-355.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="stats")</text>
 <text text-anchor="start" x="1273" y="-355.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Index health</text>
-<text text-anchor="start" x="1149" y="-338.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_dashboard</text>
+<text text-anchor="start" x="1149" y="-338.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="dashboard")</text>
 <text text-anchor="start" x="1260" y="-338.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Top nodes + types</text>
-<text text-anchor="start" x="1158.5" y="-321.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_reflect</text>
+<text text-anchor="start" x="1158.5" y="-321.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="reflect")</text>
 <text text-anchor="start" x="1257" y="-321.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Create lessons from</text>
-<text text-anchor="start" x="1160.5" y="-304.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_distill</text>
+<text text-anchor="start" x="1160.5" y="-304.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="distill")</text>
 <text text-anchor="start" x="1262.5" y="-304.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Extract rules from</text>
 <text text-anchor="start" x="1163.5" y="-287.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">journal_write</text>
 <text text-anchor="start" x="1256" y="-287.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Append&#45;only journal</text>
-<text text-anchor="start" x="1162" y="-270.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory_help</text>
+<text text-anchor="start" x="1162" y="-270.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">memory(mode="help")</text>
 <text text-anchor="start" x="1256.5" y="-270.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">Show all commands</text>
 <text text-anchor="start" x="1170.5" y="-253.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">+29 more</text>
 <text text-anchor="start" x="1255.5" y="-253.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">stats, sessions, meta</text>
@@ -213,7 +213,7 @@
 <text text-anchor="start" x="419.5" y="-287.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#ff7b72">Embedding Gen</text>
 <text text-anchor="start" x="503.5" y="-287.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#8b949e">scheduledBackgroundEmbeddings() — auto&#45;generates embeddings for nodes missing them, 1s post&#45;init</text>
 <text text-anchor="start" x="415" y="-270.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#ff7b72">Prune (no dry&#45;run)</text>
-<text text-anchor="start" x="554.5" y="-270.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#8b949e">memory_prune(dryRun=false) returns only node count, not list of deleted nodes</text>
+<text text-anchor="start" x="554.5" y="-270.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#8b949e">memory(mode="prune")(dryRun=false) returns only node count, not list of deleted nodes</text>
 <text text-anchor="start" x="411.5" y="-253.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#ff7b72">Compaction Archive</text>
 <text text-anchor="start" x="518" y="-253.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="#8b949e">session.compacting — creates middle&#45;term:* + storedcontext:* nodes, agent sees summaries only</text>
 </g>

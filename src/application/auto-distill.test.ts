@@ -41,7 +41,7 @@ function makeMockStore(options: {
       nodes.push({
         id: `lesson-${i}-fix`,
         label: `lesson:test-${i}:fix`,
-        content: "- Check thing before starting\n- Verify node exists before memory_get",
+        content: "- Check thing before starting\n- Verify node exists before memory(mode=\"get\")",
         scope: "global",
         createdAt: new Date(),
       });
@@ -80,7 +80,7 @@ describe("distillRules", () => {
     const { store, nodes } = makeMockStore({ lessons: 3, hasFixNodes: true });
     await distillRules(store, { minLessons: 1, useLlm: false });
     const ruleNode = nodes.find(n => n.label === "rule:mandatory:memory");
-    expect(ruleNode?.content).toContain("Always verify label exists before memory_get");
+    expect(ruleNode?.content).toContain("Always verify label exists before memory(mode=\"get\")");
     expect(ruleNode?.content).toContain("Check thing before starting");
   });
 
@@ -115,7 +115,7 @@ describe("distillRules", () => {
     const ruleNode = nodes.find(n => n.label === "rule:mandatory:memory");
     expect(ruleNode?.content).toContain("### Auto-Learned");
     expect(ruleNode?.content).toContain("Some old rule");
-    expect(ruleNode?.content).toContain("Always verify label exists before memory_get");
+    expect(ruleNode?.content).toContain("Always verify label exists before memory(mode=\"get\")");
   });
 
   test("creates ### Auto-Learned section if absent", async () => {

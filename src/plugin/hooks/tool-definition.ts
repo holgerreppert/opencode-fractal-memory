@@ -11,7 +11,7 @@ interface ToolDefinitionOutput {
 }
 
 const TIPS: Record<string, string> = {
-  read: "\n\nTip: Before editing a file, use `graph(relation='dependents', file='<path>')` to see what depends on it. Use `memory_search('<topic>')` for relevant past context.",
+  read: "\n\nTip: Before editing a file, use `graph(relation='dependents', file='<path>')` to see what depends on it. Use `memory(mode='search', query='<topic>')` for relevant past context.",
   edit: "\n\nTip: Before editing, use `graph(relation='callers', name='<function>')` to check what depends on the function you're changing, or `graph(relation='dependents', file='<path>')` for change impact.",
   grep: "\n\nTip: Use `graph(relation='search', query='<symbol>')` for symbol-aware search — it understands code structure and finds definitions/references.",
   glob: "\n\nTip: Use `graph(relation='search', query='<name>')` to find symbols by name across the codebase — faster and more precise than glob.",

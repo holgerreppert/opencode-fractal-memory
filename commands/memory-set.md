@@ -27,11 +27,11 @@ Create or update a memory node. Use to store important information that you want
 
 **Usage:**
 ```
-memory_set(content="Remember: User prefers inline code explanations over comments", label="user-pref-concise", sticky=true)
+memory(mode="set", content="Remember: User prefers inline code explanations over comments", label="user-pref-concise", sticky=true)
 
-memory_set(content="Decided to use JWT tokens for API auth\n\n- 24h expiry with refresh tokens\n- Files: src/auth.ts, src/middleware.ts", label="decision:auth-jwt", type="event", importance=0.8)
+memory(mode="set", content="Decided to use JWT tokens for API auth\n\n- 24h expiry with refresh tokens\n- Files: src/auth.ts, src/middleware.ts", label="decision:auth-jwt", type="event", importance=0.8)
 
-memory_set(content="## Installation instructions...", label="skill:opencode-plugin-installation", type="skill", metadata='{"triggers":["installation","update","version","publish"]}', sticky=true)
+memory(mode="set", content="## Installation instructions...", label="skill:opencode-plugin-installation", type="skill", metadata='{"triggers":["installation","update","version","publish"]}', sticky=true)
 ```
 
 **Tips:**

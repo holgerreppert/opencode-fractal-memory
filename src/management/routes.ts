@@ -1,4 +1,4 @@
-import { memLog } from "../logging";
+import { memLog, writeLiveFeedLog } from "../logging";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { getRuntimeInfo } from "../infrastructure/llm/onnx-runtime";
 import { Router } from "./router";
@@ -85,6 +85,9 @@ export function registerRoutes(router: Router, store: MemoryStore): void {
   router.post(/^\/api\/graph\/explain$/, (req) => handleGraphExplain(req));
   router.get(/^\/api\/graph\/export$/, () => handleGraphExport());
   router.get(/^\/api\/graph\/usage$/, () => handleGraphUsage());
+
+  // ==================== Live Feed ====================
+  router.get(/^\/api\/live$/, () => handleLiveFeed(store));
 }
 
 // ==================== Pure handlers (no store) ====================
@@ -326,6 +329,31 @@ async function handleInjectionQuality(req: Request, store: MemoryStore): Promise
 
 async function handleContextDashboard(store: MemoryStore): Promise<Response> {
   return jsonResponse(await store.getContextDashboard());
+}
+
+async function handleLiveFeed(store: MemoryStore): Promise<Response> {
+  try {
+    const snapshot = await store.getLiveFeedSnapshot(100);
+    let tokenHistory;
+    try {
+      tokenHistory = await store.getTokenHistory(1, 10);
+    } catch {
+      tokenHistory = null;
+    }
+    const result = {
+      ...snapshot,
+      tokenHistory,
+      timestamp: Date.now(),
+    };
+    try {
+      writeLiveFeedLog(result as Record<string, unknown>);
+    } catch {
+      // best-effort
+    }
+    return jsonResponse(result);
+  } catch (e) {
+    return jsonResponse({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
 }
 
 // ==================== Backup / Restore Handlers ====================

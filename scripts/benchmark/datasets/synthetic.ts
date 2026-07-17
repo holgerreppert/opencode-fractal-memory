@@ -398,7 +398,7 @@ export const NODES: SyntheticNode[] = [
   },
   {
     label: "file:src/mcp/server.ts",
-    content: "MCP Model Context Protocol server implementation. Handles incoming MCP requests from AI coding assistants, routes them to the appropriate memory store operations, and returns structured responses. Supports tools like memory_search, memory_get, memory_set, and memory_delete exposed through the MCP protocol. Uses the standard MCP transport layer with JSON-RPC message formatting.",
+    content: "MCP Model Context Protocol server implementation. Handles incoming MCP requests from AI coding assistants, routes them to the appropriate memory store operations, and returns structured responses. Supports tools like memory(mode='search'), memory(mode='get'), memory(mode='set'), and memory(mode='delete') exposed through the MCP protocol. Uses the standard MCP transport layer with JSON-RPC message formatting.",
     type: "summary",
     importance: 0.5,
   },

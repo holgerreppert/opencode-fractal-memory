@@ -18,10 +18,10 @@ Retrieve raw memory nodes as JSON for programmatic consumption. Returns array of
 
 **Usage:**
 ```
-memory_retrieve("authentication")
-memory_retrieve("auth", limit=5)
-memory_retrieve("session", min_level=0, max_level=1)
-memory_retrieve("bug", bm25_weight=0.8)  # More keyword-focused
+memory(mode="search", "authentication")
+memory(mode="search", "auth", limit=5)
+memory(mode="search", "session", min_level=0, max_level=1)
+memory(mode="search", "bug", bm25_weight=0.8)  # More keyword-focused
 ```
 
 **Returns:**
@@ -31,4 +31,4 @@ memory_retrieve("bug", bm25_weight=0.8)  # More keyword-focused
 
 **Tips:**
 - Use for automation/scripts
-- Check memory_search first for human-readable results
+- Check memory(mode="search", ...) first for human-readable results

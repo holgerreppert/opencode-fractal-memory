@@ -5,9 +5,9 @@ Find and prune stale/unused memory nodes. By default runs in dry-run mode (shows
 
 **Usage:**
 ```
-memory_prune()
-memory_prune(dryRun=false)
-memory_prune(scope="project", maxAgeDays=30, dryRun=false)
+memory(mode="prune", )
+memory(mode="prune", dryRun=false)
+memory(mode="prune", scope="project", maxAgeDays=30, dryRun=false)
 ```
 
 **Arguments:**

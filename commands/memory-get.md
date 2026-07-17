@@ -1,7 +1,7 @@
 ---
 description: Get a memory node by ID or label - retrieve full content
 ---
-Get the full content of a memory node. Use after `memory_search` finds relevant nodes.
+Get the full content of a memory node. Use after `memory(mode="search", ...)` finds relevant nodes.
 
 **When to use:**
 - Retrieve full details from a node found via search
@@ -15,9 +15,9 @@ Get the full content of a memory node. Use after `memory_search` finds relevant 
 
 **Usage:**
 ```
-memory_get(id="ab3f2")
-memory_get(label="auth-choice-supabase")
-memory_get("ab3f2")  # shorthand
+memory(mode="get", id="ab3f2")
+memory(mode="get", label="auth-choice-supabase")
+memory(mode="get", "ab3f2")  # shorthand
 ```
 
 **Tips:**

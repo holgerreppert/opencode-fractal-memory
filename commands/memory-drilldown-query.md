@@ -15,8 +15,8 @@ Top-down drilldown from high-level summaries to specific details.
 
 **Usage:**
 ```
-memory_drilldown_query("How does auth work?")
-memory_drilldown_query("What decisions were made?", max_results=10)
+memory(mode="drilldown_query", "How does auth work?")
+memory(mode="drilldown_query", "What decisions were made?", max_results=10)
 ```
 
 **How it works:**
@@ -26,4 +26,4 @@ memory_drilldown_query("What decisions were made?", max_results=10)
 
 **Tips:**
 - Good for exploration
-- Use with memory_search for direct lookup
+- Use with memory(mode="search", ...) for direct lookup

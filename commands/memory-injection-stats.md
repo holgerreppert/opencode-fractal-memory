@@ -8,4 +8,4 @@ Show me my memory injection statistics including:
 - Effectiveness scores if available
 - Recent injection history
 
-Use memory_injection_stats with limit=10.
+Use context(mode="injection_stats") with limit=10.

@@ -56,7 +56,7 @@ The SDK builds `out.system` as `string[]`. Two handlers splice into it:
 | # | Proposal | Impact | Effort | Rationale |
 |---|----------|--------|--------|-----------|
 | 1.1 | **Adaptive rule selection**: Score each rule against current user message. Only inject rules with relevance > 0.3. | Medium | Low | Reduces static noise. BM25 scoring already implemented in search. |
-| 1.2 | **Condensed rule format**: Compress multi-paragraph rules to single-sentence summaries. Full rule available via memory_get. | Medium | Low | Similar to how Memex uses compact indices. |
+| 1.2 | **Condensed rule format**: Compress multi-paragraph rules to single-sentence summaries. Full rule available via memory(mode="get"). | Medium | Low | Similar to how Memex uses compact indices. |
 | 1.3 | **Dynamic context injection**: Use `prompt.AppendDynamicContext()` to inject session metadata (turn count, token pressure, open files). | Medium | Low | SDK feature exists but unused. |
 | 1.4 | **Progressive rule disclosure**: Only inject core rules (mandatory) at session start. Add task/suggestion rules when pressure < 70%. Remove rules entirely when pressure > 90% (trust the model). | Medium | Low | AgentFold-style adaptive management. |
 | 1.5 | **System prompt versioning**: Track which rules were injected and whether they were used (via tool results). Self-optimize injection set. | High | Medium | Continuous improvement loop. |
@@ -219,7 +219,7 @@ When context reaches ~95%:
 2. **Summary is entirely LLM-decided**: The summarizer chooses what to keep in ~50 lines. Important details are lost subjectively.
 3. **No structured summary format**: The summary is free-form text. No structured fields, no indices, no provenance.
 4. **No summary validation**: No check that the summary preserves key facts and forward intent.
-5. **Previous sessions are opaque**: Once compacted, prior sessions cannot be searched semantically — the `storedcontext` nodes exist but have no dedicated retrieval mechanism beyond `memory_recall_context`.
+5. **Previous sessions are opaque**: Once compacted, prior sessions cannot be searched semantically — the `storedcontext` nodes exist but have no dedicated retrieval mechanism beyond `context(mode="recall")`.
 6. **No cross-session continuity**: No injection of relevant facts from prior sessions when starting a new one.
 
 ### Research Evidence
@@ -259,9 +259,9 @@ These improvements affect multiple layers simultaneously.
 | `memory.SearchWithIntent(intentBoostMap)` | Layer 3 | Intent-aware retrieval | **Not used** |
 | `tool.SchemaHints` | Layer 4 | Expected output shape metadata | **Not used** |
 | `tool.ResultTransform` | Layer 4 | Post-process tool output | **Not used** |
-| `memory_drilldown_query(maxDepth)` | Layer 3 | Multi-hop retrieval | Used at depth 3 |
-| `memory_middle_term` | Layer 5 | Pre-compaction snapshot access | **Not exposed in UI** |
-| `memory_compress` (LLM variant) | Layer 5 | Richer summaries | `memory_llm_compress` exists |
+| `memory(mode="drilldown_query", maxDepth)` | Layer 3 | Multi-hop retrieval | Used at depth 3 |
+| `context(mode="middle_term")` | Layer 5 | Pre-compaction snapshot access | **Not exposed in UI** |
+| `memory(mode="compress")` (LLM variant) | Layer 5 | Richer summaries | `context(mode="llm_compress")` exists |
 | `experimental.chat.params` | All | Model configuration | Used (chat-params handler) |
 
 ### 6.2 Integration: Memory Plugin Across All Layers

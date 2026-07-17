@@ -6,7 +6,7 @@ Analyze a session to create lesson nodes from tool failures. Call after session 
 **When to use:**
 - After a session with failures
 - To create reusable lessons
-- Before memory_distill
+- Before memory(mode="distill")
 
 **Arguments:**
 - `session_id` (optional): Session to analyze (defaults to current)
@@ -15,9 +15,9 @@ Analyze a session to create lesson nodes from tool failures. Call after session 
 
 **Usage:**
 ```
-memory_reflect()
-memory_reflect(session_id="abc123")
-memory_reflect(dry_run=true)
+memory(mode="reflect", )
+memory(mode="reflect", session_id="abc123")
+memory(mode="reflect", dry_run=true)
 ```
 
 **Output:**
@@ -27,11 +27,11 @@ memory_reflect(dry_run=true)
 - Generated lessons
 
 **Lesson patterns:**
-- `memory_drilldown` → "use memory_search first"
-- `memory_get` → "verify label exists"
+- `memory(mode="drilldown")` → "use memory(mode="search") first"
+- `memory(mode="get")` → "verify label exists"
 - `read/glob` → "check file exists"
 - `edit` → "read file first"
 
 **Tips:**
 - Creates `lesson:<timestamp>` nodes
-- Use with memory_distill to create rules
+- Use with memory(mode="distill") to create rules

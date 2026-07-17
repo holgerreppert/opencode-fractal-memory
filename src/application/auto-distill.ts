@@ -40,9 +40,9 @@ export async function distillRules(
     const action = match?.[1];
     if (action) {
       if (action.includes("memory_drilldown")) {
-        distilledRules.push("- Avoid memory_drilldown with vague queries - use memory_search first");
+        distilledRules.push("- Avoid memory(mode=\"drilldown\") with vague queries - use memory(mode=\"search\", ...) first");
       } else if (action.includes("memory_get")) {
-        distilledRules.push("- Always verify label exists before memory_get");
+        distilledRules.push("- Always verify label exists before memory(mode=\"get\")");
       } else if (action.includes("memory_replace")) {
         distilledRules.push("- Re-read file before replace to ensure content is current");
       } else if (action.includes("read") || action.includes("glob")) {

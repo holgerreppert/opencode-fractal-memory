@@ -37,12 +37,12 @@ export function createContextTool(store: MemoryStore, client?: unknown) {
   const llmHandler = MemoryLlmCompress(store, client);
 
   const t = tool({
-    description: `Multi-mode context management tool for monitoring and controlling context pressure.
+    description: `BEFORE COMPLEX TASKS: check context pressure first. Prevents performance degradation before it happens.
 
 MODES:
-  compress      — Compress old nodes into higher-level summaries (run when >60% full)
+  compress      — Compress old nodes into higher-level summaries. RUN WHEN >60% FULL
   llm_compress  — LLM-powered compression with richer summaries (uses session LLM)
-  check         — Check memory token usage vs. context limit (early warning at >60%)
+  check         — Check memory token usage vs context limit. USE BEFORE 3+ STEP TASKS
   total_tokens  — Full token analysis: memory + conversation + cache
   inject        — Inject relevant memories with token budget management
   middle_term   — Retrieve pre-compaction context snapshots
@@ -54,9 +54,9 @@ MODES:
 WORKFLOW:
   check → compress (if >60%) → llm_compress (for important nodes) → recall/middle_term (after compaction)
 
-TIP: Run context(mode=check) at the start of complex tasks.
-TIP: Use context(mode=inject) for automatic context injection without manual selection.
-TIP: After compaction, run context(mode=recall) to recover archived state.`,
+TIP: context(mode="check") at the START of every complex task (>3 steps).
+TIP: If >60%: compress immediately. If >80%: critical — stop and compress.
+TIP: After compaction: context(mode="recall") to recover archived state.`,
     args: {
       mode: tool.schema.enum(["compress", "llm_compress", "check", "total_tokens", "inject", "middle_term", "recall", "cache_status", "tool_stats", "session_stats"]).describe("Which context operation to perform"),
 

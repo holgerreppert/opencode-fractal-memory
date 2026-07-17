@@ -171,7 +171,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `rule:feature:confidence-diminishing-returns` | rule | verifyNode uses 0.2/(1+vc) formula |
 | `output-token-control` | howto | Output token control — config, strategies, levels |
 | `sdk-llm-judge-auto-retrieve` | note | LLM judge via client.session.prompt({noReply:true}) |
-| `memory-llm-compress-session-fix` | note | sessionId threading fix for memory_llm_compress |
+| `memory-llm-compress-session-fix` | note | sessionId threading fix for context(mode="llm_compress") |
 | `enhancements-llm-compress-auto-distill-predictive-rating` | note | Three enhancements implementation |
 | `ollama-memory-feature` | note | Ollama-based local memory system |
 | `middle_term_context_implementation_complete` | implementation | Middle-term context capture |

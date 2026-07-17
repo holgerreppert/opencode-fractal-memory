@@ -5,7 +5,7 @@ Displays the size of the working‑memory cache, its maximum capacity, and the m
 
 **Usage:**
 ```
-memory_cache_status
+context(mode="cache_status")
 ```
 
 **Arguments:** None.

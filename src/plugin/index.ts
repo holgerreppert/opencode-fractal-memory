@@ -52,6 +52,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     store, client, memConfig,
     ruleCache, ruleCacheDirty, sessionInjectionLock, latestUserMessage,
     { start: ensureManagementServer, stop: stopManagementServer },
+    currentSessionId,
   );
   const toolMap = createToolMap(store, journalTools, client, journalStore, journalCtx);
 
@@ -60,14 +61,29 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   const registerAgentsHandler = createRegisterAgentsHandler();
   const smallModelMap = (memConfig.smallModel ?? {}) as Record<string, string>;
 
+  const composedChatMessage = async (input: { sessionID: string }, output: unknown) => {
+    currentSessionId.value = input.sessionID;
+    if (handlers["chat.message"]) {
+      await handlers["chat.message"](input, output);
+    }
+  };
+
+  const composedMessagesTransform = async (input: unknown, output: unknown) => {
+    if (autoRetrieveHook) {
+      const arHandler = autoRetrieveHook["experimental.chat.messages.transform"];
+      if (arHandler) {
+        await arHandler(input, output as any);
+      }
+    }
+    await handlers["experimental.chat.messages.transform"]?.(input, output);
+  };
+
   return {
     ...handlers,
-    ...autoRetrieveHook,
+    "chat.message": composedChatMessage,
+    "experimental.chat.messages.transform": composedMessagesTransform,
     config: registerAgentsHandler,
     tool: toolMap,
-    "chat.message": async (input: { sessionID: string }) => {
-      currentSessionId.value = input.sessionID;
-    },
     "experimental.provider.small_model": async (input: { provider: string }, output: { model?: string }) => {
       const configured = smallModelMap[input.provider];
       if (configured) {

@@ -29,12 +29,12 @@ export function createMemoryTool(store: MemoryStore) {
   };
 
   const t = tool({
-    description: `Multi-mode memory tool for storing and retrieving knowledge.
+    description: `USE BEFORE READING FILES — search existing knowledge first (costs 100x less than reading codebase cold).
 
 MODES:
-  search    — Find relevant memories by keyword (USE FIRST when looking for context)
+  search    — Find relevant memories by keyword. ALWAYS FIRST before reading files or editing
   get       — Get a specific node by ID or label (use after search)
-  set       — Store new information as a memory node
+  set       — Store new information as a memory node. Use AFTER every significant tool result
   delete    — Remove a memory node by ID or label
   list      — Survey available nodes (scope, level, importance)
   drilldown — Get full context with fractal source chain (use after search)
@@ -45,9 +45,9 @@ MODES:
 WORKFLOW:
   search → drilldown/get → set/verify/replace
 
-TIP: Use memory_search FIRST before any other memory tool.
+TIP: memory(mode="search") BEFORE any edit, bash, or write — saves retracing past work.
 TIP: After storing, verify correctness with learn(mode=verify).
-TIP: For context management, use context tool.`,
+TIP: For context pressure, use context tool.`,
     args: {
       mode: tool.schema.enum(["search", "get", "set", "delete", "list", "drilldown", "drilldown_query", "fetch", "replace"]).describe("Which memory operation to perform"),
 

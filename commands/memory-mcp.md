@@ -3,13 +3,13 @@ description: Start the fractal memory MCP server for AI tool access
 ---
 Start the MCP server for external AI tool access to the memory store.
 
-The MCP server exposes 7 tools (memory_search, memory_get, memory_fetch, memory_list,
-memory_stats, memory_set, memory_delete) and 2 resources (memory://stats/project,
+The MCP server exposes 7 tools (memory(mode="search"), memory(mode="get"), memory(mode="fetch"), memory(mode="list"),
+memory(mode="stats"), memory(mode="set"), memory(mode="delete")) and 2 resources (memory://stats/project,
 memory://stats/global) via the Model Context Protocol over stdio.
 
 The following tools accept an optional `project_name` argument to filter to a specific
-project (defaults to the current project): memory_search, memory_list, memory_stats,
-memory_set.
+project (defaults to the current project): memory(mode="search"), memory(mode="list"), memory(mode="stats"),
+memory(mode="set").
 
 To configure in opencode.jsonc:
 ```jsonc

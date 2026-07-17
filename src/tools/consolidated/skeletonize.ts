@@ -4,11 +4,13 @@ import { extractSkeleton } from "../../application/skeletonize";
 
 export function createSkeletonizeTool() {
   const t = tool({
-    description: `Extract a skeleton (imports + symbol signatures with line numbers) from a source file using tree-sitter AST parsing with regex fallback.
+    description: `USE INSTEAD OF READING LARGE FILES — returns compact structure (imports + symbol signatures) at ~10% the token cost of a full read.
 
 Supports 32 languages: TypeScript, JavaScript, Python, Rust, Go, Java, Ruby, PHP, C/C++, C#, Swift, Kotlin, Scala, Bash, CSS, HTML, JSON, YAML, Markdown, SQL, Lua, Perl, R, Dart, Zig, Elm, Clojure, Elixir, Haskell, OCaml, HCL, Protobuf, GraphQL, Sass, SCSS, Less, Dockerfile, Make, CMake, TOML.
 
-Returns a compact view of file structure: import statements (first 15 shown), then function/class/enum/interface/trait/struct declarations with line numbers and nesting depth.`,
+Returns structure: imports (first 15) + all function/class/enum/interface/trait/struct declarations with line numbers and nesting depth.
+
+TIP: For files >200 lines, skeletonize(path) first — then read specific sections with offset.`,
     args: {
       path: tool.schema.string().describe("Absolute path to the source file to skeletonize"),
     },

@@ -42,10 +42,10 @@ export function createJournalTool(store: JournalStore | null, ctx: JournalContex
   };
 
   const t = tool({
-    description: `Multi-mode journal tool for logging session activities.
+    description: `AFTER COMPLETING SIGNIFICANT TASKS: preserve decisions and context across sessions.
 
 MODES:
-  write   — Create a new journal entry (captures insights, decisions, observations)
+  write   — Create a new journal entry. USE AFTER completing significant tasks
   read    — Read a specific journal entry by ID
   search  — Search entries by semantic similarity, tags, or project
   migrate — Import existing file-based journal entries into memory nodes
@@ -53,8 +53,8 @@ MODES:
 WORKFLOW:
   write (capture) → search (find) → read (review)
 
-TIP: Use after completing a significant task to capture decisions.
-TIP: Tags help with retrieval - always add relevant tags.`,
+TIP: journal(mode="write") after every significant task — ensures session continuity.
+TIP: Add descriptive tags to every entry — they power search and cross-session retrieval.`,
     args: {
       mode: tool.schema.enum(["write", "read", "search", "migrate"]).describe("Which journal operation to perform"),
       title: tool.schema.string().optional(),

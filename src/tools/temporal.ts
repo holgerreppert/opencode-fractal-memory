@@ -37,8 +37,8 @@ export function MemoryTemporalEdges(store: MemoryStore) {
       }
 
       lines.push("");
-      lines.push("Use `memory_get(id=\"<target-id>\")` to inspect a connected node.");
-      lines.push("Use `memory_search(query, expand_temporal: true)` to search with temporal context.");
+      lines.push("Use `memory(mode=\"get\", id=\"<target-id>\")` to inspect a connected node.");
+      lines.push("Use `memory(mode=\"search\", query=\"...\", expand_temporal: true)` to search with temporal context.");
 
       return lines.join("\n");
     },

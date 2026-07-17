@@ -36,7 +36,11 @@ function formatMemoryBlock(results: QueryResult[]): string {
   return lines.join("\n");
 }
 
-export function createMessagesTransformHandler(store: MemoryStore, config: MemConfig): HookHandler {
+export function createMessagesTransformHandler(
+  store: MemoryStore,
+  config: MemConfig,
+  currentSessionId: { value: string },
+): HookHandler {
   const arConfig = config.autoRetrieve;
   if (!arConfig?.enabled) {
     return {};
@@ -84,9 +88,25 @@ export function createMessagesTransformHandler(store: MemoryStore, config: MemCo
           }],
         });
 
+        const injectedNodes = filtered.slice(0, 3);
+        const nodeTypes: Record<string, number> = {};
+        for (const r of injectedNodes) {
+          const t = r.node?.type ?? "unknown";
+          nodeTypes[t] = (nodeTypes[t] ?? 0) + 1;
+        }
+
+        store.logInjectionMetrics(currentSessionId.value, {
+          injectedNodeCount: injectedNodes.length,
+          injectedTokens: injectedNodes.reduce((s, r) => s + ((r.node?.content?.length ?? 0) / 4), 0),
+          injectionMode: "messages_transform",
+          queryText: userText.slice(0, 200),
+          injectedNodeTypes: nodeTypes,
+        }).catch((err: unknown) => memLog("warn", "messages-transform", `injection metric error: ${String(err)}`));
+
         memLog("debug", "messages-transform", "Injected structured memory context", {
-          count: filtered.slice(0, 3).length,
-          labels: filtered.slice(0, 3).map(r => r.node?.label).join(", "),
+          count: injectedNodes.length,
+          labels: injectedNodes.map(r => r.node?.label).join(", "),
+          phase,
         });
       } catch (err) {
         memLog("debug", "messages-transform", "Memory injection via messages.transform failed", {

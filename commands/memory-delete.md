@@ -14,11 +14,11 @@ Delete a memory node. Use with caution - deletion is permanent.
 
 **Usage:**
 ```
-memory_delete(id="ab3f2")
-memory_delete(label="outdated-decision")
+memory(mode="delete", id="ab3f2")
+memory(mode="delete", label="outdated-decision")
 ```
 
 **Tips:**
-- Use `memory_get` first to verify correct node
+- Use `memory(mode="get")` first to verify correct node
 - Deletion is permanent - no undo
-- Consider using `memory_compress` instead to keep summary
+- Consider using `memory(mode="compress")` instead to keep summary

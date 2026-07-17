@@ -15,9 +15,9 @@ Generate embeddings for memory nodes that don't have them. Enables semantic sear
 
 **Usage:**
 ```
-memory_generate_embeddings()
-memory_generate_embeddings(dry_run=true)
-memory_generate_embeddings(scope="global")
+memory(mode="generate_embeddings", )
+memory(mode="generate_embeddings", dry_run=true)
+memory(mode="generate_embeddings", scope="global")
 ```
 
 **Tips:**

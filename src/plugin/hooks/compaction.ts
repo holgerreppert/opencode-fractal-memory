@@ -124,6 +124,13 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
           metadata: { customType: "middle-term", sessionId, timestamp: now },
         });
 
+        store.logInjectionMetrics(sessionId, {
+          injectedNodeCount: 1,
+          injectedTokens: Math.round(captureContent.length / 4),
+          injectionMode: "compaction_middle_term",
+          injectedNodeTypes: { note: 1 },
+        }).catch((err: unknown) => memLog("warn", "compaction", `injection metric error: ${String(err)}`));
+
         summaries.push(`Middle-term capture stored for session ${sessionId}.`);
 
         try {

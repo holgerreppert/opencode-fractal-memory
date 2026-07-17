@@ -5,21 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fractal Memory Viewer</title>
   <style>
-    :root { --sidebar-width: 240px; }
+    :root { --sidebar-width: 280px; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0a0a0f; color: #e0e0e0; font-family: 'Inter', -apple-system, sans-serif; overflow: hidden; }
-    #canvas-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+    body { background: #0a0a0f; color: #e0e0e0; font-family: 'Inter', -apple-system, sans-serif; overflow: hidden; display: flex; }
     canvas { display: block; }
 
-    #sidebar {
-      position: fixed; top: 0; left: 0; width: var(--sidebar-width, 280px); height: 100vh;
-      background: rgba(15, 15, 25, 0.95); border-right: 1px solid rgba(255,255,255,0.1);
-      padding: 20px; overflow-y: auto; z-index: 100;
-      backdrop-filter: blur(10px);
+    #main-content {
+      flex: 1; height: 100vh; overflow-y: auto; position: relative;
+      background: #0a0a0f;
+    }
+    #main-content.tab-content {
+      padding: 20px;
     }
 
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+
+    #sidebar {
+      width: var(--sidebar-width, 280px); height: 100vh; flex-shrink: 0;
+      background: rgba(15, 15, 25, 0.95); border-right: 1px solid rgba(255,255,255,0.1);
+      padding: 20px; overflow-y: auto; position: relative; z-index: 100;
+      transition: width 0.2s ease, padding 0.2s ease;
+    }
+    #sidebar.sidebar-collapsed { width: 48px; padding: 20px 8px; overflow: hidden; }
+    #sidebar.sidebar-collapsed h1,
+    #sidebar.sidebar-collapsed .subtitle,
+    #sidebar.sidebar-collapsed #visualize-panel,
+    #sidebar.sidebar-collapsed #graph-sidebar-panel { display: none; }
+    #sidebar.sidebar-collapsed .tab-buttons { flex-direction: column; }
+    #sidebar.sidebar-collapsed .tab-btn { font-size: 10px; padding: 6px 0; writing-mode: vertical-rl; text-orientation: mixed; }
+
     #resize-handle {
-      position: fixed; top: 0; left: var(--sidebar-width, 280px); width: 4px; height: 100vh;
+      width: 4px; height: 100vh; flex-shrink: 0;
       cursor: col-resize; z-index: 101; transition: background 0.2s;
     }
     #resize-handle:hover, #resize-handle.active { background: rgba(100, 150, 255, 0.4); }
@@ -148,6 +164,8 @@
     .btn-delete { background: rgba(255, 60, 60, 0.2); color: #f66; }
     .btn-delete:hover { background: rgba(255, 60, 60, 0.4); }
 
+    .graph-search-result:hover { background: rgba(100, 150, 255, 0.15); }
+
     #tooltip {
       position: fixed; background: rgba(0,0,0,0.9); color: #fff; padding: 8px 12px;
       border-radius: 6px; font-size: 12px; pointer-events: none; z-index: 200;
@@ -160,12 +178,13 @@
     }
 
     .toggle-sidebar {
-      position: fixed; top: 15px; left: calc(var(--sidebar-width, 240px) + 10px); z-index: 150;
+      position: absolute; top: 15px; right: 15px; z-index: 150;
       background: rgba(15, 15, 25, 0.9); border: 1px solid rgba(255,255,255,0.1);
       color: #ccc; padding: 6px 10px; border-radius: 6px; cursor: pointer;
-      font-size: 12px;
+      font-size: 12px; display: none;
     }
     .toggle-sidebar:hover { background: rgba(255,255,255,0.1); }
+    #main-content.tab-content .toggle-sidebar { display: block; }
 
     /* Tabs */
     .tab-buttons { display: flex; gap: 4px; margin-bottom: 16px; }
@@ -252,6 +271,14 @@
     .backup-status { font-size: 11px; color: #888; margin-top: 6px; text-align: center; min-height: 16px; }
     .backup-status.success { color: #4f4; }
     .backup-status.error { color: #f44; }
+
+    /* Main content tab panels */
+    .main-tab-panel { display: none; }
+    .main-tab-panel.active { display: block; }
+
+    /* Settings grid for main content area */
+    #settings-panel .category-body { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+    @media (max-width: 700px) { #settings-panel .category-body { grid-template-columns: 1fr; } }
 
     /* Quality Panel */
     .quality-table th { font-weight: 500; white-space: nowrap; }
@@ -341,10 +368,23 @@
     #legend-popover .legend-item { padding: 3px 0; }
 
     /* Graph viz */
-    #graph-viz-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; display: none; }
+    #graph-viz-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: none; }
     #graph-viz-container.active { display: block; }
     #graph-viz-container svg { display: block; cursor: grab; }
     #graph-viz-container svg:active { cursor: grabbing; }
+
+    /* Live Feed */
+    #live-feed .live-user { color: #fbbf24; }
+    #live-feed .live-assistant { color: #60a5fa; }
+    #live-feed .live-reasoning { color: #888; font-style: italic; }
+    #live-feed .live-tool { color: #34d399; }
+    #live-feed .live-ts { color: #555; }
+    #live-context .ctx-row { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    #live-context .ctx-label { color: #888; }
+    #live-context .ctx-value { color: #ccc; }
+    .metric-card { overflow-y: auto; max-height: calc(50vh - 80px); }
+    .metric-card .metric-row { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 11px; display: flex; gap: 6px; }
+    .metric-card .metric-row .mt { color: #555; flex-shrink: 0; }
     .graph-tooltip { pointer-events: none; }
     #graph-panel .section .search-btn { width: 100%; padding: 6px; border-radius: 6px; border: 1px solid rgba(100,150,255,0.5); background: rgba(100,150,255,0.2); color: #fff; font-size: 12px; cursor: pointer; transition: all 0.2s; }
     #graph-panel .section .search-btn:hover { background: rgba(100,150,255,0.4); }
@@ -381,11 +421,6 @@
   </style>
 </head>
 <body>
-  <div id="canvas-container"></div>
-  <div id="graph-viz-container"></div>
-  <div id="loading">Loading memory nodes...</div>
-
-  <div id="resize-handle"></div>
   <div id="sidebar">
     <h1>Fractal Memory</h1>
     <div class="subtitle"><span id="version">3D Node Visualization</span></div>
@@ -399,9 +434,11 @@
       <button class="tab-btn" data-tab="compress">Compress</button>
       <button class="tab-btn" data-tab="tokens">Tokens</button>
       <button class="tab-btn" data-tab="graph">Graph</button>
+      <button class="tab-btn" data-tab="live-agent">Live Agent</button>
+      <button class="tab-btn" data-tab="live-metrics">Live Metrics</button>
     </div>
 
-    <!-- Visualize Panel -->
+    <!-- Visualize Panel (stays in sidebar) -->
     <div id="visualize-panel" class="settings-panel active">
 
     <div class="section" style="margin-bottom:10px;">
@@ -438,7 +475,6 @@
       </div>
     </div>
 
-    <!-- Filters Accordion -->
     <div class="config-category" style="margin-bottom:6px;">
       <h3 class="category-header" id="filters-header">
         Filters <span id="filters-badge"></span>
@@ -484,7 +520,6 @@
       </div>
     </div>
 
-    <!-- Legend -->
     <div class="section" id="legend-section" style="margin-bottom:6px;">
       <div style="display:flex; align-items:center; gap:6px;">
         <h3 style="margin-bottom:0; flex:1;">Legend</h3>
@@ -493,7 +528,6 @@
       <div id="legend-popover"></div>
     </div>
 
-    <!-- Nodes Accordion -->
     <div class="config-category" style="margin-bottom:0;">
       <h3 class="category-header" id="node-list-header">
         Nodes <span class="node-list-count" id="node-list-count"></span>
@@ -520,8 +554,64 @@
     </div>
     </div>
 
+    <!-- Graph Sidebar Panel (stays in sidebar, active only on graph tab) -->
+    <div id="graph-sidebar-panel" class="settings-panel">
+
+      <div class="section" style="margin-bottom:10px;">
+        <button class="search-btn" id="graph-build-btn" style="margin-bottom:8px;">Build Code Graph</button>
+        <div id="graph-status" style="font-size:11px;color:#888;min-height:16px;"></div>
+      </div>
+
+      <div class="section" style="margin-bottom:10px;">
+        <input type="text" id="graph-search-input" placeholder="Search graph nodes..." style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;outline:none;">
+        <div id="graph-search-info" style="font-size:11px;color:#666;margin-top:4px;min-height:16px;"></div>
+        <div id="graph-search-results" style="margin-top:4px;max-height:160px;overflow-y:auto;font-size:11px;"></div>
+      </div>
+
+      <div class="section" style="margin-bottom:10px;">
+        <div id="graph-stats"></div>
+      </div>
+
+      <div class="config-category" style="margin-bottom:6px;">
+        <h3 class="category-header">
+          Communities <span id="graph-community-count"></span>
+          <span class="collapse-arrow">&#x25BC;</span>
+        </h3>
+        <div class="category-body" id="graph-communities-body"></div>
+      </div>
+
+      <div class="config-category" style="margin-bottom:6px;">
+        <h3 class="category-header">
+          God Nodes <span id="graph-god-count"></span>
+          <span class="collapse-arrow">&#x25BC;</span>
+        </h3>
+        <div class="category-body" id="graph-god-body"></div>
+      </div>
+
+      <div class="config-category" style="margin-bottom:0;">
+        <h3 class="category-header">
+          Surprising Connections <span id="graph-surprising-count"></span>
+          <span class="collapse-arrow">&#x25BC;</span>
+        </h3>
+        <div class="category-body" id="graph-surprising-body"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="resize-handle"></div>
+
+  <div id="main-content">
+    <div id="canvas-container"></div>
+    <div id="graph-viz-container"></div>
+    <div id="loading">Loading memory nodes...</div>
+
+    <button class="toggle-sidebar" id="toggle-sidebar">☰</button>
+
     <!-- Settings Panel -->
-    <div id="settings-panel" class="settings-panel">
+    <div id="settings-panel" class="main-tab-panel">
+      <div class="section">
+        <h3>Settings</h3>
 
       <div class="config-category">
         <h3 class="category-header">Memory &amp; Storage <span class="collapse-arrow">&#x25BC;</span></h3>
@@ -1112,15 +1202,16 @@
 
       <button class="save-btn" id="save-config">Save Settings</button>
       <div class="save-message" id="save-message"></div>
+      </div>
     </div>
 
     <!-- Context Dashboard Panel -->
-    <div id="context-panel" class="settings-panel">
+    <div id="context-panel" class="main-tab-panel">
       <div class="section">
         <h3>Context Dashboard</h3>
         <p style="color:#888;font-size:12px;margin-bottom:12px;">
           Breakdown of what occupies the LLM context window. Memory nodes and compressions are queried from the database.
-          Conversation token data is available via <code>memory_total_tokens</code> in the agent.
+          Conversation token data is available via <code>context(mode="total_tokens")</code> in the agent.
         </p>
         <div id="context-summary" style="margin-bottom:16px;">
           <div class="stat-row"><span class="stat-label">Loading...</span></div>
@@ -1130,9 +1221,8 @@
       </div>
     </div>
 
-    <!-- Backup Panel -->
     <!-- Quality Panel -->
-    <div id="quality-panel" class="settings-panel">
+    <div id="quality-panel" class="main-tab-panel">
       <div class="section">
         <h3>Injection Quality Metrics</h3>
         <p style="color:#888;font-size:12px;margin-bottom:12px;">
@@ -1146,7 +1236,7 @@
       </div>
     </div>
 
-    <div id="compress-panel" class="settings-panel">
+    <div id="compress-panel" class="main-tab-panel">
       <div class="section">
         <h3>Compression Stats</h3>
         <div id="compress-summary" style="margin-bottom:16px;"></div>
@@ -1158,7 +1248,7 @@
     </div>
 
     <!-- Token Usage Panel -->
-    <div id="tokens-panel" class="settings-panel">
+    <div id="tokens-panel" class="main-tab-panel">
       <div class="section">
         <h3>Token Usage</h3>
         <p style="color:#888;font-size:12px;margin-bottom:12px;">
@@ -1173,7 +1263,7 @@
       </div>
     </div>
 
-    <div id="backup-panel" class="settings-panel">
+    <div id="backup-panel" class="main-tab-panel">
       <div class="section">
         <h3>Create Backup</h3>
         <div id="backup-sources"></div>
@@ -1189,45 +1279,55 @@
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Graph Panel -->
-    <div id="graph-panel" class="settings-panel">
-      <div class="section" style="margin-bottom:10px;">
-        <button class="search-btn" id="graph-build-btn" style="margin-bottom:8px;">Build Code Graph</button>
-        <div id="graph-status" style="font-size:11px;color:#888;min-height:16px;"></div>
+  <!-- Live Agent Panel -->
+  <div id="live-agent-panel" class="main-tab-panel">
+    <div class="section">
+      <h3>Live Agent Feed</h3>
+      <p style="color:#888;font-size:12px;margin-bottom:8px;">
+        Real-time conversation feed. Polls every 2s. Shows last 100 turns.
+      </p>
+      <div style="display:flex;gap:12px;height:calc(100vh - 160px);">
+        <div style="flex:2;display:flex;flex-direction:column;">
+          <div style="display:flex;gap:8px;margin-bottom:6px;flex-shrink:0;">
+            <input type="text" id="live-filter-input" placeholder="Filter feed..." style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;outline:none;">
+            <span id="live-feed-status" style="font-size:11px;color:#666;line-height:28px;"></span>
+          </div>
+          <div id="live-feed" style="flex:1;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.6;background:rgba(0,0,0,0.3);border-radius:6px;padding:8px;white-space:pre-wrap;"></div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;">
+          <h4 style="font-size:11px;color:#888;text-transform:uppercase;margin-bottom:6px;flex-shrink:0;">Context</h4>
+          <div id="live-context" style="flex:1;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.5;background:rgba(0,0,0,0.3);border-radius:6px;padding:8px;white-space:pre-wrap;"></div>
+        </div>
       </div>
+    </div>
+  </div>
 
-      <div class="section" style="margin-bottom:10px;">
-        <input type="text" id="graph-search-input" placeholder="Search graph nodes..." style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;outline:none;">
-        <div id="graph-search-info" style="font-size:11px;color:#666;margin-top:4px;min-height:16px;"></div>
-      </div>
-
-      <div class="section" style="margin-bottom:10px;">
-        <div id="graph-stats"></div>
-      </div>
-
-      <div class="config-category" style="margin-bottom:6px;">
-        <h3 class="category-header">
-          Communities <span id="graph-community-count"></span>
-          <span class="collapse-arrow">&#x25BC;</span>
-        </h3>
-        <div class="category-body" id="graph-communities-body"></div>
-      </div>
-
-      <div class="config-category" style="margin-bottom:6px;">
-        <h3 class="category-header">
-          God Nodes <span id="graph-god-count"></span>
-          <span class="collapse-arrow">&#x25BC;</span>
-        </h3>
-        <div class="category-body" id="graph-god-body"></div>
-      </div>
-
-      <div class="config-category" style="margin-bottom:0;">
-        <h3 class="category-header">
-          Surprising Connections <span id="graph-surprising-count"></span>
-          <span class="collapse-arrow">&#x25BC;</span>
-        </h3>
-        <div class="category-body" id="graph-surprising-body"></div>
+  <!-- Live Metrics Panel -->
+  <div id="live-metrics-panel" class="main-tab-panel">
+    <div class="section">
+      <h3>Live Metrics</h3>
+      <p style="color:#888;font-size:12px;margin-bottom:8px;">
+        Auto-refreshing every 3s. Last 50 entries per section.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;height:calc(100vh - 160px);overflow-y:auto;">
+        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
+          <h4 style="font-size:12px;color:#4a9eff;margin-bottom:8px;">Injections</h4>
+          <div id="live-injections" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
+        </div>
+        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
+          <h4 style="font-size:12px;color:#34d399;margin-bottom:8px;">Compressions</h4>
+          <div id="live-compressions" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
+        </div>
+        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
+          <h4 style="font-size:12px;color:#fb923c;margin-bottom:8px;">Tool Calls</h4>
+          <div id="live-toolcalls" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
+        </div>
+        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
+          <h4 style="font-size:12px;color:#a78bfa;margin-bottom:8px;">Token Graph</h4>
+          <canvas id="live-token-chart" width="400" height="200" style="width:100%;height:auto;"></canvas>
+        </div>
       </div>
     </div>
   </div>
@@ -1244,7 +1344,6 @@
     </div>
   </div>
 
-  <button class="toggle-sidebar" id="toggle-sidebar">☰</button>
 
   <div id="detail-panel">
     <button class="close-btn" id="close-detail">×</button>

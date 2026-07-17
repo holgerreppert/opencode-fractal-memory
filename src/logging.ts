@@ -169,3 +169,22 @@ export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE" | "R
     fallbackLog(e, "filesum-log");
   }
 }
+
+const LIVE_FEED_LOG_FILE = path.join(LOG_DIR, "live-feed.log");
+const LIVE_FEED_LOG_MAX_SIZE = 5 * 1024 * 1024;
+
+export function writeLiveFeedLog(data: Record<string, unknown>): void {
+  if (!fs.existsSync(LOG_DIR)) return;
+  try {
+    rotateFile(LIVE_FEED_LOG_FILE, LIVE_FEED_LOG_MAX_SIZE);
+    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const turnCount = (data.turns as any[])?.length ?? 0;
+    const injCount = (data.injections as any[])?.length ?? 0;
+    const compCount = (data.compressions as any[])?.length ?? 0;
+    const toolCount = (data.toolCalls as any[])?.length ?? 0;
+    const line = `[${ts}] | turns=${turnCount} injections=${injCount} compressions=${compCount} tools=${toolCount}`;
+    fs.appendFileSync(LIVE_FEED_LOG_FILE, line + "\n");
+  } catch (e) {
+    fallbackLog(e, "live-feed-log");
+  }
+}

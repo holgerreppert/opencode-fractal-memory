@@ -116,25 +116,25 @@ digraph AgentMemoryPipeline {
       <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="1" BGCOLOR="#8957e5">
         <TR><TD COLSPAN="2"><B><FONT POINT-SIZE="11">48 Tools (agent-visible, explicit)</FONT></B></TD></TR>
         <TR><TD COLSPAN="2" BGCOLOR="#bc8cff" HEIGHT="1"></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_set</FONT></TD><TD><FONT POINT-SIZE="9">Create / update node</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_get</FONT></TD><TD><FONT POINT-SIZE="9">Read node by ID</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_fetch</FONT></TD><TD><FONT POINT-SIZE="9">Read node by label</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_search</FONT></TD><TD><FONT POINT-SIZE="9">Semantic + BM25 + temporal</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_delete</FONT></TD><TD><FONT POINT-SIZE="9">Delete node</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_replace</FONT></TD><TD><FONT POINT-SIZE="9">Edit content</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_rate</FONT></TD><TD><FONT POINT-SIZE="9">Mark helpful / set score</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_list</FONT></TD><TD><FONT POINT-SIZE="9">List nodes</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_drilldown</FONT></TD><TD><FONT POINT-SIZE="9">Fractal retrieval</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_inject</FONT></TD><TD><FONT POINT-SIZE="9">Budget-aware injection</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_prune</FONT></TD><TD><FONT POINT-SIZE="9">Agent-driven pruning</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_compress</FONT></TD><TD><FONT POINT-SIZE="9">L0→L1 summarization</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_verify</FONT></TD><TD><FONT POINT-SIZE="9">Confirm correctness</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_stats</FONT></TD><TD><FONT POINT-SIZE="9">Index health</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_dashboard</FONT></TD><TD><FONT POINT-SIZE="9">Top nodes + types</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_reflect</FONT></TD><TD><FONT POINT-SIZE="9">Create lessons from</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_distill</FONT></TD><TD><FONT POINT-SIZE="9">Extract rules from</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="set")</FONT></TD><TD><FONT POINT-SIZE="9">Create / update node</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="get")</FONT></TD><TD><FONT POINT-SIZE="9">Read node by ID</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="fetch")</FONT></TD><TD><FONT POINT-SIZE="9">Read node by label</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="search")</FONT></TD><TD><FONT POINT-SIZE="9">Semantic + BM25 + temporal</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="delete")</FONT></TD><TD><FONT POINT-SIZE="9">Delete node</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="replace")</FONT></TD><TD><FONT POINT-SIZE="9">Edit content</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="rate")</FONT></TD><TD><FONT POINT-SIZE="9">Mark helpful / set score</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="list")</FONT></TD><TD><FONT POINT-SIZE="9">List nodes</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="drilldown")</FONT></TD><TD><FONT POINT-SIZE="9">Fractal retrieval</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="inject")</FONT></TD><TD><FONT POINT-SIZE="9">Budget-aware injection</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="prune")</FONT></TD><TD><FONT POINT-SIZE="9">Agent-driven pruning</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="compress")</FONT></TD><TD><FONT POINT-SIZE="9">L0→L1 summarization</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="verify")</FONT></TD><TD><FONT POINT-SIZE="9">Confirm correctness</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="stats")</FONT></TD><TD><FONT POINT-SIZE="9">Index health</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="dashboard")</FONT></TD><TD><FONT POINT-SIZE="9">Top nodes + types</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="reflect")</FONT></TD><TD><FONT POINT-SIZE="9">Create lessons from</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="distill")</FONT></TD><TD><FONT POINT-SIZE="9">Extract rules from</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="9">journal_write</FONT></TD><TD><FONT POINT-SIZE="9">Append-only journal</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9">memory_help</FONT></TD><TD><FONT POINT-SIZE="9">Show all commands</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9">memory(mode="help")</FONT></TD><TD><FONT POINT-SIZE="9">Show all commands</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="9">+29 more</FONT></TD><TD><FONT POINT-SIZE="9">stats, sessions, meta</FONT></TD></TR>
       </TABLE>
     >, fillcolor="#8957e5", shape=plain, margin=0];
@@ -150,7 +150,7 @@ digraph AgentMemoryPipeline {
         <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Auto-Distill</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">distillRules() — appends learned lessons to rule:mandatory:memory, affects next session's system prompt</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Cache Eviction</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">LRU + TTL in src/cache.ts — max 8 entries/session, 2h TTL, entries dropped without notice</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Embedding Gen</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">scheduledBackgroundEmbeddings() — auto-generates embeddings for nodes missing them, 1s post-init</FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Prune (no dry-run)</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">memory_prune(dryRun=false) returns only node count, not list of deleted nodes</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Prune (no dry-run)</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">memory(mode="prune")(dryRun=false) returns only node count, not list of deleted nodes</FONT></TD></TR>
         <TR><TD><FONT POINT-SIZE="9" COLOR="#ff7b72">Compaction Archive</FONT></TD><TD><FONT POINT-SIZE="9" COLOR="#8b949e">session.compacting — creates middle-term:* + storedcontext:* nodes, agent sees summaries only</FONT></TD></TR>
       </TABLE>
     >, fillcolor="#21262d", shape=plain, margin=0, color="#da3633"];

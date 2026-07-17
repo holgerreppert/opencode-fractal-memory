@@ -73,7 +73,7 @@ export function MemoryRecallContext(store: MemoryStore) {
 
         if (node.content.length > 2000) {
           lines.push("");
-          lines.push(`_... content truncated (${node.content.length} total chars). Use memory_fetch label:"${node.label}" for full content._`);
+          lines.push(`_... content truncated (${node.content.length} total chars). Use memory(mode="fetch", label:"${node.label}") for full content._`);
         }
 
         lines.push("");
@@ -81,7 +81,7 @@ export function MemoryRecallContext(store: MemoryStore) {
         lines.push("");
       }
 
-      lines.push("**Tip**: Use `memory_search type:storedcontext query:\"<details>\"` for more targeted recall.");
+      lines.push(`**Tip**: Use \`memory(mode="search", query="type:storedcontext query:\\"<details>\\"")\` for more targeted recall.`);
 
       return lines.join("\n");
     },

@@ -14,7 +14,7 @@ export function MemoryPlaybookExecute(memoryStore: MemoryStore) {
       try {
         node = await memoryStore.getNodeByLabel("project", args.playbook_id);
       } catch {
-        return `Playbook not found: ${args.playbook_id}. List available playbooks with memory_search({ type: "playbook" }).`;
+        return `Playbook not found: ${args.playbook_id}. List available playbooks with memory(mode="search", query="type: \\"playbook\\"")`;
       }
 
       const metadata = node.metadata || {};

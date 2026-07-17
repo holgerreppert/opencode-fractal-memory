@@ -188,7 +188,7 @@ digraph OpenCodeMemoryPlugin {
 
   hook_after -> svc_storage [label="D1. If memory_* tool:\nrecordMemoryToolCall(\nsessionId, toolName, args)", color="#88ff88"];
 
-  hook_after -> svc_cache [label="D2. If memory_fetch/get/drilldown/\nset/replace/search:\naddToWorkingCache()\n→ LRU session cache", color="#88ff88"];
+  hook_after -> svc_cache [label="D2. If memory(mode="fetch")/get/drilldown/\nset/replace/search:\naddToWorkingCache()\n→ LRU session cache", color="#88ff88"];
 
   hook_after -> svc_storage [label="D3. If predictiveRating.enabled\nand memory_* tool:\npredictiveRateToolCall()\n→ adjust usefulnessScore\n→ adjust timesHelpful", color="#88ff88"];
 
@@ -225,7 +225,7 @@ digraph OpenCodeMemoryPlugin {
   hook_compact -> svc_cache [label="I1. getWorkingCache(sessionId)\n→ active entries list\n→ 8 DB fallback if empty", color="#ff6600"];
   hook_compact -> svc_storage [label="I2. createNode(label=\"middle-term:\")\n→ full JSON snapshot of\nworking cache", color="#ff6600"];
   hook_compact -> actor_onnx [label="I3. generateEmbedding(content)\nfor storedcontext node", color="#ff6600"];
-  hook_compact -> svc_storage [label="I4. createNode(label=\"storedcontext:\")\n→ conversation archive\n→ type=storedcontext\n→ for memory_recall_context", color="#ff6600"];
+  hook_compact -> svc_storage [label="I4. createNode(label=\"storedcontext:\")\n→ conversation archive\n→ type=storedcontext\n→ for memory(mode="recall_context")", color="#ff6600"];
   hook_compact -> actor_opencode [label="I5. Return summaries array\n→ injected into prompt", color="#ff6600"];
 
   hook_autocont -> actor_opencode [label="I6. Return enabled: true", color="#ff6600"];
@@ -238,27 +238,27 @@ digraph OpenCodeMemoryPlugin {
   // ===================================================================
   // PHASE 9: Agent Tool Calls
   // ===================================================================
-  actor_agent -> tools_core [label="memory_list / set / get /\nfetch / replace / delete /\nverify", color="#ff4444"];
+  actor_agent -> tools_core [label="memory(mode="list") / set / get /\nfetch / replace / delete /\nverify", color="#ff4444"];
   tools_core -> svc_storage [label="Direct SQLite reads/writes", color="#ff4444"];
 
-  actor_agent -> tools_search [label="memory_search / drilldown /\ndrilldown_query /\ndetect_topics", color="#ff4444"];
+  actor_agent -> tools_search [label="memory(mode="search") / drilldown /\ndrilldown_query /\ndetect_topics", color="#ff4444"];
   tools_search -> svc_storage [label="Search (text, BM25,\nembedding) + score", color="#ff4444"];
 
-  actor_agent -> tools_compress [label="memory_compress /\nextract_patterns /\nsummarize / llm_compress", color="#ff4444"];
+  actor_agent -> tools_compress [label="memory(mode="compress") /\nextract_patterns /\nsummarize / llm_compress", color="#ff4444"];
   tools_compress -> svc_storage [label="Compression + pattern\ncreation in memory", color="#ff4444"];
   tools_compress -> actor_ollama [label="If llm_compress:\nchat() for summary gen", color="#ff4444", style=dashed];
 
-  actor_agent -> tools_stats [label="memory_stats / dashboard /\ninjection_stats /\ninjection_feedback /\ntool_stats / session_stats /\ntotal_tokens / check_context", color="#ff4444"];
+  actor_agent -> tools_stats [label="memory(mode="stats") / dashboard /\ninjection_stats /\ninjection_feedback /\ntool_stats / session_stats /\ntotal_tokens / check_context", color="#ff4444"];
   tools_stats -> svc_storage [label="Query metrics tables", color="#ff4444"];
 
-  actor_agent -> tools_inject [label="memory_inject /\ninjection_debug", color="#ff4444"];
+  actor_agent -> tools_inject [label="memory(mode="inject") /\ninjection_debug", color="#ff4444"];
   tools_inject -> svc_storage [label="Write to pending_injections\n+ log metrics", color="#ff4444"];
 
-  actor_agent -> tools_reflect [label="memory_reflect / distill", color="#ff4444"];
+  actor_agent -> tools_reflect [label="memory(mode="reflect") / distill", color="#ff4444"];
   tools_reflect -> svc_storage [label="Create lesson + rule nodes", color="#ff4444"];
   tools_reflect -> actor_ollama [label="Optionally:\nchat() for LLM analysis", color="#ff4444", style=dashed];
 
-  actor_agent -> tools_misc [label="memory_rate / prune /\ngenerate_embeddings / help /\nversion / auto_test /\nplaybook_execute / skill_load /\ntemporal_edges /\nrecall_context / middle_term /\ncache_status", color="#ff4444"];
+  actor_agent -> tools_misc [label="memory(mode="rate") / prune /\ngenerate_embeddings / help /\nversion / auto_test /\nplaybook_execute / skill_load /\ntemporal_edges /\nrecall_context / middle_term /\ncache_status", color="#ff4444"];
   tools_misc -> svc_storage [label="Varied storage ops", color="#ff4444"];
 
   actor_agent -> tools_journal [label="journal_write / read /\nsearch", color="#ff4444"];

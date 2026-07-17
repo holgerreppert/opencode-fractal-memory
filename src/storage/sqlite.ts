@@ -30,6 +30,7 @@ import { SqliteSessionTracker } from "../infrastructure/persistence/sqlite/Sqlit
 import { SqliteCompressionStore } from "../infrastructure/persistence/sqlite/SqliteCompressionStore";
 import { SqliteConfigStore } from "../infrastructure/persistence/sqlite/SqliteConfigStore";
 import { SqliteInjectionStore } from "../infrastructure/persistence/sqlite/SqliteInjectionStore";
+import { SqliteLiveFeedStore } from "../infrastructure/persistence/sqlite/SqliteLiveFeedStore";
 
 export type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType, MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult, DrilldownResult, MemoryStore } from "./types";
 
@@ -55,6 +56,7 @@ class SqliteMemoryStore implements MemoryStore {
   private compressionStore: SqliteCompressionStore;
   private configStore: SqliteConfigStore;
   private injectionStore: SqliteInjectionStore;
+  private liveFeedStore: SqliteLiveFeedStore;
 
   get projectName(): string {
     return this._projectName;
@@ -69,6 +71,7 @@ class SqliteMemoryStore implements MemoryStore {
     this.compressionStore = new SqliteCompressionStore(() => this.getGlobalDb());
     this.configStore = new SqliteConfigStore((s) => this.getDb(s));
     this.injectionStore = new SqliteInjectionStore(() => this.getGlobalDb());
+    this.liveFeedStore = new SqliteLiveFeedStore(() => this.getGlobalDb());
   }
 
   private async getDb(_scope?: MemoryScope): Promise<Database> {
@@ -680,6 +683,14 @@ class SqliteMemoryStore implements MemoryStore {
 
   async getTokenHistory(days?: number, limit?: number): Promise<import("../domain/ports/CompressionStore").TokenHistoryResult> {
     return this.compressionStore.getTokenHistory(days, limit);
+  }
+
+  async recordConversationTurn(turn: import("../domain/ports/LiveFeedStore").ConversationTurn): Promise<void> {
+    return this.liveFeedStore.recordConversationTurn(turn);
+  }
+
+  async getLiveFeedSnapshot(limit?: number): Promise<import("../domain/ports/LiveFeedStore").LiveFeedSnapshot> {
+    return this.liveFeedStore.getLiveFeedSnapshot(limit);
   }
 }
 

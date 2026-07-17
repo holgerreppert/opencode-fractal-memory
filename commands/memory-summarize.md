@@ -14,14 +14,14 @@ Generate an LLM prompt to summarize a memory node. Use this before creating a ma
 
 **Usage:**
 ```
-memory_summarize(id="ab3f2")
-memory_summarize(label="auth-choice")
+memory(mode="summarize", id="ab3f2")
+memory(mode="summarize", label="auth-choice")
 ```
 
 **Output:**
 Returns a prompt you can paste into an LLM. After getting the summary, create a new node:
 ```
-memory_set(content="<summary>", type="summary", level=1, parent_ids="ab3f2")
+memory(mode="set", content="<summary>", type="summary", level=1, parent_ids="ab3f2")
 ```
 
 **Tips:**

@@ -20,6 +20,8 @@ import { createGraphSearchHintHandler } from "./hooks/graph-search-hint";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
 import { createToolDefinitionHandler } from "./hooks/tool-definition";
+import { createLiveCaptureHandler } from "./hooks/live-capture";
+import { createToolBeforeGuardHandler } from "./hooks/tool-before-guard";
 import type { HookHandler } from "./hooks/types";
 
 export function createHookHandlers(
@@ -31,10 +33,15 @@ export function createHookHandlers(
   sessionInjectionLock: Map<string, boolean>,
   latestUserMessage: { value: string },
   managementServer: { start: () => void; stop: () => void },
+  currentSessionId: { value: string },
 ) {
+  const liveCapture = createLiveCaptureHandler(store, currentSessionId);
+  const toolBeforeGuard = createToolBeforeGuardHandler();
+
   const handlers: HookHandler[] = [
     createToolDedupHandler(memConfig),
     createErrorPruneHandler(memConfig),
+    toolBeforeGuard,
     createToolDefinitionHandler(),
     createRecordingHandler(store, memConfig),
     createWorkingCacheHandler(store),
@@ -47,11 +54,12 @@ export function createHookHandlers(
     createEventHandler(store, memConfig, client, managementServer),
     createOutputTokenControlHandler(memConfig),
     createChatParamsHandler(memConfig),
-    createMessagesTransformHandler(store, memConfig),
+    createMessagesTransformHandler(store, memConfig, currentSessionId),
     createGraphRefreshHandler(memConfig),
     createGraphContextHandler(memConfig),
     createGraphEditCheckHandler(memConfig),
     createGraphSearchHintHandler(memConfig),
+    liveCapture as unknown as HookHandler,
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {
@@ -86,6 +94,9 @@ export function createHookHandlers(
       callHooks("chat.params", input, output),
     "experimental.chat.messages.transform": (input: unknown, output: unknown) =>
       callHooks("chat.messages.transform", input, output),
+    "chat.message": async (input: unknown, output: unknown) => {
+      await callHooks("chat.message", input, output);
+    },
     event: (input: unknown) => (callHooks as (...args: unknown[]) => Promise<void>)("event", input),
   };
 }

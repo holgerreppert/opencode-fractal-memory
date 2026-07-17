@@ -17,10 +17,10 @@ Automatically compress old memory nodes using LLM summarization. Uses your confi
 
 **Usage:**
 ```
-memory_llm_compress()                    # Compress all level 0 nodes
-memory_llm_compress(level=1)            # Compress level 1 nodes
-memory_llm_compress(dry_run=true)     # Preview what would compress
-memory_llm_compress(scope="project")   # Only project scope
+context(mode="llm_compress", )                    # Compress all level 0 nodes
+context(mode="llm_compress", level=1)            # Compress level 1 nodes
+context(mode="llm_compress", dry_run=true)     # Preview what would compress
+context(mode="llm_compress", scope="project")   # Only project scope
 ```
 
 **Compression levels:**

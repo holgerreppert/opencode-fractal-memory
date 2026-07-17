@@ -104,6 +104,16 @@ Only skip memory search for trivial tasks (<2 steps)`,
     tag: "rule:mandatory",
     content: `## Tool-Specific Behavioral Rules
 tag: rule:mandatory
+never_strip: true
+
+### DECISION TREE (ALWAYS FOLLOW — ordered by priority)
+1. BEFORE grep/glob/read → graph(search, query=...) first (10-100× more token-efficient)
+2. BEFORE editing a function → graph(callers, name=...) to check dependents first
+3. BEFORE complex tasks (3+ steps) → context(check) to check context pressure
+4. BEFORE reading any file → memory(mode="search", query="first") (100× cheaper than reading blind)
+5. AFTER finding a symbol → graph(callees, name=...) to trace what it calls
+6. AFTER tool results → memory(mode="set") to store what was learned
+7. END of session → learn(reflect) → learn(distill) to extract rules
 
 ### graph (BEFORE all edit/read operations)
 - BEFORE editing any function: graph(relation="callers", name="<fn>")
@@ -255,7 +265,7 @@ Memory search accepts a \`tagsFilter\` option — returns only nodes containing 
     content: `Source Propagation Feature
 tag: rule:feature
 
-All memory nodes have a \`source\` field set on creation. Values: \`manual\` (user memory_set), \`tool_result\` (tool output), \`auto_extract\` (automatic capture/seed), \`web_search\` (web results), \`reflection\` (agent reflection), \`llm_compress\` (compression summaries). View/edit source in management app detail panel.`,
+All memory nodes have a \`source\` field set on creation. Values: \`manual\` (user memory(mode="set")), \`tool_result\` (tool output), \`auto_extract\` (automatic capture/seed), \`web_search\` (web results), \`reflection\` (agent reflection), \`llm_compress\` (compression summaries). View/edit source in management app detail panel.`,
   },
   {
     label: "rule:feature:confidence-diminishing-returns",
@@ -263,7 +273,7 @@ All memory nodes have a \`source\` field set on creation. Values: \`manual\` (us
     content: `Confidence Diminishing Returns Feature
 tag: rule:feature
 
-memory_verify uses a diminishing-returns formula: confidence increases by \`0.2/(1+verificationCount)\`. First verify: +0.20, second: +0.10, third: +0.067. Each verification also increments verification_count. This prevents rapid confidence saturation.`,
+memory(mode="verify") uses a diminishing-returns formula: confidence increases by \`0.2/(1+verificationCount)\`. First verify: +0.20, second: +0.10, third: +0.067. Each verification also increments verification_count. This prevents rapid confidence saturation.`,
   },
   // Seed nodes (on-demand, not injected)
   {
@@ -273,8 +283,8 @@ memory_verify uses a diminishing-returns formula: confidence increases by \`0.2/
 
 ### First: Search Before Coding
 Before starting any task, check memory:
-- memory_search('relevant topic')
-- memory_drilldown_query('what do I know about X?')
+- memory(mode="search", query="relevant topic")
+- memory(mode="drilldown_query", query="what do I know about X?")
 
 ### Store These
 - Architecture decisions (why we chose X)
@@ -293,7 +303,7 @@ DURING: Store decisions/patterns as you discover
 AFTER: Summarize key decisions
 
 ### Token Budget
-Keep memory lean. Use memory_check_context if approaching limits.`,
+Keep memory lean. Use context(mode="check") if approaching limits.`,
   },
   {
     label: "memory-philosophy",
@@ -312,7 +322,7 @@ Memory isn't about having information. It's about becoming better.
 Every node should make future-you smarter, not just more knowledgeable.
 
 ### Anti-Patterns
-- memory_list dumps everything (expensive)
+- memory(mode="list") dumps everything (expensive)
 - Storing everything (token debt)
 - Never compressing (node bloat)`,
   },
@@ -892,8 +902,8 @@ tag: rule:standard
 - You find yourself repeating a sequence of tools
 
 ### How to Propose
-Use memory_set to create the playbook:
-\`memory_set(label="playbook:<short-name>", content="<description>", type="playbook", sticky=true, metadata={ steps: [{ toolName, description, params: {}, critical: true/false }], triggers: [...], tags: [...] })\`
+Use memory(mode="set") to create the playbook:
+\`memory(mode="set", label="playbook:<short-name>", content="<description>", type="playbook", sticky=true, metadata={ steps: [{ toolName, description, params: {}, critical: true/false }], triggers: [...], tags: [...] })\`
 
 ### Format
 - Label: \`playbook:<short-hyphenated-name>\`

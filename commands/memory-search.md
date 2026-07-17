@@ -15,14 +15,14 @@ Search your memory for relevant context. Call this tool when you need to recall:
 
 **Usage:**
 ```
-memory_search("authentication implementation patterns")
-memory_search("SQLite concurrency issues")
-memory_search("user prefers", bm25_weight=0.6)  # More keyword-focused
+memory(mode="search", query="authentication implementation patterns")
+memory(mode="search", query="SQLite concurrency issues")
+memory(mode="search", query="user prefers", bm25_weight=0.6)  # More keyword-focused
 ```
 
 **Tips:**
 - Use specific terms: "session tracking" > "stuff we did"
-- Check summary content first, drill down with `memory_drilldown` for full details
+- Check summary content first, drill down with `memory(mode="drilldown")` for full details
 - Memory nodes have levels: L0=raw, L1=summaries - use min_level to filter
 - **After using memory**: The system auto-rates useful memories after successful edits
 - **Filter by usefulness**: Use `min_usefulness` to only show high-rated memories (0-5)

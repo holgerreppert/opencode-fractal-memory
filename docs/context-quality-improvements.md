@@ -203,7 +203,7 @@ Context quality has 4 dimensions, each independently improvable:
 - AdaMem: adaptive user-centric memory with conflict resolution [Coding Agent Memory Deep Dive]
 
 **Proposed Solution**: Add `conflict-detection.ts`:
-- On `memory_set`: HNSW search for similar nodes (threshold 0.85)
+- On `memory(mode="set")`: HNSW search for similar nodes (threshold 0.85)
 - Dedup: skip creation if near-duplicate found
 - Conflict: flag contradictory facts to agent with ADD/UPDATE/DELETE/SKIP/MERGE choices
 

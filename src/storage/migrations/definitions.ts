@@ -583,6 +583,31 @@ export const MIGRATIONS: Migration[] = [
     },
   },
   {
+    version: 31,
+    name: "add-agent-conversation-turns",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agent_conversation_turns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          timestamp INT NOT NULL,
+          turn_index INT NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL DEFAULT '',
+          tool_name TEXT,
+          tool_args TEXT,
+          tool_result TEXT,
+          token_count INT DEFAULT 0,
+          project_name TEXT,
+          metadata TEXT
+        )
+      `);
+      db.run("CREATE INDEX IF NOT EXISTS idx_conv_session ON agent_conversation_turns(session_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_conv_ts ON agent_conversation_turns(timestamp)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_conv_role ON agent_conversation_turns(role)");
+    },
+  },
+  {
     version: 30,
     name: "add-tags-source-verification",
     up: (db) => {

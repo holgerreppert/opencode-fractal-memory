@@ -155,7 +155,7 @@ Type `/memory-` in OpenCode to see available commands:
 Skills are memory nodes with `type="skill"` and `metadata.triggers`. They auto-load when trigger keywords appear:
 
 ```
-memory_set(content="## Skill content...", label="skill:my-skill", type="skill", metadata='{"triggers":["keyword1","keyword2"]}', sticky=true)
+memory(mode="set", content="## Skill content...", label="skill:my-skill", type="skill", metadata='{"triggers":["keyword1","keyword2"]}', sticky=true)
 ```
 
 ## Troubleshooting

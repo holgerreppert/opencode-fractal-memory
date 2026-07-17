@@ -192,9 +192,9 @@ export function MemoryTotalTokens(store: MemoryStore, client: unknown) {
 
       const contextRatio = totalTokens / CONTEXT_LIMIT;
       if (contextRatio >= 0.8) {
-        lines.push("**⚠️ CRITICAL:** Context at " + (contextRatio * 100).toFixed(0) + "%. Run `memory_compress` immediately!");
+        lines.push("**⚠️ CRITICAL:** Context at " + (contextRatio * 100).toFixed(0) + "%. Run `memory(mode=\"compress\")` immediately!");
       } else if (contextRatio >= 0.6) {
-        lines.push("**⚠️ WARNING:** Context at " + (contextRatio * 100).toFixed(0) + "%. Consider running `memory_compress`.");
+        lines.push("**⚠️ WARNING:** Context at " + (contextRatio * 100).toFixed(0) + "%. Consider running `memory(mode=\"compress\")`.");
       } else if (contextRatio >= 0.4) {
         lines.push("**ℹ️ INFO:** Context at " + (contextRatio * 100).toFixed(0) + "%. Monitor and compress if needed.");
       } else {

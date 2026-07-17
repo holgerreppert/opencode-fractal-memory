@@ -4,7 +4,7 @@ description: Extract actionable rules from lesson nodes - update rule:mandatory 
 Extract actionable rules from recent lesson nodes and update rule:mandatory nodes.
 
 **When to use:**
-- After memory_reflect created lessons
+- After memory(mode="reflect") created lessons
 - To turn failures into rules
 - Update behavioral rules
 
@@ -14,9 +14,9 @@ Extract actionable rules from recent lesson nodes and update rule:mandatory node
 
 **Usage:**
 ```
-memory_distill()
-memory_distill(dry_run=true)
-memory_distill(use_llm=true)
+memory(mode="distill", )
+memory(mode="distill", dry_run=true)
+memory(mode="distill", use_llm=true)
 ```
 
 **How it works:**
@@ -30,6 +30,6 @@ memory_distill(use_llm=true)
 - Confirmation after applying
 
 **Tips:**
-- Run memory_reflect first to create lessons
+- Run memory(mode="reflect") first to create lessons
 - Use `use_llm=true` for better rules
 - Rules apply next session

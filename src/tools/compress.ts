@@ -160,7 +160,7 @@ Summary:`;
 ${prompt}
 
 After the LLM generates a summary, you can create a new summary node using:
-memory_set(scope="${node.scope}", content="<summary from LLM>", type="summary", level=${node.level + 1}, parent_id="${node.id}")`;
+  memory(mode="set", scope="${node.scope}", content="<summary from LLM>", type="summary", level=${node.level + 1}, parent_id="${node.id}")`;
     },
   });
   return wrapWithTracking(t, store, "memory_summarize");

@@ -118,6 +118,7 @@ import type { InjectionStore } from "./InjectionStore";
 import type { CompressionStore } from "./CompressionStore";
 import type { MaintenanceStore } from "./MaintenanceStore";
 import type { ConfigStore } from "./ConfigStore";
+import type { LiveFeedStore } from "./LiveFeedStore";
 
 export interface MemoryStore extends
   NodeRepository,
@@ -125,5 +126,6 @@ export interface MemoryStore extends
   InjectionStore,
   CompressionStore,
   MaintenanceStore,
-  ConfigStore
+  ConfigStore,
+  LiveFeedStore
 {}

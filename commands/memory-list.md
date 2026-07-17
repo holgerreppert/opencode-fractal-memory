@@ -5,9 +5,9 @@ List all my memory nodes across all scopes. Shows labels, levels, importance, an
 
 **Usage:**
 ```
-memory_list()
-memory_list(scope="all")
-memory_list(scope="project", level=0)
+memory(mode="list", )
+memory(mode="list", scope="all")
+memory(mode="list", scope="project", level=0)
 ```
 
 **Arguments:**

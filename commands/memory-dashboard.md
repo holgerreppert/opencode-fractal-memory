@@ -12,8 +12,8 @@ Useful for understanding what's in memory and identifying compression opportunit
 
 **Usage:**
 ```
-memory_dashboard
-memory_dashboard { scope: "project", limit: 20 }
+memory(mode="dashboard")
+memory(mode="dashboard") { scope: "project", limit: 20 }
 ```
 
 **Arguments:**

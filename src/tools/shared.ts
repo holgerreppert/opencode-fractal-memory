@@ -37,7 +37,7 @@ export function wrapWithContextWarning(result: string, extraTokens = 0): string 
   const ratio = tokens / CONTEXT_LIMIT;
   
   if (ratio >= WARN_THRESHOLD) {
-    return result + `\n\n---\n⚠️ Context at ${(ratio * 100).toFixed(0)}% (~${tokens.toLocaleString()} tokens). Run memory_drilldown to compress, or memory_compress to create summaries.`;
+    return result + `\n\n---\n⚠️ Context at ${(ratio * 100).toFixed(0)}% (~${tokens.toLocaleString()} tokens). Run memory(mode="compress") to create summaries.`;
   }
   
   return result;

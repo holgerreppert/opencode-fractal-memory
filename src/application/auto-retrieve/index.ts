@@ -42,6 +42,7 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
 
   return {
     "experimental.chat.messages.transform": async (_input, output) => {
+      const pipelineStart = Date.now();
       const messages = output.messages;
       if (!messages || messages.length === 0) return;
 
@@ -268,6 +269,37 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
             before: finalItems.length,
             after: mmrItems.length,
           });
+        }
+
+        // Log injection metrics
+        const nodeTypes: Record<string, number> = {};
+        for (const item of mmrItems) {
+          const t = item.type ?? "unknown";
+          nodeTypes[t] = (nodeTypes[t] ?? 0) + 1;
+        }
+        try {
+          const preIds = candidates.map(c => c.id);
+          const postIds = mmrItems.map(i => i.id);
+          const scores = mmrItems.map(i => i.score);
+          const strategy = ollamaConfig?.enabled ? (ollamaConfig.strategy ?? "ollama")
+            : config.autoRetrieve?.llmJudgeEnabled !== false && client && currentSessionId?.value ? "llm_judge"
+            : "fallback";
+          const queryText = extractLastAgentQuery(messages);
+
+          await store.logInjectionMetrics(currentSessionId?.value ?? "unknown", {
+            injectedNodeCount: mmrItems.length,
+            injectedTokens: mmrItems.reduce((s, i) => s + (i.content.length / 4), 0),
+            injectionMode: "auto_retrieve",
+            queryText: queryText ?? "",
+            preRerankIds: preIds,
+            postRerankIds: postIds,
+            rerankScores: scores,
+            rerankStrategy: strategy,
+            rerankDurationMs: Date.now() - pipelineStart,
+            injectedNodeTypes: nodeTypes,
+          });
+        } catch {
+          // best-effort
         }
 
         // 4. Format results

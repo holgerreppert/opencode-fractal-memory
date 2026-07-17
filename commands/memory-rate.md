@@ -16,9 +16,9 @@ Mark a memory node as helpful (or not) and optionally adjust its usefulness scor
 
 **Usage:**
 ```
-memory_rate(label="rule:mandatory:memory", scope="global", helpful=true, usefulness_score=4)
-memory_rate(id="ab3f2", helpful=false)
-memory_rate(label="my-node", usefulness_score=5)
+memory(mode="rate", label="rule:mandatory:memory", scope="global", helpful=true, usefulness_score=4)
+memory(mode="rate", id="ab3f2", helpful=false)
+memory(mode="rate", label="my-node", usefulness_score=5)
 ```
 
 **How it works:**

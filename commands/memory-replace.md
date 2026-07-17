@@ -16,11 +16,11 @@ Replace specific text in a memory node. Good for small edits without rewriting t
 
 **Usage:**
 ```
-memory_replace(id="ab3f2", oldText="Chose Supabase", newText="Chose Clerk")
-memory_replace(label="auth-choice", oldText="v1", newText="v2")
+memory(mode="replace", id="ab3f2", oldText="Chose Supabase", newText="Chose Clerk")
+memory(mode="replace", label="auth-choice", oldText="v1", newText="v2")
 ```
 
 **Tips:**
-- Use `memory_get` first to see exact text
+- Use `memory(mode="get")` first to see exact text
 - Supports fuzzy whitespace matching
 - Best for targeted fixes, not full rewrites

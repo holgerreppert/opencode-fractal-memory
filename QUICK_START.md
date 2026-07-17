@@ -7,26 +7,26 @@ The memory system uses **auto-retrieve** — relevant context is automatically i
 ## Basic Workflow
 
 1. **Start a task** → Auto-retrieve injects relevant memories, playbooks, and skills
-2. **Make decisions** → Agent stores important patterns with `memory_set`
+2. **Make decisions** → Agent stores important patterns with `memory(mode="set")`
 3. **Complete work** → Agent rates usefulness of memories used
 
 ## Memory Commands
 
 ### Search for Context
 ```
-memory_search { query: "your search terms" }
+memory(mode="search", query="your search terms")
 ```
 Returns semantically similar nodes with relevance scores.
 
 ### Get Full Node Content
 ```
-memory_drilldown { id: "node-id" }
+memory(mode="drilldown") { id: "node-id" }
 ```
 Shows full content + path to source nodes (fractal retrieval).
 
 ### Store Important Information
 ```
-memory_set {
+memory(mode="set") {
   content: "Key information to remember",
   label: "descriptive-label",
   importance: 0.8,
@@ -36,25 +36,25 @@ memory_set {
 
 ### Load a Skill
 ```
-memory_skill_load(name="debug-workflow")
+memory(mode="skill_load", name="debug-workflow")
 ```
 Loads full skill instructions into context.
 
 ### Execute a Playbook
 ```
-memory_playbook_execute(playbook_id="playbook:debug-workflow")
+memory(mode="playbook_execute", playbook_id="playbook:debug-workflow")
 ```
 Returns ordered steps for the agent to execute.
 
 ### Check System Health
 ```
-memory_stats
-memory_dashboard
+memory(mode="stats")
+memory(mode="dashboard")
 ```
 
 ## Available Skills
 
-Skills are auto-injected when triggers match the task. Load explicitly with `memory_skill_load`:
+Skills are auto-injected when triggers match the task. Load explicitly with `memory(mode="skill_load")`:
 
 | Skill | When |
 |---|---|
@@ -66,7 +66,7 @@ Skills are auto-injected when triggers match the task. Load explicitly with `mem
 | `shipping-and-launch` | Deploying to production |
 | `svelte-core-bestpractices` | Writing Svelte components |
 
-List all skills with `memory_search({ type: "skill" })`.
+List all skills with `memory(mode="search", type="skill")`.
 
 ## Available Playbooks
 
@@ -85,17 +85,17 @@ Playbooks are reusable workflows stored as sticky memory nodes (type: `"playbook
 
 | Operation | Tokens | When to Use |
 |-----------|--------|-------------|
-| `memory_search` | ~500 | Find specific info |
-| `memory_stats` | ~133 | Check health |
-| `memory_drilldown` | Variable | Compressed summaries |
-| `memory_list` | ~3000+ | Avoid unless debugging |
-| `memory_skill_load` | ~500 | Load skill instructions |
+| `memory(mode="search", ...)` | ~500 | Find specific info |
+| `memory(mode="stats")` | ~133 | Check health |
+| `memory(mode="drilldown")` | Variable | Compressed summaries |
+| `memory(mode="list")` | ~3000+ | Avoid unless debugging |
+| `memory(mode="skill_load")` | ~500 | Load skill instructions |
 
 ## Best Practices
 
 1. **Be selective** — Only store valuable information
 2. **Use descriptive labels** — Easy to find later
-3. **Rate usefulness** with `memory_rate` — Helps the system learn
+3. **Rate usefulness** with `memory(mode="rate")` — Helps the system learn
 4. **Use links** — Connect related nodes with `[[label]]`
 5. **Search first** — Don't duplicate existing memories
 
@@ -120,10 +120,10 @@ Opens at http://localhost:8787
 │                OpenCode Agent                       │
 ├─────────────────────────────────────────────────────┤
 │  auto-retrieve  →  injects relevant context         │
-│  memory_set     →  store with embeddings            │
-│  memory_skill_load → load skill instructions        │
-│  memory_playbook_execute → run workflow steps       │
-│  memory_drilldown → fractal retrieval               │
+│  memory(mode="set")     →  store with embeddings            │
+│  memory(mode="skill_load") → load skill instructions        │
+│  memory(mode="playbook_execute") → run workflow steps       │
+│  memory(mode="drilldown") → fractal retrieval               │
 └─────────────────────────────────────────────────────┘
                       ↓
 ┌──────────────────────────────────────────────────────────┐
@@ -160,8 +160,8 @@ Embedding models (~24 MB) are downloaded automatically:
 
 ## Tips
 
-- Use `memory_verify` to boost confidence on important nodes
-- Use `memory_prune` to clean up stale nodes periodically
-- Use `memory_compress` to group related nodes into summaries
-- Check `memory_dashboard` for system health metrics
-- Use `memory_injection_debug` to see what was injected last session
+- Use `memory(mode="verify")` to boost confidence on important nodes
+- Use `memory(mode="prune")` to clean up stale nodes periodically
+- Use `memory(mode="compress")` to group related nodes into summaries
+- Check `memory(mode="dashboard")` for system health metrics
+- Use `context(mode="injection_debug")` to see what was injected last session

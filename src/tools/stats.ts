@@ -115,36 +115,98 @@ export function MemoryInjectionStats(store: MemoryStore) {
         return "No injection metrics recorded yet. Metrics are collected automatically when memory is injected.";
       }
 
-      const lines: string[] = [
-        "## Injection Efficiency Metrics",
-        "",
-        `Tracking ${metrics.length} injection(s)`,
-        "",
-      ];
-
+      // ── Compute derived stats ──
       const totalToolCalls = metrics.reduce((sum, m) => sum + (m.toolCalls ?? 0), 0);
       const avgNodesPerInjection = metrics.reduce((sum, m) => sum + m.injectedNodeCount, 0) / metrics.length;
       const avgEffectiveness = metrics.filter(m => m.effectivenessScore !== null)
         .reduce((sum, m, _, arr) => sum + (m.effectivenessScore ?? 0) / arr.length, 0);
 
-      lines.push("### Summary");
-      lines.push(`Total tool calls triggered: ${totalToolCalls}`);
-      lines.push(`Avg nodes per injection: ${avgNodesPerInjection.toFixed(1)}`);
-      if (avgEffectiveness > 0) {
-        lines.push(`Avg effectiveness score: ${(avgEffectiveness * 100).toFixed(0)}%`);
+      // Strategy breakdown
+      const stratCounts: Record<string, number> = {};
+      for (const m of metrics) {
+        const s = m.rerankStrategy || (m.injectionMode ? `mode:${m.injectionMode}` : "none");
+        stratCounts[s] = (stratCounts[s] || 0) + 1;
       }
-      lines.push("");
+      const stratLines = Object.entries(stratCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([s, c]) => `  - ${s}: ${c} injection(s)`);
 
-      lines.push("### Recent Injections");
+      // Type distribution
+      const typeDist: Record<string, number> = {};
+      for (const m of metrics) {
+        if (m.injectedNodeTypes) {
+          for (const [t, c] of Object.entries(m.injectedNodeTypes)) {
+            typeDist[t] = (typeDist[t] ?? 0) + c;
+          }
+        }
+      }
+      const typeLines = Object.entries(typeDist)
+        .sort((a, b) => b[1] - a[1])
+        .map(([t, c]) => `  - ${t}: ${c}`);
+
+      // Score stats
+      const allScores: number[] = [];
+      for (const m of metrics) {
+        if (m.rerankScores) allScores.push(...m.rerankScores);
+      }
+      let scoreLine = "";
+      if (allScores.length > 0) {
+        const avg = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+        const min = Math.min(...allScores);
+        const max = Math.max(...allScores);
+        scoreLine = `Score range: ${min.toFixed(3)} – ${max.toFixed(3)} (avg: ${avg.toFixed(3)})`;
+      }
+
+      // Timeline
+      const dayCounts: Record<string, number> = {};
+      for (const m of metrics) {
+        if (m.timestamp) {
+          const d = new Date(m.timestamp).toLocaleDateString();
+          dayCounts[d] = (dayCounts[d] || 0) + 1;
+        }
+      }
+      const timelineLines = Object.entries(dayCounts)
+        .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+        .map(([d, c]) => `  - ${d}: ${c} injection(s)`);
+
+      // ── Build output ──
+      const lines: string[] = [
+        "## Injection Efficiency Metrics",
+        "",
+        `Tracking ${metrics.length} injection(s) over ${Object.keys(dayCounts).length} day(s)`,
+        "",
+        "### Summary",
+        `Total tool calls triggered: ${totalToolCalls}`,
+        `Avg nodes per injection: ${avgNodesPerInjection.toFixed(1)}`,
+        avgEffectiveness > 0 ? `Avg effectiveness score: ${(avgEffectiveness * 100).toFixed(0)}%` : null,
+        scoreLine || null,
+        "",
+        stratLines.length > 0 ? "### Strategy Breakdown" : null,
+        ...stratLines,
+        stratLines.length > 0 ? "" : null,
+        typeLines.length > 0 ? "### Node Types Injected" : null,
+        ...typeLines,
+        typeLines.length > 0 ? "" : null,
+        timelineLines.length > 1 ? "### Injection Timeline" : null,
+        ...timelineLines,
+        timelineLines.length > 1 ? "" : null,
+        "### Recent Injections",
+      ].filter(Boolean) as string[];
+
       for (const m of metrics.slice(0, 5)) {
         const date = m.timestamp ? new Date(m.timestamp).toLocaleString() : "N/A";
-        const toolCallsStr = m.toolCalls ?? 0;
-        const effectivenessStr = (m.effectivenessScore !== undefined && m.effectivenessScore !== null) ? `, effectiveness: ${(m.effectivenessScore * 100).toFixed(0)}%` : '';
-        lines.push(`- ${date}: ${m.injectedNodeCount} nodes, ${toolCallsStr} tool calls${effectivenessStr}`);
+        const strategy = m.rerankStrategy || "—";
+        const types = m.injectedNodeTypes
+          ? Object.entries(m.injectedNodeTypes).map(([t, c]) => `${t}:${c}`).join(", ")
+          : "—";
+        const effectivenessStr = (m.effectivenessScore !== undefined && m.effectivenessScore !== null)
+          ? `, effectiveness: ${(m.effectivenessScore * 100).toFixed(0)}%` : '';
+        const query = m.queryText ? ` "${m.queryText.slice(0, 60)}"` : "";
+        lines.push(`- ${date}: ${m.injectedNodeCount} nodes | ${strategy} | ${types}${effectivenessStr}${query}`);
       }
 
       lines.push("");
-      lines.push("_Metrics are collected automatically when memory is injected. Use memory_verify after tasks to improve effectiveness scores._");
+      lines.push("_Metrics are collected automatically when memory is injected. Use memory(mode=\"verify\") after tasks to improve effectiveness scores._");
 
       return lines.join("\n");
     },
@@ -156,7 +218,7 @@ export function MemoryInjectionFeedback(store: MemoryStore) {
   const t = tool({
     description: "Rate the usefulness of injected memories after completing a task. Upvote helpful injections, downvote irrelevant ones. This helps improve future injection relevance.",
     args: {
-      session_id: tool.schema.string().describe("Session ID to provide feedback for (find via memory_injection_stats)"),
+      session_id: tool.schema.string().describe("Session ID to provide feedback for (find via learn(mode=\"injection_stats\"))"),
       upvotes: tool.schema.number().min(0).describe("Number of helpful injections"),
       downvotes: tool.schema.number().min(0).describe("Number of irrelevant/inutile injections"),
       task_outcome: tool.schema.enum(["success", "partial", "failed"]).optional().describe("How well the task went"),
@@ -182,7 +244,7 @@ export function MemoryInjectionFeedback(store: MemoryStore) {
 
 export function MemoryCheckContext(store: MemoryStore) {
   const t = tool({
-    description: "Check token usage of memory nodes and warn if approaching context limit. Helps decide when to compress or use memory_drilldown.",
+    description: "Check token usage of memory nodes and warn if approaching context limit. Helps decide when to compress or use memory(mode=\"drilldown\").",
     args: {
       scope: tool.schema.enum(["all", "global", "project"]).optional(),
       threshold: tool.schema.number().min(0).max(1).optional(),
@@ -226,9 +288,9 @@ export function MemoryCheckContext(store: MemoryStore) {
           `⚠️ Context at ${(ratio * 100).toFixed(0)}% — above threshold (${(threshold * 100).toFixed(0)}%)`,
           "",
           "To reduce token usage:",
-          "- Run memory_drilldown on specific nodes to get summaries",
-          "- Run memory_compress(scope=\"project\", force=true) to create L1 summaries",
-          "- Run memory_drilldown on the created summaries to retrieve compressed content",
+          "- Run memory(mode=\"drilldown\") on specific nodes to get summaries",
+          "- Run memory(mode=\"compress\", scope=\"project\", force=true) to create L1 summaries",
+          "- Run memory(mode=\"drilldown\") on the created summaries to retrieve compressed content",
         ];
         
         const nodesByLevel: Record<number, number> = {};

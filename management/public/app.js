@@ -247,11 +247,15 @@ class SceneController {
     this.scene.background = new THREE.Color(0x0a0a0f);
     this.scene.fog = new THREE.FogExp2(0x0a0a0f, 0.0006);
 
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    const container = document.getElementById("main-content") || document.body;
+    const w = container.clientWidth || window.innerWidth;
+    const h = container.clientHeight || window.innerHeight;
+
+    this.camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 2000);
     this.camera.position.set(0, 100, 300);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById("canvas-container").appendChild(this.renderer.domElement);
 
@@ -1269,9 +1273,12 @@ class SceneController {
   }
 
   resize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const container = document.getElementById("main-content") || document.body;
+    const w = container.clientWidth || window.innerWidth;
+    const h = container.clientHeight || window.innerHeight;
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(w, h);
   }
 }
 
@@ -1359,7 +1366,7 @@ function setupEventListeners() {
 
   document.getElementById("toggle-sidebar").addEventListener("click", () => {
     const sidebar = document.getElementById("sidebar");
-    sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
+    sidebar.classList.toggle("sidebar-collapsed");
   });
 
   // Consolidated filter button handler
@@ -1512,7 +1519,16 @@ function setupEventListeners() {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       const tab = btn.dataset.tab;
+      const isVisualize = tab === "visualize";
+      const isGraph = tab === "graph";
+      const isLiveAgent = tab === "live-agent";
+      const isLiveMetrics = tab === "live-metrics";
+      const isFullscreenTab = isVisualize || isGraph;
+      const isLiveTab = isLiveAgent || isLiveMetrics;
+      const sidebar = document.getElementById("sidebar");
+      const mainContent = document.getElementById("main-content");
       const visualizePanel = document.getElementById("visualize-panel");
+      const graphSidebarPanel = document.getElementById("graph-sidebar-panel");
       const settingsPanel = document.getElementById("settings-panel");
       const contextPanel = document.getElementById("context-panel");
       const backupPanel = document.getElementById("backup-panel");
@@ -1522,16 +1538,25 @@ function setupEventListeners() {
       const graphPanel = document.getElementById("graph-panel");
       const canvasContainer = document.getElementById("canvas-container");
       const graphVizContainer = document.getElementById("graph-viz-container");
-      if (visualizePanel) visualizePanel.classList.toggle("active", tab === "visualize");
-      if (settingsPanel) settingsPanel.classList.toggle("active", tab === "settings");
-      if (contextPanel) contextPanel.classList.toggle("active", tab === "context");
-      if (backupPanel) backupPanel.classList.toggle("active", tab === "backup");
-      if (qualityPanel) qualityPanel.classList.toggle("active", tab === "quality");
-      if (compressPanel) compressPanel.classList.toggle("active", tab === "compress");
-      if (tokensPanel) tokensPanel.classList.toggle("active", tab === "tokens");
-      if (graphPanel) graphPanel.classList.toggle("active", tab === "graph");
-      if (canvasContainer) canvasContainer.style.display = tab === "graph" ? "none" : "block";
-      if (graphVizContainer) graphVizContainer.classList.toggle("active", tab === "graph");
+
+      // Sidebar collapse: full sidebar for visualize and graph tabs
+      if (sidebar) sidebar.classList.toggle("sidebar-collapsed", !isFullscreenTab);
+      if (mainContent) mainContent.classList.toggle("tab-content", !isFullscreenTab);
+
+      // Sidebar panels
+      if (visualizePanel) visualizePanel.classList.toggle("active", isVisualize);
+      if (graphSidebarPanel) graphSidebarPanel.style.display = isGraph ? "block" : "none";
+
+      // Main-content panels (hidden for fullscreen tabs)
+      const panelMap = { settings: settingsPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, compress: compressPanel, tokens: tokensPanel, graph: graphPanel, "live-agent": document.getElementById("live-agent-panel"), "live-metrics": document.getElementById("live-metrics-panel") };
+      for (const [key, p] of Object.entries(panelMap)) {
+        if (p) p.classList.toggle("active", key === tab && (isLiveTab || !isFullscreenTab));
+      }
+
+      // Canvas/visualization visibility
+      if (canvasContainer) canvasContainer.style.display = isVisualize ? "block" : "none";
+      if (graphVizContainer) graphVizContainer.classList.toggle("active", isGraph);
+
       if (tab === "settings") loadSettings();
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
       if (tab === "context") loadContextDashboard();
@@ -1539,6 +1564,9 @@ function setupEventListeners() {
       if (tab === "compress") loadCompressStats();
       if (tab === "tokens") loadTokenHistory();
       if (tab === "graph") loadGraphData();
+      if (tab === "live-agent") { startLiveAgentPolling(); }
+      if (tab === "live-metrics") { startLiveMetricsPolling(); }
+      if (!isLiveTab && !isFullscreenTab) { stopLiveAgentPolling(); stopLiveMetricsPolling(); }
     });
   });
 }
@@ -3030,6 +3058,7 @@ async function loadContextDashboard() {
     const mem = data.memory;
     const comp = data.compression;
     const inj = data.injections;
+    const agg = data.injectionAggregate;
     const overhead = data.overhead;
 
     const estimatedConversationTokens = comp.totalCalls > 0
@@ -3038,13 +3067,20 @@ async function loadContextDashboard() {
 
     const totalView = mem.totalTokens + overhead.systemPromptTokens + overhead.toolDefTokens + estimatedConversationTokens;
 
+    const stratHtml = agg && agg.topStrategies && agg.topStrategies.length > 0
+      ? agg.topStrategies.map(s => `${s.strategy}:${s.count}`).join(", ")
+      : "—";
+
     summaryEl.innerHTML = `
       <div class="stat-row"><span class="stat-label">Memory Nodes</span><span class="stat-value">${mem.totalNodes}</span></div>
       <div class="stat-row"><span class="stat-label">Memory Tokens</span><span class="stat-value">${mem.totalTokens.toLocaleString()}</span></div>
       <div class="stat-row"><span class="stat-label">Active Rules</span><span class="stat-value">${mem.rules}</span></div>
       <div class="stat-row"><span class="stat-label">Compression Calls</span><span class="stat-value">${comp.totalCalls}</span></div>
       <div class="stat-row"><span class="stat-label">Compression Saved</span><span class="stat-value">${comp.savingsPercent}%</span></div>
-      <div class="stat-row"><span class="stat-label">Recent Injections</span><span class="stat-value">${inj.length}</span></div>
+      <div class="stat-row"><span class="stat-label">Total Injections</span><span class="stat-value">${agg ? agg.total : inj.length}</span></div>
+      <div class="stat-row"><span class="stat-label">Avg Nodes/Inj</span><span class="stat-value">${agg ? agg.avgNodes : "—"}</span></div>
+      <div class="stat-row"><span class="stat-label">Avg Tokens/Inj</span><span class="stat-value">${agg ? agg.avgTokens.toLocaleString() : "—"}</span></div>
+      <div class="stat-row"><span class="stat-label">Top Strategies</span><span class="stat-value" style="font-size:10px">${stratHtml}</span></div>
       <div class="stat-row"><span class="stat-label">Est. Conversation Tokens</span><span class="stat-value">${estimatedConversationTokens.toLocaleString()}</span></div>
       ${embStatus ? `
       <div style="border-top:1px solid #333;padding-top:8px;margin-top:8px;">
@@ -3063,7 +3099,7 @@ async function loadContextDashboard() {
       </div>
       <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">System prompts</span><span class="stat-value" style="font-size:11px;">~${overhead.systemPromptTokens.toLocaleString()}</span></div>
       <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">Tool definitions</span><span class="stat-value" style="font-size:11px;">~${overhead.toolDefTokens.toLocaleString()}</span></div>
-      <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">Run <code>memory_total_tokens</code> for live conversation data</span></div>
+      <div class="stat-row"><span class="stat-label" style="font-size:11px;color:#666;">Run <code>context(mode="total_tokens")</code> for live conversation data</span></div>
     `;
 
     // Breakdown by level
@@ -3152,6 +3188,130 @@ async function loadQuality() {
   }
 }
 
+// ── Canvas chart helpers ──
+
+function renderBarChart(canvas, labels, values, colors, title) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const pad = { top: 28, bottom: 28, left: 10, right: 10 };
+  const chartW = w - pad.left - pad.right;
+  const chartH = h - pad.top - pad.bottom;
+  const maxVal = Math.max(...values, 1);
+  const barW = Math.min(40, chartW / labels.length * 0.7);
+  const gap = chartW / labels.length;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Title
+  ctx.fillStyle = "#aaa";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(title, w / 2, 14);
+
+  // Bars
+  for (let i = 0; i < labels.length; i++) {
+    const x = pad.left + i * gap + (gap - barW) / 2;
+    const barH = (values[i] / maxVal) * chartH;
+    const y = pad.top + chartH - barH;
+
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillRect(x, y, barW, barH);
+
+    // Label
+    ctx.fillStyle = "#888";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(labels[i], pad.left + i * gap + gap / 2, h - 6);
+
+    // Value
+    ctx.fillStyle = "#ccc";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(String(values[i]), pad.left + i * gap + gap / 2, y - 4);
+  }
+}
+
+function renderTimelineChart(canvas, dates, counts, title) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const pad = { top: 28, bottom: 28, left: 10, right: 10 };
+  const chartW = w - pad.left - pad.right;
+  const chartH = h - pad.top - pad.bottom;
+  const maxVal = Math.max(...counts, 1);
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = "#aaa";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(title, w / 2, 14);
+
+  if (counts.length < 2) {
+    if (counts.length === 1) {
+      ctx.fillStyle = "#4a9eff";
+      const cx = w / 2;
+      const barW = 40;
+      const barH = (counts[0] / maxVal) * chartH;
+      ctx.fillRect(cx - barW / 2, pad.top + chartH - barH, barW, barH);
+      ctx.fillStyle = "#ccc";
+      ctx.font = "9px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(String(counts[0]), cx, pad.top + chartH - barH - 4);
+    }
+    return;
+  }
+
+  const step = chartW / (counts.length - 1);
+  const color = "#34d399";
+
+  // Fill area
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top + chartH);
+  for (let i = 0; i < counts.length; i++) {
+    const x = pad.left + i * step;
+    const y = pad.top + chartH - (counts[i] / maxVal) * chartH;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(pad.left + (counts.length - 1) * step, pad.top + chartH);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(52, 211, 153, 0.15)";
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (let i = 0; i < counts.length; i++) {
+    const x = pad.left + i * step;
+    const y = pad.top + chartH - (counts[i] / maxVal) * chartH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Dots
+  for (let i = 0; i < counts.length; i++) {
+    const x = pad.left + i * step;
+    const y = pad.top + chartH - (counts[i] / maxVal) * chartH;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  // Labels (alternating to avoid overlap)
+  for (let i = 0; i < counts.length; i++) {
+    const x = pad.left + i * step;
+    ctx.fillStyle = "#666";
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    const label = i % Math.max(1, Math.floor(counts.length / 8)) === 0 || i === counts.length - 1 ? dates[i] : "";
+    ctx.fillText(label, x, h - 6);
+  }
+}
+
 function renderQuality(summaryEl, chartsEl, metrics) {
   if (metrics.length === 0) {
     summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">No injection data yet. Auto-retrieve must fire at least once.</span></div>`;
@@ -3201,7 +3361,28 @@ function renderQuality(summaryEl, chartsEl, metrics) {
     <div class="stat-row"><span class="stat-label">Node Types</span><br>${typeHtml || "—"}</div>
   `;
 
-  // Detailed table
+  // ── Charts section ──
+  const CHART_COLORS = ["#4a9eff", "#34d399", "#fb923c", "#a78bfa", "#f472b6", "#fbbf24", "#ef4444"];
+  const CARD = "background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;margin-bottom:12px;";
+
+  let chartsHtml = `<div class="section" style="margin-bottom:16px;"><h3>Injection Charts</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">`;
+
+  // 1. Score distribution histogram
+  chartsHtml += `<div style="${CARD}"><canvas id="chart-score-dist" width="300" height="180"></canvas></div>`;
+
+  // 2. Strategy comparison
+  chartsHtml += `<div style="${CARD}"><canvas id="chart-strategy-compare" width="300" height="180"></canvas></div>`;
+
+  // 3. Timeline
+  chartsHtml += `<div style="${CARD}"><canvas id="chart-timeline" width="300" height="180"></canvas></div>`;
+
+  // 4. Node type distribution
+  chartsHtml += `<div style="${CARD}"><canvas id="chart-type-dist" width="300" height="180"></canvas></div>`;
+
+  chartsHtml += `</div></div>`;
+
+  // ── Detailed table ──
   let tableHtml = `<div class="section"><h3>Recent Injections</h3>
     <div style="overflow-x:auto"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
     <thead><tr>
@@ -3235,7 +3416,84 @@ function renderQuality(summaryEl, chartsEl, metrics) {
   }
 
   tableHtml += `</tbody></table></div></div>`;
-  chartsEl.innerHTML = tableHtml;
+  chartsEl.innerHTML = chartsHtml + tableHtml;
+
+  // ── Render canvas charts (must be after DOM insert) ──
+
+  // 1. Score distribution histogram
+  const scoreBuckets = {};
+  const BUCKET_SIZE = 0.1;
+  for (const m of metrics) {
+    if (m.rerankScores) {
+      for (const s of m.rerankScores) {
+        const b = Math.floor(s / BUCKET_SIZE) * BUCKET_SIZE;
+        const key = b.toFixed(1) + "-" + (b + BUCKET_SIZE).toFixed(1);
+        scoreBuckets[key] = (scoreBuckets[key] || 0) + 1;
+      }
+    }
+  }
+  const scoreCanvas = document.getElementById("chart-score-dist");
+  if (scoreCanvas && Object.keys(scoreBuckets).length > 0) {
+    renderBarChart(scoreCanvas,
+      Object.keys(scoreBuckets).sort(),
+      Object.values(scoreBuckets),
+      CHART_COLORS,
+      "Rerank Score Distribution"
+    );
+  }
+
+  // 2. Strategy comparison (avg scores)
+  const stratScores = {};
+  for (const m of metrics) {
+    if (m.rerankScores && m.rerankScores.length > 0) {
+      const s = m.rerankStrategy || "none";
+      if (!stratScores[s]) stratScores[s] = [];
+      stratScores[s].push(...m.rerankScores);
+    }
+  }
+  const stratCanvas = document.getElementById("chart-strategy-compare");
+  if (stratCanvas && Object.keys(stratScores).length > 0) {
+    const stratLabels = Object.keys(stratScores);
+    const stratAvgs = stratLabels.map(k => {
+      const vals = stratScores[k];
+      return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    });
+    renderBarChart(stratCanvas,
+      stratLabels,
+      stratAvgs.map(v => Math.round(v * 100)),
+      CHART_COLORS,
+      "Avg Score by Strategy (%)"
+    );
+  }
+
+  // 3. Timeline (injections per day)
+  const dayCounts = {};
+  for (const m of metrics) {
+    const d = new Date(m.timestamp);
+    const key = d.toLocaleDateString();
+    dayCounts[key] = (dayCounts[key] || 0) + 1;
+  }
+  const timelineCanvas = document.getElementById("chart-timeline");
+  if (timelineCanvas && Object.keys(dayCounts).length > 0) {
+    const sortedDays = Object.keys(dayCounts).sort((a, b) => new Date(a) - new Date(b));
+    renderTimelineChart(timelineCanvas,
+      sortedDays,
+      sortedDays.map(d => dayCounts[d]),
+      "Injection Timeline"
+    );
+  }
+
+  // 4. Node type distribution
+  const typeCanvas = document.getElementById("chart-type-dist");
+  if (typeCanvas && Object.keys(typeDist).length > 0) {
+    const sorted = Object.entries(typeDist).sort((a, b) => b[1] - a[1]);
+    renderBarChart(typeCanvas,
+      sorted.map(([t]) => t),
+      sorted.map(([, c]) => c),
+      CHART_COLORS,
+      "Node Types Injected"
+    );
+  }
 }
 
 async function loadCompressStats() {
@@ -3832,21 +4090,47 @@ async function showGraphNodeDetail(node) {
 
 function graphSearch(query) {
   const info = document.getElementById("graph-search-info");
+  const results = document.getElementById("graph-search-results");
+  if (!graphViz || !graphViz.nodes) {
+    info.textContent = graphViz ? "Build graph first" : "Graph not initialized";
+    results.innerHTML = "";
+    return;
+  }
   if (!query || !query.trim()) {
     graphViz.highlightSearch("");
     info.textContent = "";
+    results.innerHTML = "";
     return;
   }
   graphViz.highlightSearch(query);
+  const q = query.toLowerCase();
   const matches = graphViz.nodes.filter(n =>
-    n.label.toLowerCase().includes(query.toLowerCase()) ||
-    (n.file && n.file.toLowerCase().includes(query.toLowerCase()))
+    n.label.toLowerCase().includes(q) ||
+    (n.file && n.file.toLowerCase().includes(q))
   );
   if (matches.length === 0) {
     info.textContent = "No matching nodes";
+    results.innerHTML = "";
   } else {
     info.textContent = `${matches.length} matching node(s)`;
+    results.innerHTML = matches.slice(0, 30).map(n => {
+      const icon = (n.type === "function" ? "ƒ" : n.type === "class" ? "C" : n.type === "interface" ? "I" : "·");
+      const label = n.label.length > 40 ? n.label.slice(0, 37) + "..." : n.label;
+      return `<div class="graph-search-result" data-node-id="${n.id || n.label}" style="padding:3px 6px;cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:6px;"><span style="width:16px;text-align:center;font-family:monospace;color:#888;">${icon}</span><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span><span style="font-size:10px;color:#555;">${n.file ? n.file.split("/").pop() : ""}</span></div>`;
+    }).join("");
   }
+}
+
+function setupGraphSearchResults() {
+  document.getElementById("graph-search-results").addEventListener("click", (e) => {
+    const row = e.target.closest(".graph-search-result");
+    if (!row) return;
+    const nodeId = row.dataset.nodeId;
+    const node = graphViz.nodes.find(n => n.id === nodeId || n.label === nodeId);
+    if (node && graphViz.onNodeClick) {
+      graphViz.onNodeClick(node);
+    }
+  });
 }
 
 function setupGraphListeners() {
@@ -3858,6 +4142,13 @@ function setupGraphListeners() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => graphSearch(searchInput.value), 200);
   });
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      clearTimeout(searchTimer);
+      graphSearch(searchInput.value);
+    }
+  });
+  setupGraphSearchResults();
 
   document.getElementById("graph-detail-close").addEventListener("click", () => {
     document.getElementById("graph-detail-panel").classList.remove("open");
@@ -3872,6 +4163,251 @@ function setupGraphListeners() {
       }
     };
   }
+}
+
+// ==================== Live Agent Polling ====================
+
+let liveAgentInterval = null;
+let liveMetricsInterval = null;
+
+function stopLiveAgentPolling() {
+  if (liveAgentInterval) {
+    clearInterval(liveAgentInterval);
+    liveAgentInterval = null;
+  }
+}
+
+function stopLiveMetricsPolling() {
+  if (liveMetricsInterval) {
+    clearInterval(liveMetricsInterval);
+    liveMetricsInterval = null;
+  }
+}
+
+async function pollLiveFeed() {
+  try {
+    const resp = await fetch("/api/live");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.error) return;
+    liveLastTimestamp = data.timestamp || Date.now();
+    renderLiveFeed(data);
+    renderLiveContext(data);
+  } catch {
+    // silently retry
+  }
+}
+
+function renderLiveFeed(data) {
+  const feed = document.getElementById("live-feed");
+  const status = document.getElementById("live-feed-status");
+  const filterVal = (document.getElementById("live-filter-input")?.value || "").toLowerCase();
+  if (!feed) return;
+
+  const turns = data.turns || [];
+  status.textContent = `${turns.length} turns`;
+
+  let html = "";
+  for (const t of turns.slice().reverse()) {
+    const ts = new Date(t.timestamp).toLocaleTimeString();
+    const role = t.role || "unknown";
+    const content = (t.content || "").slice(0, 500);
+    const line = `[${ts}] ${role.toUpperCase()}: ${content}`;
+
+    if (filterVal && !line.toLowerCase().includes(filterVal)) continue;
+
+    const cls = `live-${role}`;
+    html += `<div class="${cls}"><span class="live-ts">[${ts}]</span> <strong>${role.toUpperCase()}</strong> ${escHtml(content)}</div>`;
+  }
+  feed.innerHTML = html;
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function renderLiveContext(data) {
+  const ctx = document.getElementById("live-context");
+  if (!ctx) return;
+
+  const session = data.session || {};
+  const tokenHistory = data.tokenHistory || {};
+  const totals = {
+    input: tokenHistory.totalInputTokens || 0,
+    output: tokenHistory.totalOutputTokens || 0,
+    reasoning: tokenHistory.totalReasoningTokens || 0,
+  };
+
+  const turns = data.turns || [];
+  const lastTurn = turns.length > 0 ? turns[0] : null;
+
+  ctx.innerHTML = `
+    <div class="ctx-row"><span class="ctx-label">Session</span><span class="ctx-value">${escHtml(session.session_id || "—")}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Status</span><span class="ctx-value">${escHtml(session.status || "—")}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Uptime</span><span class="ctx-value">${session.started_at ? fmtDuration(Date.now() - session.started_at) : "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Tool Calls</span><span class="ctx-value">${session.total_tool_calls ?? "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">File Reads</span><span class="ctx-value">${session.file_reads ?? "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">File Edits</span><span class="ctx-value">${session.file_edits ?? "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Bash Commands</span><span class="ctx-value">${session.bash_commands ?? "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Memory Tools</span><span class="ctx-value">${session.memory_tools ?? "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Injections</span><span class="ctx-value">${session.injection_count ?? "—"}</span></div>
+    <div class="ctx-row"><span class="ctx-label">Injected Tokens</span><span class="ctx-value">${(session.injected_tokens ?? 0).toLocaleString()}</span></div>
+    <div style="border-top:1px solid #333;padding-top:6px;margin-top:6px;">
+      <div class="ctx-row"><span class="ctx-label">Total Input Tokens</span><span class="ctx-value">${totals.input.toLocaleString()}</span></div>
+      <div class="ctx-row"><span class="ctx-label">Total Output Tokens</span><span class="ctx-value">${totals.output.toLocaleString()}</span></div>
+      <div class="ctx-row"><span class="ctx-label">Total Reasoning</span><span class="ctx-value">${totals.reasoning.toLocaleString()}</span></div>
+    </div>
+    <div style="border-top:1px solid #333;padding-top:6px;margin-top:6px;">
+      <div class="ctx-row"><span class="ctx-label">Last Turn</span><span class="ctx-value">${lastTurn ? new Date(lastTurn.timestamp).toLocaleTimeString() : "—"}</span></div>
+      <div class="ctx-row"><span class="ctx-label">Last Role</span><span class="ctx-value">${lastTurn ? lastTurn.role : "—"}</span></div>
+      <div class="ctx-row"><span class="ctx-label">Conversation Turns</span><span class="ctx-value">${turns.length}</span></div>
+    </div>
+  `;
+}
+
+function startLiveAgentPolling() {
+  stopLiveAgentPolling();
+  liveAgentInterval = setInterval(pollLiveFeed, 2000);
+  pollLiveFeed();
+}
+
+// ==================== Live Metrics Polling ====================
+
+async function pollLiveMetrics() {
+  try {
+    const resp = await fetch("/api/live");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.error) return;
+    renderLiveInjections(data);
+    renderLiveCompressions(data);
+    renderLiveToolCalls(data);
+    renderLiveTokenChart(data);
+  } catch {
+    // silently retry
+  }
+}
+
+function renderLiveInjections(data) {
+  const el = document.getElementById("live-injections");
+  if (!el) return;
+  const items = (data.injections || []).slice(0, 30);
+  if (items.length === 0) { el.textContent = "No injection data yet."; return; }
+  el.innerHTML = items.map(i => {
+    const ts = new Date(i.timestamp).toLocaleTimeString();
+    const mode = i.injection_mode || "—";
+    const strategy = i.rerank_strategy || "—";
+    return `<div class="metric-row"><span class="mt">${ts}</span> ${escHtml(mode)} / ${escHtml(strategy)} / ${i.injected_node_count}n / ${(i.injected_tokens || 0).toLocaleString()}t</div>`;
+  }).join("");
+}
+
+function renderLiveCompressions(data) {
+  const el = document.getElementById("live-compressions");
+  if (!el) return;
+  const items = (data.compressions || []).slice(0, 30);
+  if (items.length === 0) { el.textContent = "No compression data yet."; return; }
+  el.innerHTML = items.map(c => {
+    const ts = new Date(c.timestamp).toLocaleTimeString();
+    const savings = c.savings_ratio ? Math.round((1 - c.savings_ratio) * 100) : 0;
+    const cmd = c.cmd_preview || c.command || "—";
+    return `<div class="metric-row"><span class="mt">${ts}</span> ${escHtml(cmd)} / ${c.strategy || "—"} / ${(c.original_chars || 0).toLocaleString()}→${(c.compressed_chars || 0).toLocaleString()} (-${savings}%)</div>`;
+  }).join("");
+}
+
+function renderLiveToolCalls(data) {
+  const el = document.getElementById("live-toolcalls");
+  if (!el) return;
+  const items = (data.toolCalls || []).slice(0, 30);
+  if (items.length === 0) { el.textContent = "No tool call data yet."; return; }
+  el.innerHTML = items.map(t => {
+    const ts = new Date(t.timestamp).toLocaleTimeString();
+    const name = t.tool_name || "—";
+    const status = t.success ? "✓" : t.success === 0 ? "✗" : "…";
+    const dur = t.duration_ms ? `${t.duration_ms}ms` : "—";
+    return `<div class="metric-row"><span class="mt">${ts}</span> ${status} ${escHtml(name)} / ${dur}</div>`;
+  }).join("");
+}
+
+function renderLiveTokenChart(data) {
+  const canvas = document.getElementById("live-token-chart");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const pad = { top: 20, bottom: 20, left: 10, right: 10 };
+  const chartW = w - pad.left - pad.right;
+  const chartH = h - pad.top - pad.bottom;
+
+  const recent = (data.tokenHistory?.recentTurns || []).slice(-30);
+  if (recent.length < 2) {
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#555";
+    ctx.font = "11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Need at least 2 data points", w / 2, h / 2);
+    return;
+  }
+
+  const inputVals = recent.map(t => t.inputTokens || 0);
+  const outputVals = recent.map(t => t.outputTokens || 0);
+  const reasonVals = recent.map(t => t.reasoningTokens || 0);
+  const maxVal = Math.max(1, ...inputVals, ...outputVals, ...reasonVals);
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = "#aaa";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("Tokens per Turn (last 30)", w / 2, 14);
+
+  const step = chartW / (recent.length - 1);
+
+  function drawLine(vals, color) {
+    ctx.beginPath();
+    for (let i = 0; i < vals.length; i++) {
+      const x = pad.left + i * step;
+      const y = pad.top + chartH - (vals[i] / maxVal) * chartH;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  drawLine(inputVals, "#4a9eff");
+  drawLine(outputVals, "#34d399");
+  drawLine(reasonVals, "#a78bfa");
+
+  ctx.fillStyle = "#555";
+  ctx.font = "9px monospace";
+  ctx.textAlign = "left";
+  ctx.fillRect(10, h - 14, 8, 8);
+  ctx.fillStyle = "#4a9eff";
+  ctx.fillText("input", 22, h - 6);
+  ctx.fillStyle = "#34d399";
+  ctx.fillRect(60, h - 14, 8, 8);
+  ctx.fillText("output", 72, h - 6);
+  ctx.fillStyle = "#a78bfa";
+  ctx.fillRect(115, h - 14, 8, 8);
+  ctx.fillText("reasoning", 127, h - 6);
+}
+
+function startLiveMetricsPolling() {
+  stopLiveMetricsPolling();
+  liveMetricsInterval = setInterval(pollLiveMetrics, 3000);
+  pollLiveMetrics();
+}
+
+function escHtml(s) {
+  if (!s) return "";
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function fmtDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 // ==================== Start ====================

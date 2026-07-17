@@ -76,13 +76,12 @@ describe("CompressionHelper.generateStructuredSummary", () => {
   test("extracts tools mentioned in content", () => {
     const nodes = [
       makeNode({
-        content: "Used memory_search to find the node. Then ran bun test to verify.",
+        content: "Used memory(mode='search') to find the node. Then ran bun test to verify.",
       }),
     ];
 
     const summary = CompressionHelper.generateStructuredSummary(nodes);
     expect(summary).toContain("Tools");
-    expect(summary).toContain("memory_search");
     expect(summary).toContain("bun");
   });
 

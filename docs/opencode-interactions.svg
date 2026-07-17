@@ -255,7 +255,7 @@
 <title>actor_agent&#45;&gt;tools_core</title>
 <path fill="none" stroke="#ff4444" d="M78.69,-519.72C89.23,-512.73 99,-506.25 99,-506.25 99,-506.25 283,-488.25 283,-488.25 283,-488.25 451,-425.25 451,-425.25 451,-425.25 1979,-417.25 1979,-417.25 1979,-417.25 2011.29,-394.54 2037.4,-376.18"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="2039.45,-379.02 2045.61,-370.4 2035.42,-373.29 2039.45,-379.02"/>
-<text text-anchor="middle" x="510" y="-463.85" font-family="monospace" font-size="8.00">memory_list / set / get /</text>
+<text text-anchor="middle" x="510" y="-463.85" font-family="monospace" font-size="8.00">memory(mode="list") / set / get /</text>
 <text text-anchor="middle" x="510" y="-454.85" font-family="monospace" font-size="8.00">fetch / replace / delete /</text>
 <text text-anchor="middle" x="510" y="-445.85" font-family="monospace" font-size="8.00">verify</text>
 </g>
@@ -272,7 +272,7 @@
 <title>actor_agent&#45;&gt;tools_search</title>
 <path fill="none" stroke="#ff4444" d="M78.69,-519.72C89.23,-512.73 99,-506.25 99,-506.25 99,-506.25 424,-488.25 424,-488.25 424,-488.25 597,-425.25 597,-425.25 597,-425.25 2171,-417.25 2171,-417.25 2171,-417.25 2198.93,-395.72 2222.38,-377.63"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="2224.66,-380.3 2230.44,-371.42 2220.38,-374.75 2224.66,-380.3"/>
-<text text-anchor="middle" x="658" y="-463.85" font-family="monospace" font-size="8.00">memory_search / drilldown /</text>
+<text text-anchor="middle" x="658" y="-463.85" font-family="monospace" font-size="8.00">memory(mode="search") / drilldown /</text>
 <text text-anchor="middle" x="658" y="-454.85" font-family="monospace" font-size="8.00">drilldown_query /</text>
 <text text-anchor="middle" x="658" y="-445.85" font-family="monospace" font-size="8.00">detect_topics</text>
 </g>
@@ -289,7 +289,7 @@
 <title>actor_agent&#45;&gt;tools_compress</title>
 <path fill="none" stroke="#ff4444" d="M78.69,-519.72C89.23,-512.73 99,-506.25 99,-506.25 99,-506.25 151,-488.25 151,-488.25 151,-488.25 315,-425.25 315,-425.25 315,-425.25 1797,-417.25 1797,-417.25 1797,-417.25 1826.19,-395.53 1850.56,-377.39"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="1852.65,-380.2 1858.59,-371.42 1848.47,-374.58 1852.65,-380.2"/>
-<text text-anchor="middle" x="369.5" y="-463.85" font-family="monospace" font-size="8.00">memory_compress /</text>
+<text text-anchor="middle" x="369.5" y="-463.85" font-family="monospace" font-size="8.00">memory(mode="compress") /</text>
 <text text-anchor="middle" x="369.5" y="-454.85" font-family="monospace" font-size="8.00">extract_patterns /</text>
 <text text-anchor="middle" x="369.5" y="-445.85" font-family="monospace" font-size="8.00">summarize / llm_compress</text>
 </g>
@@ -307,7 +307,7 @@
 <title>actor_agent&#45;&gt;tools_stats</title>
 <path fill="none" stroke="#ff4444" d="M78.69,-519.72C89.23,-512.73 99,-506.25 99,-506.25 99,-506.25 569,-488.25 569,-488.25 569,-488.25 683,-425.25 683,-425.25 683,-425.25 2347,-417.25 2347,-417.25 2347,-417.25 2377.98,-398.72 2406.6,-381.6"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="2408.59,-384.49 2415.37,-376.36 2404.99,-378.48 2408.59,-384.49"/>
-<text text-anchor="middle" x="746.5" y="-472.85" font-family="monospace" font-size="8.00">memory_stats / dashboard /</text>
+<text text-anchor="middle" x="746.5" y="-472.85" font-family="monospace" font-size="8.00">memory(mode="stats") / dashboard /</text>
 <text text-anchor="middle" x="746.5" y="-463.85" font-family="monospace" font-size="8.00">injection_stats /</text>
 <text text-anchor="middle" x="746.5" y="-454.85" font-family="monospace" font-size="8.00">injection_feedback /</text>
 <text text-anchor="middle" x="746.5" y="-445.85" font-family="monospace" font-size="8.00">tool_stats / session_stats /</text>
@@ -325,7 +325,7 @@
 <title>actor_agent&#45;&gt;tools_inject</title>
 <path fill="none" stroke="#ff4444" d="M78.69,-519.72C89.23,-512.73 99,-506.25 99,-506.25 99,-506.25 719,-488.25 719,-488.25 719,-488.25 905,-425.25 905,-425.25 905,-425.25 2571,-417.25 2571,-417.25 2571,-417.25 2594.78,-395.51 2614.61,-377.37"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="2617.22,-379.73 2622.24,-370.4 2612.5,-374.57 2617.22,-379.73"/>
-<text text-anchor="middle" x="939" y="-459.35" font-family="monospace" font-size="8.00">memory_inject /</text>
+<text text-anchor="middle" x="939" y="-459.35" font-family="monospace" font-size="8.00">memory(mode="inject") /</text>
 <text text-anchor="middle" x="939" y="-450.35" font-family="monospace" font-size="8.00">injection_debug</text>
 </g>
 <!-- tools_reflect -->
@@ -339,7 +339,7 @@
 <title>actor_agent&#45;&gt;tools_reflect</title>
 <path fill="none" stroke="#ff4444" d="M71.64,-519.57C105.58,-488.3 174,-425.25 174,-425.25 174,-425.25 1610,-417.25 1610,-417.25 1610,-417.25 1640.96,-394.74 1666.15,-376.41"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="1668.39,-379.11 1674.42,-370.4 1664.27,-373.45 1668.39,-379.11"/>
-<text text-anchor="middle" x="228.5" y="-454.85" font-family="monospace" font-size="8.00">memory_reflect / distill</text>
+<text text-anchor="middle" x="228.5" y="-454.85" font-family="monospace" font-size="8.00">memory(mode="reflect") / distill</text>
 </g>
 <!-- tools_misc -->
 <g id="node25" class="node">
@@ -351,14 +351,14 @@
 <text text-anchor="middle" x="2815" y="-350.05" font-family="monospace" font-size="9.00" fill="white">playbook_execute, skill_load,</text>
 <text text-anchor="middle" x="2815" y="-340.05" font-family="monospace" font-size="9.00" fill="white">temporal_edges, recall_context,</text>
 <text text-anchor="middle" x="2815" y="-330.05" font-family="monospace" font-size="9.00" fill="white">middle_term, cache_status,</text>
-<text text-anchor="middle" x="2815" y="-320.05" font-family="monospace" font-size="9.00" fill="white">memory_rate</text>
+<text text-anchor="middle" x="2815" y="-320.05" font-family="monospace" font-size="9.00" fill="white">memory(mode="rate")</text>
 </g>
 <!-- actor_agent&#45;&gt;tools_misc -->
 <g id="edge78" class="edge">
 <title>actor_agent&#45;&gt;tools_misc</title>
 <path fill="none" stroke="#ff4444" d="M78.69,-519.72C89.23,-512.73 99,-506.25 99,-506.25 99,-506.25 810,-488.25 810,-488.25 810,-488.25 956,-425.25 956,-425.25 956,-425.25 2722,-417.25 2722,-417.25 2722,-417.25 2734.79,-408.45 2750.89,-397.37"/>
 <polygon fill="#ff4444" stroke="#ff4444" points="2753.3,-399.96 2759.56,-391.4 2749.34,-394.19 2753.3,-399.96"/>
-<text text-anchor="middle" x="1026" y="-481.85" font-family="monospace" font-size="8.00">memory_rate / prune /</text>
+<text text-anchor="middle" x="1026" y="-481.85" font-family="monospace" font-size="8.00">memory(mode="rate") / prune /</text>
 <text text-anchor="middle" x="1026" y="-472.85" font-family="monospace" font-size="8.00">generate_embeddings / help /</text>
 <text text-anchor="middle" x="1026" y="-463.85" font-family="monospace" font-size="8.00">version / auto_test /</text>
 <text text-anchor="middle" x="1026" y="-454.85" font-family="monospace" font-size="8.00">playbook_execute / skill_load /</text>
@@ -805,7 +805,7 @@
 <title>hook_after&#45;&gt;svc_cache</title>
 <path fill="none" stroke="#88ff88" d="M4280.71,-334.3C4334.86,-317.81 4409,-295.25 4409,-295.25 4409,-295.25 4409,-241.25 4409,-241.25 4409,-241.25 3761.25,-207.3 3522.78,-194.8"/>
 <polygon fill="#88ff88" stroke="#88ff88" points="3522.93,-191.3 3512.76,-194.27 3522.56,-198.29 3522.93,-191.3"/>
-<text text-anchor="middle" x="4486" y="-279.85" font-family="monospace" font-size="8.00">D2. If memory_fetch/get/drilldown/</text>
+<text text-anchor="middle" x="4486" y="-279.85" font-family="monospace" font-size="8.00">D2. If memory(mode="fetch")/get/drilldown/</text>
 <text text-anchor="middle" x="4486" y="-270.85" font-family="monospace" font-size="8.00">set/replace/search:</text>
 <text text-anchor="middle" x="4486" y="-261.85" font-family="monospace" font-size="8.00">addToWorkingCache()</text>
 <text text-anchor="middle" x="4486" y="-252.85" font-family="monospace" font-size="8.00">→ LRU session cache</text>
@@ -862,7 +862,7 @@
 <text text-anchor="middle" x="4127" y="-279.85" font-family="monospace" font-size="8.00">I4. createNode(label=&quot;storedcontext:&quot;)</text>
 <text text-anchor="middle" x="4127" y="-270.85" font-family="monospace" font-size="8.00">→ conversation archive</text>
 <text text-anchor="middle" x="4127" y="-261.85" font-family="monospace" font-size="8.00">→ type=storedcontext</text>
-<text text-anchor="middle" x="4127" y="-252.85" font-family="monospace" font-size="8.00">→ for memory_recall_context</text>
+<text text-anchor="middle" x="4127" y="-252.85" font-family="monospace" font-size="8.00">→ for memory(mode="recall_context")</text>
 </g>
 <!-- hook_compact&#45;&gt;svc_cache -->
 <g id="edge57" class="edge">

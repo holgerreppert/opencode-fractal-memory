@@ -8,7 +8,7 @@ Show me my memory stats including:
 - HNSW index stats (nodes indexed, dimension)
 - Storage info (binary embeddings vs JSON)
 
-Use memory_stats with scope="all".
+Use memory(mode="stats") with scope="all".
 
 **Arguments:**
 - `scope` (optional): "all", "global", or "project" (default: all)

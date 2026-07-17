@@ -13,7 +13,7 @@ describe("MemoryHelp", () => {
     const result = await tool.execute({});
     expect(result).toContain("memory_dashboard");
     expect(result).toContain("memory_stats");
-    expect(result).toContain("memory_search");
+    expect(result).toContain("memory(mode=search)");
     expect(result).toContain("memory_help");
     expect(result).toContain("memory_recall_context");
   });

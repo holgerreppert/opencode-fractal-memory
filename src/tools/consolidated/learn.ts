@@ -36,11 +36,11 @@ export function createLearnTool(store: MemoryStore, client?: unknown) {
   };
 
   const t = tool({
-    description: `Multi-mode learning and quality improvement tool for memory nodes.
+    description: `END OF SESSION: run reflect → distill to extract rules from mistakes. WEEKLY: run dashboard for health check.
 
 MODES:
-  reflect           — Analyze a session to create lesson nodes from failures
-  distill           — Extract actionable rules from lesson nodes (run after reflect)
+  reflect           — Analyze a session to create lesson nodes from failures. RUN WHEN SESSION ENDS
+  distill           — Extract actionable rules from lesson nodes. ALWAYS RUN AFTER REFLECT
   verify            — Certify that a memory node's information is correct (boosts confidence)
   rate              — Rate a node's usefulness (helps retrieval quality)
   stats             — Fractal memory statistics (nodes per level, compression ratios)
@@ -53,9 +53,9 @@ MODES:
 WORKFLOW:
   reflect → distill (improve rules) | verify → rate (improve quality) | stats → dashboard (health check)
 
-TIP: Run learn(mode=reflect) after session ends to learn from mistakes.
-TIP: Run learn(mode=verify) after storing important information.
-TIP: Run learn(mode=dashboard) weekly to monitor memory system health.`,
+TIP: learn(mode="reflect") + learn(mode="distill") at END OF SESSION — never skip.
+TIP: learn(mode="verify") after storing anything important — builds confidence over time.
+TIP: learn(mode="dashboard") WEEKLY — catch problems before they compound.`,
     args: {
       mode: tool.schema.enum(["reflect", "distill", "verify", "rate", "stats", "dashboard", "temporal_edges", "extract_patterns", "injection_stats", "injection_feedback"]).describe("Which learning/quality operation to perform"),
 

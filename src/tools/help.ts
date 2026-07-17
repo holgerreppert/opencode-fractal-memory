@@ -6,7 +6,7 @@ const COMMANDS = [
   { name: "memory_stats", desc: "Fractal memory statistics – nodes per level, compression ratios, tree structure" },
   { name: "memory_dashboard", desc: "Top nodes by access, type distribution, compression health, usefulness" },
   { name: "memory_list", desc: "List all memory nodes with content preview" },
-  { name: "memory_search", desc: "Semantic / BM25 search over memory nodes (supports category_filter)" },
+  { name: "memory(mode=search)", desc: "Semantic / BM25 search over memory nodes (supports category_filter)" },
   { name: "memory_get", desc: "Get a single memory node by ID or label" },
   { name: "memory_fetch", desc: "Fetch a memory node by exact label (returns JSON)" },
   { name: "memory_set", desc: "Create or update a memory node" },
@@ -71,9 +71,9 @@ export function MemoryHelp(store?: MemoryStore) {
         "Search with `intent` parameter (`read`/`edit`/`debug`/`discovery`) for intent-aware biasing.",
         "Search with `tagsFilter` to find nodes matching ALL specified tags (tag intersection).",
         "",
-        "Use `memory_search` with `category_filter` to target a specific category.",
-        "Use `memory_set` with a semantic type for important facts that should persist.",
-        "Use `memory_set` with `tags` parameter (string array) to tag nodes for filtered search.",
+        "Use `memory(mode=\"search\", ...)` with `category_filter` to target a specific category.",
+        "Use memory(mode=\"set\") with a semantic type for important facts that should persist.",
+        "Use memory(mode=\"set\") with `tags` parameter (string array) to tag nodes for filtered search.",
         "Nodes auto-record their `source` (manual / tool_result / auto_extract / web_search / reflection / llm_compress).",
         "", "### About Fractal Memory", "");
       lines.push(
@@ -84,9 +84,9 @@ export function MemoryHelp(store?: MemoryStore) {
         "- **L3 (quarterly)** – Cross-cutting themes from L2",
         "- **L4+ (yearly)** – Highest-level synthesis",
         "",
-        "Use `memory_drilldown` to trace a summary back to its source nodes.",
-        "Use `memory_compress` to promote nodes to the next level.",
-        "Use `memory_search` with `min_level` / `max_level` to target specific compression levels.",
+        "Use memory(mode=\"drilldown\") to trace a summary back to its source nodes.",
+        "Use memory(mode=\"compress\") to promote nodes to the next level.",
+        "Use `memory(mode=\"search\", ...)` with `min_level` / `max_level` to target specific compression levels.",
       );
 
       return lines.join("\n");

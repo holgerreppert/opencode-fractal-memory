@@ -128,11 +128,11 @@ describe("MemoryRecallContext", () => {
     expect(result).toContain("my-session-id");
   });
 
-  test("includes tip about memory_search type:storedcontext", async () => {
+  test("includes tip about memory(mode=search) type:storedcontext", async () => {
     const node = makeNode();
     const store = makeStore([node]);
     const tool = MemoryRecallContext(store);
     const result = await tool.execute({});
-    expect(result).toContain("memory_search type:storedcontext");
+    expect(result).toContain("memory(mode=\"search\", query=\"type:storedcontext");
   });
 });

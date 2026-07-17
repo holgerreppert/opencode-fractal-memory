@@ -14,9 +14,9 @@ Detect topic boundaries by grouping related memories into semantic clusters.
 
 **Usage:**
 ```
-memory_detect_topics()
-memory_detect_topics(min_similarity=0.8)
-memory_detect_topics(scope="project")
+memory(mode="detect_topics", )
+memory(mode="detect_topics", min_similarity=0.8)
+memory(mode="detect_topics", scope="project")
 ```
 
 **Output:**

@@ -7,5 +7,6 @@ export interface HookHandler {
   "event"?: (input: { event: { type: string; properties: Record<string, unknown> } }) => Promise<void>;
   "chat.params"?: (input: unknown, output: unknown) => Promise<void>;
   "chat.messages.transform"?: (input: unknown, output: unknown) => Promise<void>;
+  "chat.message"?: (input: unknown, output: unknown) => Promise<void>;
   "compaction.autocontinue"?: (input: unknown, output: { enabled: boolean }) => Promise<void>;
 }

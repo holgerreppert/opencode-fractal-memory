@@ -2,52 +2,52 @@
 description: Show all available memory commands
 ---
 Show me all available memory commands:
-- `memory_stats` — fractal memory statistics
-- `memory_dashboard` — top nodes by access, type distribution, compression health
-- `memory_list` — list all memory nodes
-- `memory_search` — semantic / BM25 search
-- `memory_get` — get a node by ID or label
-- `memory_fetch` — fetch a node by exact label (returns JSON)
-- `memory_set` — create or update a node
-- `memory_delete` — delete a node
-- `memory_replace` — replace content within a node
-- `memory_drilldown` — fractal retrieval (summary → source nodes)
-- `memory_drilldown_query` — top-down drilldown by intent/query
-- `memory_compress` — compress nodes into level-up summaries
-- `memory_llm_compress` — LLM-powered compression
-- `memory_extract_patterns` — extract cross-layer patterns
-- `memory_prune` — find and remove stale/unused nodes
-- `memory_verify` — verify node correctness, boost confidence
-- `memory_rate` — mark a node as helpful, adjust usefulness
-- `memory_summarize` — generate an LLM prompt to summarize a node
-- `memory_check_context` — token usage check
-- `memory_total_tokens` — complete token analysis (memory + conversation)
-- `memory_injection_stats` — injection efficiency metrics
-- `memory_injection_feedback` — rate injected memory usefulness
-- `memory_tool_stats` — tool call statistics (durations, success rates)
-- `memory_session_stats` — session forensics (tool sequence, files touched)
-- `memory_reflect` — analyze a session, create lesson nodes
-- `memory_distill` — extract actionable rules from lesson nodes
-- `memory_inject` — inject relevant memories into the prompt
-- `memory_injection_debug` — show last injection details
-- `memory_middle_term` — retrieve middle-term context snapshots
-- `memory_cache_status` — show working memory cache usage
-- `memory_version` — show installed plugin version
-- `memory_auto_test` — test auto-retrieval pipeline
-- `memory_skill_load` — load a skill's instructions by name
-- `memory_playbook_execute` — execute a playbook workflow
-- `memory_detect_topics` — detect topic boundaries
-- `memory_generate_embeddings` — generate embeddings for nodes that lack them
-- `memory_help` — show this help
+- `memory(mode="stats")` — fractal memory statistics
+- `memory(mode="dashboard")` — top nodes by access, type distribution, compression health
+- `memory(mode="list")` — list all memory nodes
+- `memory(mode="search")` — semantic / BM25 search
+- `memory(mode="get")` — get a node by ID or label
+- `memory(mode="fetch")` — fetch a node by exact label (returns JSON)
+- `memory(mode="set")` — create or update a node
+- `memory(mode="delete")` — delete a node
+- `memory(mode="replace")` — replace content within a node
+- `memory(mode="drilldown")` — fractal retrieval (summary → source nodes)
+- `memory(mode="drilldown_query")` — top-down drilldown by intent/query
+- `memory(mode="compress")` — compress nodes into level-up summaries
+- `context(mode="llm_compress")` — LLM-powered compression
+- `learn(mode="extract_patterns")` — extract cross-layer patterns
+- `memory(mode="prune")` — find and remove stale/unused nodes
+- `memory(mode="verify")` — verify node correctness, boost confidence
+- `memory(mode="rate")` — mark a node as helpful, adjust usefulness
+- `memory(mode="summarize")` — generate an LLM prompt to summarize a node
+- `context(mode="check")` — token usage check
+- `context(mode="total_tokens")` — complete token analysis (memory + conversation)
+- `context(mode="injection_stats")` — injection efficiency metrics
+- `context(mode="injection_feedback")` — rate injected memory usefulness
+- `context(mode="tool_stats")` — tool call statistics (durations, success rates)
+- `context(mode="session_stats")` — session forensics (tool sequence, files touched)
+- `memory(mode="reflect")` — analyze a session, create lesson nodes
+- `memory(mode="distill")` — extract actionable rules from lesson nodes
+- `memory(mode="inject")` — inject relevant memories into the prompt
+- `context(mode="injection_debug")` — show last injection details
+- `context(mode="middle_term")` — retrieve middle-term context snapshots
+- `context(mode="cache_status")` — show working memory cache usage
+- `memory(mode="version")` — show installed plugin version
+- `context(mode="auto_test")` — test auto-retrieval pipeline
+- `memory(mode="skill_load")` — load a skill's instructions by name
+- `memory(mode="playbook_execute")` — execute a playbook workflow
+- `memory(mode="detect_topics")` — detect topic boundaries
+- `memory(mode="generate_embeddings")` — generate embeddings for nodes that lack them
+- `memory(mode="help")` — show this help
 
 Also explain what fractal memory is:
 - Hierarchical compression: L0 (raw) → L1 (weekly) → L2 (monthly) → L3 (quarterly)
 - Related nodes group into summaries via embedding similarity
 - Compressed nodes have structured format with sections for: decisions, files, tools, patterns, topics
-- Use `memory_drilldown` to see the path from summary back to original sources
-- Use `memory_drilldown_query` for intent-based exploration (starts from summaries, drills down to details)
-- Sticky nodes bypass compression — use `sticky=true` on `memory_set` for critical info
-- Confidence scoring: nodes track reliability, verified nodes rank higher in `memory_search`
+- Use `memory(mode="drilldown")` to see the path from summary back to original sources
+- Use `memory(mode="drilldown_query")` for intent-based exploration (starts from summaries, drills down to details)
+- Sticky nodes bypass compression — use `sticky=true` on `memory(mode="set")` for critical info
+- Confidence scoring: nodes track reliability, verified nodes rank higher in `memory(mode="search")`
 - Memory linking: use `[[label]]` in node content to reference other nodes (e.g., `See [[sqlite-setup]] for details`)
 - Performance: embeddings stored as binary (Float32Array), HNSW index for O(log n) search, BM25 pre-computed
 - Session tracking: all tool calls are tracked with session correlation for effectiveness analysis

@@ -93,6 +93,10 @@ if you find bugs or if you just want to suggest improvements
 - **Auto-edge creation** — `memory(mode="set")` auto-creates NEXT edges (session chaining) and REFERENCES edges (from `label:xxx` patterns) during active sessions
 - **Synthetic evaluation** — 79-node/175-QA benchmark dataset for reproducible retrieval quality metrics (HitRate, Recall, Precision, MRR)
 - **Sub-agents** — `memory-hints`, `memory-researcher`, and `translate` agents for guided interaction
+- **Agent tool proactivity** — three mechanisms to ensure the agent proactively uses the right tools instead of defaulting to read/grep/glob/bash:
+  - **Directive tool descriptions** — all 6 consolidated tool descriptions rewritten to say "USE INSTEAD OF X" and "USE WHEN Y" with explicit triggers and token-cost comparisons
+  - **Pre-execution guard hook** — `tool.before` hook intercepts read/grep/glob/bash calls and injects a `[cost-saver]` hint when the code graph has a cheaper alternative. Impl at `src/plugin/hooks/tool-before-guard.ts`
+  - **Never-strip decision tree** — `rule:mandatory:tools` seed node now has `never_strip: true` + a 7-step ordered decision tree (`graph > context > memory(mode="search") > graph(callees) > memory(mode="set") > learn`) that's always injected at the very front of the system prompt, never pressure-filtered
 
 ## Prerequisites
 
@@ -379,11 +383,11 @@ Instead of regex-based compression (which extracts keywords), LLM compression ge
 }
 ```
 
-Invoke manually with `memory_llm_compress`.
+Invoke manually with `context(mode="llm_compress")`.
 
 ### Auto-Distill
 
-Periodically extracts actionable rules from `lesson`-type nodes created by `memory_reflect`. Rules are stored as `rule:standard:*` / `rule:suggestion:*` nodes for immediate injection:
+Periodically extracts actionable rules from `lesson`-type nodes created by `learn(mode="reflect")`. Rules are stored as `rule:standard:*` / `rule:suggestion:*` nodes for immediate injection:
 
 ```json
 {
@@ -752,7 +756,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │    graph-search-hint  Searches code graph for matching symbols   │
 │                       and appends up to 3 suggestions to output   │
 │                                                                   │
-│  memory_* tools:                                                  │
+│  memory/context/learn/journal tools:                              │
 │    recording          Logs memory tool calls to store +            │
 │                       predictive rating                            │
 │    working-cache      Feeds memory results into in-memory          │
@@ -899,12 +903,18 @@ MIT
 
 ## Changelog
 
+### v0.7.0 (2026-07-17)
+- **Agent tool proactivity** — 3-prong approach to make the agent proactively use graph/memory/context/learn tools instead of defaulting to read/grep/glob/bash:
+  - **Directive tool descriptions** — rewritten graph, memory, context, learn, journal, and skeletonize tool descriptions to say "USE INSTEAD OF read/grep" with explicit triggers and token-cost comparisons
+  - **Pre-execution guard hook** — new `src/plugin/hooks/tool-before-guard.ts` intercepts `tool.before` for read/grep/glob/bash, checks the code graph for cheaper alternatives, and injects a `[cost-saver]` hint before the tool executes
+  - **Never-strip decision tree** — `rule:mandatory:tools` seed node promoted to `never_strip: true` + 7-step ordered decision tree (`graph > context > memory(mode="search") > graph(callees) > memory(mode="set") > learn`) always injected at the front of the system prompt, never pressure-filtered
+
 ### v0.6.49 (2026-07-10)
 - **Hierarchical Type System (supertypes)** — All nodes auto-derived to a supertype (declarative/procedural/experiential/meta) from their type. Migration v29 adds `supertype` column. Search scoring uses supertype for smarter intent-aware weighting.
 - **Intent-Aware Retrieval Biasing** — `searchByEmbedding` accepts `intent` option (`read`/`edit`/`debug`/`discovery`). Each intent biases retrieval weights differently: read/edit boost procedural+declarative (1.3×), debug boosts experiential (1.3×), discovery uses uniform weights.
 - **Temporal Stratification** — Search results now stratified by recency: hot (<1d, 1.0×), warm (<7d, 0.85×), cold (≥7d, 0.5×). Each node gets a stratum weight applied in scoring.
-- **Tag System** — `memory_set` accepts `tags` parameter (string array). Stored as JSON in new `tags` column. Displayed in management UI detail panel. Searchable via SQL.
-- **Confidence Tracking** — `verification_count` column tracks how many times a node has been verified. `memory_verify` increments both confidence (by +0.2) and verification count (by +1). Management UI shows verification count and Verify button.
+- **Tag System** — `memory(mode="set")` accepts `tags` parameter (string array). Stored as JSON in new `tags` column. Displayed in management UI detail panel. Searchable via SQL.
+- **Confidence Tracking** — `verification_count` column tracks how many times a node has been verified. `learn(mode="verify")` increments both confidence (by +0.2) and verification count (by +1). Management UI shows verification count and Verify button.
 - **Provenance Tracking** — `source` column records how a node was created (manual/tool_result/auto_extract/web_search/reflection/llm_compress). Displayed in management UI.
 - **Management UI updates** — Detail panel now shows supertype, tags (as chips), source, verification count. POST `/api/nodes/:id/verify` endpoint added with Verify button.
 - **Migration v29** — `ALTER TABLE memory_nodes ADD COLUMN supertype TEXT` with index.
@@ -921,7 +931,7 @@ MIT
 
 ### v0.6.46
 - **Dual retrieval** — BM25 now runs independently across ALL scope nodes (not just HNSW candidates). Top BM25-only candidates (keyword matches outside the vector neighborhood) are fetched and merged with HNSW results. Catches nodes without embeddings that match via keywords. Changes in `src/storage/search.ts:181-228`. 60 tests pass (22 search, 38 search-helpers)
-- **Usefulness scoring fix** — `memory_inject` boosts `usefulnessScore` + `timesHelpful` for each injected node; `memory_search` boosts `usefulnessScore` for each retrieved node; recording hook rates follow-up tools (edit/bash/write) on success, no longer skipping `memory_*` tool results
+- **Usefulness scoring fix** — `context(mode="inject")` boosts `usefulnessScore` + `timesHelpful` for each injected node; `memory(mode="search")` boosts `usefulnessScore` for each retrieved node; recording hook rates follow-up tools (edit/bash/write) on success, no longer skipping `memory`/`context`/`learn`/`journal` tool results
 - **Storedcontext default scores lowered** — defaults reduced from `usefulnessScore: 0.5` + `importance: 3.0` to `0.1` + `0.5`, matching normal note baselines so search-driven scoring determines actual usefulness
 - **Backfill script** — new `scripts/backfill-embeddings.ts` backfilled 382 missing embeddings across all nodes, reset 615 stuck-at-0.0 nodes to 0.1 baseline
 - **Search pipeline graphviz** — `docs/search-pipeline.gv` updated with dual retrieval flow (all_nodes → bm25_score → bm25_only → merge → final)
@@ -955,7 +965,7 @@ MIT
 
 ### v0.6.37
 - **LLM judge scoring** — new `llmJudgeScore()` in auto-retrieve pipeline: calls `client.session.prompt({noReply:true})` to score memory candidates when Ollama is off. Falls back to heuristic `fallbackScore()` on error or when no session is available. Configurable via `autoRetrieve.llmJudgeEnabled` (default `true`). Tracks current session ID via `chat.message` hook.
-- **`memory_llm_compress` session ID fix** — `generateLLMSummary` was hardcoding session ID as `'compression'` (which doesn't exist), causing `session.prompt()` to silently fail and fall back to regex every time. Fixed by threading the real `toolCtx.sessionID` through `runCompression` → `generateLLMSummary`. Interface updated: `IMaintenanceStore.runCompression`, `SqliteMemoryStore.runCompression`, `runCompressionFn`, `generateLLMSummary` all accept optional `sessionId` param.
+- **`context(mode="llm_compress")` session ID fix** — `generateLLMSummary` was hardcoding session ID as `'compression'` (which doesn't exist), causing `session.prompt()` to silently fail and fall back to regex every time. Fixed by threading the real `toolCtx.sessionID` through `runCompression` → `generateLLMSummary`. Interface updated: `IMaintenanceStore.runCompression`, `SqliteMemoryStore.runCompression`, `runCompressionFn`, `generateLLMSummary` all accept optional `sessionId` param.
 
 ### v0.6.36
 - **`chat.params` SDK hook** — adaptive pressure-based temperature/maxTokens clamping in the `chat.params` pipeline. Gated by `adaptivePressure.enabled`. Logged to compress.log when clamping is applied.
@@ -999,7 +1009,7 @@ MIT
   - **Sync I/O** — `fs.statSync`/`fs.readFileSync` replaced with `await fs.promises.stat`/`await fs.promises.readFile` in async hooks.
   - **Score normalization** — min-max normalization of semantic scores before convex combination with BM25 in `computeFinalScores`, preventing BM25 from dominating on non-uniform score distributions.
 - **Memory leak fixes** — SESSION_LAST_NODE capped at 500 entries; workingMemoryCache prunes stale sessions at 100+; idScopeCache clears at 5000+ entries.
-- **Skills injection redesign** — replaced proactive XML block injection with `<!-- Relevant skills: ... -->` HTML comment; agent now calls `memory_skill_load()` reactively when needed.
+- **Skills injection redesign** — replaced proactive XML block injection with `<!-- Relevant skills: ... -->` HTML comment; agent now calls `learn(mode="skill_load")` reactively when needed.
 - **Graphviz diagram** — `docs/agent-communication-pipeline.{dot,svg,png}` documenting plugin ↔ agent communication channels.
 - **366 tests, 0 fail** (unchanged).
 
@@ -1009,7 +1019,7 @@ MIT
 
 ### v0.6.30 (2026-06-16)
 - **Working cache population** — `addToWorkingCache`/`clearWorkingCache` added to `src/cache.ts`; previously the working cache was declared but never written to (always returned `[]`).
-- **Memory tool tracking** — `tool.execute.after` handler now populates the working cache from `memory_fetch`, `memory_get`, `memory_drilldown`, `memory_set`, `memory_replace`, and `memory_search` results. Each cache population logs the full content via `memLog("debug", "working-cache", ...)`.
+- **Memory tool tracking** — `tool.execute.after` handler now populates the working cache from `memory(mode="fetch")`, `memory(mode="get")`, `memory(mode="drilldown")`, `memory(mode="set")`, `memory(mode="replace")`, and `memory(mode="search")` results. Each cache population logs the full content via `memLog("debug", "working-cache", ...)`.
 - **Middle-term capture now includes full content** — capture nodes store the complete `content` per working cache entry (previously truncated at 500 chars). Full capture JSON logged via `memLog("info", "compaction", ...)`.
 - **Store fallback** — `experimental.session.compacting` handler falls back to the 8 most recently created nodes from the database when the in-memory working cache is empty, ensuring middle-term captures always have data. Fallback content logged via `memLog("debug", "compaction", ...)`.
 - **339 tests, 0 fail** (unchanged).
@@ -1034,7 +1044,7 @@ MIT
 - **Management server caching fix** — `Cache-Control: no-cache` headers on all served files so browser always fetches latest management app HTML/JS.
 - **Orphaned management server fix** — PID file at `~/.config/opencode/management-server.pid`, kill orphaned servers on restart, `GET /api/shutdown` endpoint.
 - **Model-router: toolStreaming fix** — `toolStreaming: false` added to mittwald provider-level options in `opencode.json`; model-router config hook now forwards model-level options into subagent agent definitions.
-- **Hybrid retrieval ported to core** — default `bm25Weight` changed from 0 to 0.4 in `searchByEmbedding`. Multi-hop temporal expansion (`temporalHops` option, up to 3 hops, 0.7^depth score decay) ported from benchmark to `src/storage/search.ts`. `temporal_hops` arg added to `memory_search` tool and MCP server.
+- **Hybrid retrieval ported to core** — default `bm25Weight` changed from 0 to 0.4 in `searchByEmbedding`. Multi-hop temporal expansion (`temporalHops` option, up to 3 hops, 0.7^depth score decay) ported from benchmark to `src/storage/search.ts`. `temporal_hops` arg added to `memory(mode="search")` tool and MCP server.
 - **Published to npm** as `opencode-fractal-memory@0.6.27`.
 
 ### v0.6.25 (2026-06-15)
@@ -1048,15 +1058,15 @@ MIT
 - **Published to npm** as `opencode-fractal-memory@0.6.25`.
 
 ### v0.6.24 (2026-06-15)
-- **Episodic / Semantic memory categories** — all nodes auto-categorized on creation. Episodic types (event, session, task, etc.) decay with 7-day half-life and 0.5× search weight. Semantic types (concept, fact, lesson, rule, etc.) decay with 365-day half-life and 1.0× search weight. Dashboard shows category distribution; search/drilldown show `[episodic]`/`[semantic]` tags; `category_filter` arg on `memory_search`.
+- **Episodic / Semantic memory categories** — all nodes auto-categorized on creation. Episodic types (event, session, task, etc.) decay with 7-day half-life and 0.5× search weight. Semantic types (concept, fact, lesson, rule, etc.) decay with 365-day half-life and 1.0× search weight. Dashboard shows category distribution; search/drilldown show `[episodic]`/`[semantic]` tags; `category_filter` arg on `memory(mode="search")`.
 - **Consolidation bridge** — `autoConsolidate` extracts semantic facts from episodic clusters on `session.idle` and stores them as persistent `type: "fact"` nodes with `parentIds` back to source nodes. New `"fact"` node type added.
 - **Auto-retrieve relevance filters** — `maxLevel: 0` blocks L1+ compression summaries from injection; `categoryFilter: "semantic"` blocks episodic session traces. Config gains `minQueryLength` and `injectionCooldownMs`.
 - **Auto-retrieve dedup + rate limit** — session-level injection cache (prevents re-injecting same node IDs), query similarity skip (cosine > 0.95 skips re-injection), 30s cooldown, short message bypass (`minQueryLength=10`), skills cache with 5-minute TTL.
 - **Migration v23** — adds `category` column to `memory_nodes` with index.
-- **`memory_temporal_edges` tool** — inspect temporal edges (conversation flow) between nodes.
-- **`category_filter` arg** added to `memory_search` and `category_filter` option to `memory_drilldown`.
+- **`learn(mode="temporal_edges")` tool** — inspect temporal edges (conversation flow) between nodes.
+- **`category_filter` arg** added to `memory(mode="search")` and `category_filter` option to `memory(mode="drilldown")`.
 - **Cross-project auto-retrieve pollution fix** — added `(scope === "global" || projectName === currentProject)` post-search filter in auto-retrieve hook. Prevents nodes from other projects being injected into the current session.
-- **`memory_list scope=project` auto-scopes to current project** — `memory_list scope=project` now defaults `project_name` to the current project, avoiding confusing cross-project node listings. To see all projects, pass `project_name=""` explicitly.
+- **`memory(mode="list") scope=project` auto-scopes to current project** — `memory(mode="list") scope=project` now defaults `project_name` to the current project, avoiding confusing cross-project node listings. To see all projects, pass `project_name=""` explicitly.
 - **Management UI project dropdown** — replaced button-based project filter with a `<select>` dropdown for cleaner project selection.
 - **Management API `?project_name=` support** — `/api/nodes`, `/api/links`, `/api/stats` accept optional `project_name` query param for server-side filtering.
 - **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls (`insertAgentToolCall`, `createSessionMetricsRow`, `updateSessionMetrics`, `incrementSessionToolCall`), and injection-event calls (`insertInjectionMetrics`, `updateMemoryToolCall`, `finalizeInjection`, `insertInjectionFeedback`, `insertToolUsageLog`) now properly awaited. Critical: `queryDeleteNode` inside a transaction callback could commit before the DELETE completed.
@@ -1072,19 +1082,19 @@ MIT
 
 ### v0.6.21 (2026-06-07)
 - **Command file audit** — consistent `name=value` named arg format across all command files
-- `memory-rate.md` — added frontmatter so it registers as a valid command
-- `memory-set.md` — replaced fictional Supabase example with generic JWT example
-- `memory-list.md`, `memory-compress.md`, `memory-prune.md` — added proper Usage/Arguments sections
+- `learn(mode="rate")` — command file added frontmatter so it registers as a valid command
+- `memory(mode="set")` — command file replaced fictional Supabase example with generic JWT example
+- `memory(mode="list")`, `context(mode="compress")` — command files added proper Usage/Arguments sections
 - `agent/memory-hints.md` — all examples converted to named arg syntax, types fixed
 
 ### v0.6.20 (2026-06-07)
 - README update — cache staleness workaround, plugin version endpoint docs
 
 ### v0.6.19 (2026-06-07)
-- **Metadata support** — `memory_set` and MCP `memory_set` now accept `metadata` JSON string arg
-- `MemoryGet` now displays metadata section when present
+- **Metadata support** — `memory(mode="set")` and MCP `memory(mode="set")` now accept `metadata` JSON string arg
+- `memory(mode="get")` now displays metadata section when present
 - `skill:opencode-plugin-installation` created with auto-detection triggers
-- Docs: `memory-set.md`, `memory-get.md`, `memory-help.md`, `agent/memory-hints.md` updated
+- Docs: `memory(mode="set")`, `memory(mode="get")`, agent/memory-hints.md updated
 
 ### v0.6.18 (2026-06-07)
 - README cache staleness workaround added

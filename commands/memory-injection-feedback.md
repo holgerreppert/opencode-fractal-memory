@@ -9,7 +9,7 @@ Rate the usefulness of injected memories after completing a task. Helps improve 
 - Improve memory system
 
 **Arguments:**
-- `session_id` (required): From memory_injection_stats
+- `session_id` (required): From context(mode="injection_stats")
 - `upvotes` (optional): Number of helpful injections (default: 0)
 - `downvotes` (optional): Number of irrelevant injections (default: 0)
 - `task_outcome` (optional): "success", "partial", or "failed"
@@ -17,10 +17,10 @@ Rate the usefulness of injected memories after completing a task. Helps improve 
 
 **Usage:**
 ```
-memory_injection_feedback(session_id="abc123", upvotes=3, downvotes=1, task_outcome="success")
-memory_injection_feedback(session_id="abc123", upvotes=0, downvotes=2, task_outcome="partial")
+context(mode="injection_feedback", session_id="abc123", upvotes=3, downvotes=1, task_outcome="success")
+context(mode="injection_feedback", session_id="abc123", upvotes=0, downvotes=2, task_outcome="partial")
 ```
 
 **Tips:**
-- Use `memory_injection_stats` to find session IDs
+- Use `context(mode="injection_stats")` to find session IDs
 - Helps the system learn what memories are useful

@@ -69,10 +69,10 @@ export function MemoryReflect(store: MemoryStore, client?: unknown) {
       
       const lessons: string[] = [];
       const patterns: Record<string, (count: number, tool: string) => string> = {
-        memory_drilldown: (count) => `Avoid memory_drilldown with vague queries - use memory_search first (failed ${count}x)`,
-        memory_get: (count) => `Verify label exists before memory_get - search first if unsure (failed ${count}x)`,
-        memory_replace: (count) => `Re-read file before memory_replace to ensure content is current (failed ${count}x)`,
-        memory_delete: (count) => `Verify node exists before memory_delete (failed ${count}x)`,
+        memory_drilldown: (count) => `Avoid memory(mode="drilldown") with vague queries - use memory(mode="search", ...) first (failed ${count}x)`,
+        memory_get: (count) => `Verify label exists before memory(mode="get") - search first if unsure (failed ${count}x)`,
+        memory_replace: (count) => `Re-read file before memory(mode="replace") to ensure content is current (failed ${count}x)`,
+        memory_delete: (count) => `Verify node exists before memory(mode="delete") (failed ${count}x)`,
         edit: (count) => `Read file before edit, ensure oldText matches exactly (failed ${count}x)`,
         write: (count) => `Check if file exists before write - prefer edit for existing files (failed ${count}x)`,
         read: (count) => `Check file exists before read - use glob to find files (failed ${count}x)`,
@@ -116,7 +116,7 @@ For each failure type, provide a specific, concrete rule that would prevent the 
 Format as a bullet list starting with "- ". Be specific about what to check/verify.
 
 Example good rules:
-- Before memory_drilldown, first run memory_search with keywords to verify the label exists
+- Before memory(mode="drilldown"), first run memory(mode="search") with keywords to verify the label exists
 - Before edit, read the file and ensure oldText exactly matches what's in the file (no extra whitespace)
 - Check file exists with glob before using read or edit on it
 
@@ -186,7 +186,7 @@ Your rules:`;
         parentIds: [label],
       });
 
-      return `## Reflection Complete\n\nCreated lesson node: ${label}\n\n**Summary:** ${failedCalls.length} failures from ${stats.totalToolCalls} calls\n\n**Key lessons:**\n${lessons.join("\n")}\n\nReview and verify these lessons. Then use memory_distill to extract rules.`;
+      return `## Reflection Complete\n\nCreated lesson node: ${label}\n\n**Summary:** ${failedCalls.length} failures from ${stats.totalToolCalls} calls\n\n**Key lessons:**\n${lessons.join("\n")}\n\nReview and verify these lessons. Then use memory(mode="distill") to extract rules.`;
     },
   });
   return wrapWithTracking(t, store, "memory_reflect");
@@ -194,7 +194,7 @@ Your rules:`;
 
 export function MemoryDistill(store: MemoryStore, client?: unknown) {
   const t = tool({
-    description: "Extract actionable rules from recent lesson nodes and update rule:mandatory nodes. Call this after reviewing lessons from memory_reflect.",
+    description: "Extract actionable rules from recent lesson nodes and update rule:mandatory nodes. Call this after reviewing lessons from memory(mode=\"reflect\").",
     args: {
       dry_run: tool.schema.boolean().optional().describe("Show what would change without applying (default: false)").default(false),
       use_llm: tool.schema.boolean().optional().describe("Use LLM to generate more specific rules from lessons").default(false),
@@ -204,7 +204,7 @@ export function MemoryDistill(store: MemoryStore, client?: unknown) {
       const lessonNodes = lessons.filter(n => n.label?.startsWith("lesson:") && !n.label.includes(":", 7));
       
       if (lessonNodes.length === 0) {
-        return "No lesson nodes found. Run memory_reflect first to create lessons.";
+        return "No lesson nodes found. Run memory(mode=\"reflect\") first to create lessons.";
       }
 
       const recentLessons = lessonNodes
@@ -228,9 +228,9 @@ export function MemoryDistill(store: MemoryStore, client?: unknown) {
         const action = match?.[1];
         if (action) {
           if (action.includes("memory_drilldown")) {
-            distilledRules.push("- Avoid memory_drilldown with vague queries - use memory_search first");
+            distilledRules.push("- Avoid memory(mode=\"drilldown\") with vague queries - use memory(mode=\"search\", ...) first");
           } else if (action.includes("memory_get")) {
-            distilledRules.push("- Always verify label exists before memory_get");
+            distilledRules.push("- Always verify label exists before memory(mode=\"get\")");
           } else if (action.includes("memory_replace")) {
             distilledRules.push("- Re-read file before replace to ensure content is current");
           } else if (action.includes("read") || action.includes("glob")) {
@@ -297,7 +297,7 @@ Your rules:`;
       if (args.dry_run) {
         output.push("### Proposed Changes (Dry Run)");
         output.push("");
-        output.push("To apply these rules, run: memory_distill (without dry_run)");
+        output.push("To apply these rules, run: memory(mode=\"distill\") (without dry_run)");
         output.push("To discard, just ignore this output.");
       } else {
         output.push("### Updated Rules");

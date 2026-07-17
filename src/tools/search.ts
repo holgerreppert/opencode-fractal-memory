@@ -167,11 +167,11 @@ export function MemorySearch(store: MemoryStore) {
           return `### [L${n.level}]${catTag} ${label} - ${matchPct}% match${parentInfo}${linkInfo}\n${content}${content.length >= 300 ? "..." : ""}`;
         }),
         "",
-        "Use memory_drilldown(label) to see full content of any node.",
-        "Use memory_temporal_edges(node_id=\"...\") to explore conversation flow.",
+        "Use memory(mode=\"drilldown\", label=\"...\") to see full content of any node.",
+        "Use memory(mode=\"temporal_edges\", node_id=\"...\") to explore conversation flow.",
         "",
         "**Self-Reflection**: After using these memories, rate their usefulness (0-5):",
-        "  `memory_rate { label: \"<node-label>\", helpful: true, usefulness_score: <rating> }`",
+        "  `memory(mode=\"rate\", label: \"<node-label>\", helpful: true, usefulness_score: <rating>)`",
       ];
 
       const result = lines.join("\n");
@@ -196,7 +196,7 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
       if (results.length === 0) {
         return `No memory found matching your query "${args.query}".
 
-**Tip**: Use \`memory_search\` first with broader keywords.`;
+**Tip**: Use \`memory(mode="search", ...)\` first with broader keywords.`;
       }
 
       const summaryResults = results.filter(r => r.level === "summary");
@@ -241,7 +241,7 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
       }
 
       lines.push("---");
-      lines.push("_Use `memory_drilldown(id=\"...\")` for full path to any specific node._");
+      lines.push("_Use `memory(mode=\"drilldown\", id=\"...\")` for full path to any specific node._");
 
       const result = lines.join("\n");
       const contentTokens = results.reduce((sum, r) => sum + estimateTokens(r.node.content), 0);

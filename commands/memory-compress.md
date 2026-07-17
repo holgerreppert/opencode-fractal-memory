@@ -5,8 +5,8 @@ Compress old memory nodes into higher-level summaries using fractal compression.
 
 **Usage:**
 ```
-memory_compress(scope="all", force=true)
-memory_compress(scope="project")
+memory(mode="compress", scope="all", force=true)
+memory(mode="compress", scope="project")
 ```
 
 **Arguments:**
@@ -17,6 +17,6 @@ memory_compress(scope="project")
 **Compressed summaries have structured format:**
 - **Decisions**: "decided", "chose", "will use"
 - **Files**: modified/referenced (.ts, .py, .json, etc.)
-- **Tools**: commands used (memory_*, git, npm, bun)
+- **Tools**: commands used (memory(mode=...), git, npm, bun)
 - **Patterns**: conventions, learnings
 - **Topics**: section headings from sources
