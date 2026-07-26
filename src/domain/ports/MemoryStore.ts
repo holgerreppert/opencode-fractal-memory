@@ -9,6 +9,7 @@ export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core
 
 export type MemoryCategory = "episodic" | "semantic";
 export type MemorySupertype = "declarative" | "procedural" | "experiential" | "meta";
+export type MemoryDomain = "architecture" | "operations" | "knowledge" | "rules" | "history" | "patterns" | "preferences" | null;
 export type SearchIntent = "read" | "edit" | "debug" | "discovery";
 
 export type MemoryNode = {
@@ -28,6 +29,7 @@ export type MemoryNode = {
   type: MemoryNodeType | null;
   category: MemoryCategory | null;
   supertype: MemorySupertype | null;
+  domain: MemoryDomain;
   metadata: Record<string, unknown> | null;
   sticky: boolean;
   ttlDays: number | null;
@@ -55,6 +57,7 @@ export type CreateNodeInput = {
   type?: MemoryNodeType | null | undefined;
   category?: MemoryCategory | null | undefined;
   supertype?: MemorySupertype | null | undefined;
+  domain?: MemoryDomain | undefined;
   metadata?: Record<string, unknown> | null | undefined;
   sticky?: boolean | undefined;
   ttlDays?: number | null | undefined;

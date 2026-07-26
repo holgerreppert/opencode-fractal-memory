@@ -509,6 +509,37 @@ When the MCP server is configured, the memory and graph tools are available as M
 |---|---|
 | `graph(relation, name?, file?, depth?, query?, from?, to?, id?, limit?)` | Unified code graph navigator. Relations: `callers`/`callees`/`call_chain`/`imports`/`dependents`/`search`/`explain`/`path`. Returns JSON with `{relation, results, truncated}` |
 
+## Memory Tool Usage Best Practices
+
+Always use the `memory` tool for ALL node CRUD (search/get/set/delete/list). Never use bash+sqlite3 — it bypasses embeddings, BM25, compression tracking, and triggers output compression overhead (scratch file stashing, pipe tangling).
+
+### Tool Selection Order
+1. `memory(mode="search")` — always first, 100x cheaper than reading files cold
+2. `memory(mode="drilldown")` or `memory(mode="get")` — after search finds the node
+3. `memory(mode="set")` — store discoveries as you find them
+4. `memory(mode="replace")` — fix outdated content
+5. `memory(mode="delete")` — remove stale/test artifacts
+
+### Source-of-Truth Linking
+Every memory node should answer "where in the repo can this be checked?" Encode verification pointers as structured tags:
+
+- `file:src/foo.ts` — file path
+- `fn:calculateTotal` — function/symbol name
+- `commit:abc123` — commit hash
+- `line:42` — line number
+- `test:testCalculateTotal` — test name
+- `cmd:make migrate` — command used to validate
+
+Searchable via `tagsFilter` with intersection semantics (e.g. `tagsFilter: ["file:src/foo.ts", "fn:calculateTotal"]`). This convention is documented in the auto-injected node `rule:feature:memory-tool-usage`.
+
+### Cost Awareness
+- `search` costs ~100x less than reading files cold
+- `set` at creation time is nearly free — prevents re-discovery
+- Memory tool costs less than bash/SQL alternatives in every case — bash triggers compression system
+
+### Iterative Improvement
+This practice evolves. Update the `rule:feature:memory-tool-usage` node when discovering new patterns, mistakes, or optimal parameter combinations.
+
 ## Skills
 
 Skills are specialized instruction sets stored as memory nodes. When a task matches a skill's trigger keywords, its instructions load into context to guide the agent.

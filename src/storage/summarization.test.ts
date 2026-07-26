@@ -19,13 +19,22 @@ function makeNode(overrides: Partial<MemoryNode> = {}): MemoryNode {
     accessCount: overrides.accessCount ?? 0,
     lastAccessed: overrides.lastAccessed ?? null,
     type: overrides.type ?? null,
+    category: overrides.category ?? null,
+    supertype: overrides.supertype ?? null,
+    domain: overrides.domain ?? null,
     metadata: overrides.metadata ?? null,
     sticky: overrides.sticky ?? false,
+    tags: overrides.tags ?? null,
+    source: overrides.source ?? null,
     confidence: overrides.confidence ?? 0,
     lastVerified: overrides.lastVerified ?? null,
+    verificationCount: overrides.verificationCount ?? 0,
     usefulnessScore: overrides.usefulnessScore ?? 0,
     timesUsed: overrides.timesUsed ?? 0,
     timesHelpful: overrides.timesHelpful ?? 0,
+    ttlDays: overrides.ttlDays ?? null,
+    expiresAt: overrides.expiresAt ?? null,
+    projectName: overrides.projectName ?? null,
   };
 }
 

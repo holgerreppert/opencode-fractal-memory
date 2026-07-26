@@ -51,7 +51,7 @@ export function MemoryList(store: MemoryStore) {
       const result = nodes
         .map(
           (n) =>
-            `${n.scope}:${n.id} ${n.label ? `(label: ${n.label})` : ""}\n  level=${n.level} importance=${n.importance.toFixed(2)} access=${n.accessCount}\n  type=${n.type ?? "none"}\n  ${n.content.slice(0, 100)}${n.content.length > 100 ? "..." : ""}`,
+            `${n.scope}:${n.id} ${n.label ? `(label: ${n.label})` : ""}\n  level=${n.level} importance=${n.importance.toFixed(2)} access=${n.accessCount}\n  type=${n.type ?? "none"} domain=${n.domain ?? "unset"}\n  ${n.content.slice(0, 100)}${n.content.length > 100 ? "..." : ""}`,
         )
         .join("\n\n");
       
@@ -73,6 +73,7 @@ export function MemorySet(store: MemoryStore) {
       parent_ids: tool.schema.string().optional(),
       importance: tool.schema.number().optional(),
       type: tool.schema.string().optional(),
+      domain: tool.schema.enum(["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"]).optional().describe("Domain for memory classification — auto-derived from type if omitted"),
       ttl_days: tool.schema.number().int().min(0).optional(),
       no_embedding: tool.schema.boolean().optional(),
       sticky: tool.schema.boolean().optional(),
@@ -101,6 +102,7 @@ export function MemorySet(store: MemoryStore) {
             ...(args.summary !== undefined ? { summary: args.summary } : {}),
             ...(args.level !== undefined ? { level: args.level as 0 | 1 | 2 | 3 | 4 | 5 } : {}),
             ...(args.type !== undefined ? { type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" } : {}),
+            ...(args.domain !== undefined ? { domain: args.domain } : {}),
             sticky,
             ...(embedding !== null ? { embedding } : {}),
             ...(metadata !== null ? { metadata } : {}),
@@ -133,6 +135,7 @@ export function MemorySet(store: MemoryStore) {
         embedding,
         importance: args.importance ?? 0.5,
         type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | null,
+        domain: args.domain as "architecture" | "operations" | "knowledge" | "rules" | "history" | "patterns" | "preferences" | null | undefined,
         metadata,
         sticky,
         ttlDays: ttlDays ?? null,
@@ -204,6 +207,7 @@ export function MemoryGet(store: MemoryStore) {
       const result = `Scope: ${node.scope}
 Level: ${node.level}
 Type: ${node.type ?? "none"}
+Domain: ${node.domain ?? "unset"}
 Importance: ${node.importance}
 Access count: ${node.accessCount}
 Created: ${node.createdAt.toISOString()}

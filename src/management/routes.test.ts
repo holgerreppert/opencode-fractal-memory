@@ -13,6 +13,7 @@ describe("rowToNode", () => {
       created_at: 1000, updated_at: 2000,
       parent_ids: '["parent-1"]', content_length: 5,
       metadata: '{"key":"val"}', project_name: "proj",
+      domain: null,
     };
     const node = rowToNode(row);
     expect(node.id).toBe("node-1");

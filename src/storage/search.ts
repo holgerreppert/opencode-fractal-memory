@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent } from "../domain/ports/MemoryStore";
+import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent } from "../domain/ports/MemoryStore";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
@@ -132,6 +132,7 @@ export async function searchByEmbedding(
     temporalHops?: number | undefined;
     categoryFilter?: MemoryCategory | undefined;
     typeFilter?: MemoryNodeType | undefined;
+    domainFilter?: MemoryDomain | undefined;
     intent?: SearchIntent | undefined;
     tagsFilter?: string[] | undefined;
   }
@@ -150,7 +151,7 @@ export async function searchByEmbedding(
     const candidateIds = new Set(hnswResults.map(r => r.id));
     const hnswScoreMap = new Map(hnswResults.map(r => [r.id, r.score]));
 
-    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
     for (const scope of scopes) {
       const db = await getDb(scope);
       const projectFilter = options?.projectName !== undefined && scope === "project";
@@ -172,6 +173,7 @@ export async function searchByEmbedding(
         if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
         if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+        if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
         if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
         let _embedding = node.embedding;
@@ -200,7 +202,7 @@ export async function searchByEmbedding(
     const maxLevel = options?.maxLevel ?? 5;
     const minUsefulness = options?.minUsefulness ?? 0;
 
-    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
     for (const scope of scopes) {
       const db = await getDb(scope);
       const projectFilter = options?.projectName !== undefined && scope === "project";
@@ -223,6 +225,7 @@ export async function searchByEmbedding(
 
         if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
         if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+        if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
         if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
         const semanticScore = cosineSimilarity(query, embedding);
@@ -247,7 +250,7 @@ export async function searchByEmbedding(
     // Dual retrieval: compute BM25 across ALL scope nodes, not just HNSW candidates
     // This catches keyword matches outside the vector neighborhood
     const existingIds = new Set(scoredNodes.map(n => n.id));
-    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
 
     for (const scope of scopes) {
       const db = await getDb(scope);
@@ -288,6 +291,7 @@ export async function searchByEmbedding(
           if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
           if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
           if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+          if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
           if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
           const levelWeight = weights[level] ?? 1;
@@ -507,7 +511,7 @@ export async function detectTopicBoundaries(
   projectName?: string
 ): Promise<MemoryNode[][]> {
   const scopes: MemoryScope[] = scope === "all"
-    ? (projectName !== undefined ? ["project"] : ["global", "project"])
+    ? (projectName !== undefined ? ["project"] : ["global"])
     : [scope];
   const nodesWithEmbeddings: MemoryNode[] = [];
 

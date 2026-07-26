@@ -21,6 +21,8 @@ describe("nodeToPlain", () => {
     lastAccessed: null,
     type: "note" as const,
     category: "semantic" as const,
+    supertype: "declarative" as const,
+    domain: null,
     metadata: { key: "val" },
     sticky: true,
     ttlDays: null,

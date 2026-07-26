@@ -9,7 +9,7 @@ import {
   getAvailableScopes,
   extractLinks, computeStats,
   getBackupSources, createBackup, listBackups, deleteBackup, restoreBackup,
-  getProjectDir,
+  getProjectDir, getProjectName,
 } from "./helpers";
 import { VERSION } from "../version";
 import { CodeGraph } from "../application/graph/graph";
@@ -114,6 +114,7 @@ async function handleProjects(ctx: { scope: string; url: URL }, store: MemorySto
   const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit);
   const projects = new Set<string>();
   for (const n of nodes) {
+    if (n.projectName && n.projectName.startsWith("auto-edges-test-")) continue;
     projects.add(n.projectName || "(default)");
   }
   return jsonResponse([...projects].sort());
@@ -215,22 +216,23 @@ async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore
   const mode = ctx.url.searchParams.get("mode") || "text";
   const scope = ctx.url.searchParams.get("scope") as MemoryScope | "all" | null;
   const queryScope = scope ?? ctx.scope as MemoryScope;
+  const projectName = queryScope === "project" ? getProjectName() : undefined;
   if (!q.trim()) return jsonResponse([]);
 
   try {
     if (mode === "text") {
-      const nodes = await store.searchText(queryScope, q, 100);
+      const nodes = await store.searchText(queryScope, q, 100, projectName);
       return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
     }
 
     if (mode === "embedding") {
       const queryEmbedding = await generateEmbedding(q);
-      const nodes = await store.searchByEmbedding(queryEmbedding, 50, { queryText: q });
+      const nodes = await store.searchByEmbedding(queryEmbedding, 50, { queryText: q, projectName });
       return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
     }
 
     if (mode === "bm25") {
-      const nodes = await store.searchBM25(queryScope, q, 100);
+      const nodes = await store.searchBM25(queryScope, q, 100, projectName);
       return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
     }
 
@@ -255,6 +257,7 @@ async function handleNodeUpdate(req: Request, ctx: { params: Record<string, stri
     if (body.level !== undefined) updates.level = Number(body.level);
     if (body.importance !== undefined) updates.importance = Number(body.importance);
     if (body.type !== undefined) updates.type = String(body.type);
+    if (body.domain !== undefined) updates.domain = String(body.domain);
     if (body.sticky !== undefined) updates.sticky = Boolean(body.sticky);
     if (body.confidence !== undefined) updates.confidence = Number(body.confidence);
     if (body.usefulnessScore !== undefined) updates.usefulnessScore = Number(body.usefulnessScore);
@@ -546,7 +549,7 @@ function mapNode(n: {
   usefulnessScore: number | null; timesUsed: number | null; timesHelpful: number | null;
   accessCount: number | null; sticky: boolean; confidence: number | null;
   verificationCount: number | null;
-  supertype: string | null; tags: string[] | null; source: string | null;
+  supertype: string | null; domain: string | null; tags: string[] | null; source: string | null;
   createdAt: Date; updatedAt: Date; lastAccessed: Date | null;
   parentIds: string[] | null;
   metadata: Record<string, unknown> | null;
@@ -560,6 +563,7 @@ function mapNode(n: {
     level: n.level,
     type: n.type,
     supertype: n.supertype,
+    domain: n.domain,
     tags: n.tags,
     source: n.source,
     importance: n.importance,

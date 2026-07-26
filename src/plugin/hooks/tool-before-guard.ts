@@ -2,6 +2,9 @@ import { getActiveGraph } from "../../application/graph/build";
 import { searchNodes, getFileContext } from "../../application/graph/query";
 import type { HookHandler } from "./types";
 
+const MAX_HINTS_PER_SESSION = 3;
+const hintCounts = new Map<string, Map<string, number>>();
+
 function hasGraph(graph: ReturnType<typeof getActiveGraph>): graph is NonNullable<ReturnType<typeof getActiveGraph>> {
   return graph !== null && graph.nodeCount() >= 10;
 }
@@ -13,12 +16,25 @@ function extractGrepQuery(command: string): string | null {
   return null;
 }
 
+function shouldShowHint(sessionId: string, hintKey: string): boolean {
+  const sessionHints = hintCounts.get(sessionId);
+  if (!sessionHints) {
+    hintCounts.set(sessionId, new Map([[hintKey, 1]]));
+    return true;
+  }
+  const count = sessionHints.get(hintKey) ?? 0;
+  if (count >= MAX_HINTS_PER_SESSION) return false;
+  sessionHints.set(hintKey, count + 1);
+  return true;
+}
+
 export function createToolBeforeGuardHandler(): HookHandler {
   return {
     "tool.before": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: Record<string, unknown> };
+      const input = _input as { tool?: string; args?: Record<string, unknown>; sessionID?: string };
       const tool = input.tool;
       if (!tool) return;
+      const sessionId = input.sessionID ?? "default";
 
       const graph = getActiveGraph();
       if (!hasGraph(graph)) return;
@@ -52,10 +68,13 @@ export function createToolBeforeGuardHandler(): HookHandler {
       }
 
       if (hint) {
-        if (typeof out.output === "string") {
-          out.output = hint + "\n\n" + out.output;
-        } else {
-          out.output = hint;
+        const hintKey = `${tool}:${hint.slice(0, 60)}`;
+        if (shouldShowHint(sessionId, hintKey)) {
+          if (typeof out.output === "string") {
+            out.output = hint + "\n\n" + out.output;
+          } else {
+            out.output = hint;
+          }
         }
       }
     },

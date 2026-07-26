@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import type { SqliteNode } from "./base";
 import { embeddingToBlob, rowToNode } from "./base";
-import type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryCategory, MemorySupertype, CreateNodeInput } from "../types";
+import type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain, CreateNodeInput } from "../types";
 import { getHNSWIndex } from "../../infrastructure/vector/hnsw-index";
 import { z } from "zod";
 
@@ -28,6 +28,7 @@ const CreateNodeSchema = z.object({
   usefulnessScore: z.number().min(0).max(5).optional(),
   timesUsed: z.number().int().min(0).optional(),
   timesHelpful: z.number().int().min(0).optional(),
+  domain: z.string().nullable().optional(),
   projectName: z.string().nullable().optional(),
 });
 
@@ -109,6 +110,40 @@ const TYPE_SUPERTYPE: Record<string, MemorySupertype> = {
   fix: "meta",
 };
 
+const TYPE_DOMAIN: Record<string, MemoryDomain> = {
+  architecture: "architecture",
+  knowledge: "architecture",
+  howto: "operations",
+  config: "operations",
+  technical: "operations",
+  concept: "knowledge",
+  fact: "knowledge",
+  research: "knowledge",
+  "rule:mandatory": "rules",
+  "rule:standard": "rules",
+  "rule:suggestion": "rules",
+  convention: "rules",
+  "best-practices": "rules",
+  event: "history",
+  note: "history",
+  session: "history",
+  task: "history",
+  plan: "history",
+  exploration: "history",
+  "debug-investigation": "history",
+  improvement: "history",
+  review: "history",
+  bug: "history",
+  fix: "history",
+  summary: "history",
+  "project-history": "history",
+  skill: "patterns",
+  playbook: "patterns",
+  lesson: "patterns",
+  preference: "preferences",
+  pref: "preferences",
+};
+
 function resolveNodeCategory(type: string | null | undefined): MemoryCategory | null {
   if (!type) return null;
   return TYPE_CATEGORY[type] ?? "semantic";
@@ -117,6 +152,11 @@ function resolveNodeCategory(type: string | null | undefined): MemoryCategory | 
 function resolveNodeSupertype(type: string | null | undefined): MemorySupertype | null {
   if (!type) return null;
   return TYPE_SUPERTYPE[type] ?? null;
+}
+
+function resolveNodeDomain(type: string | null | undefined): MemoryDomain {
+  if (!type) return null;
+  return TYPE_DOMAIN[type] ?? null;
 }
 
 function autoGenerateMetadata(type: string | null | undefined): Record<string, unknown> | null {
@@ -243,6 +283,7 @@ export async function queryCreateNode(
   const sticky = node.type === "skill" ? 1 : (node.sticky ? 1 : 0);
   const resolvedCategory = node.category !== undefined ? node.category : resolveNodeCategory(node.type ?? null);
   const resolvedSupertype = node.supertype !== undefined ? node.supertype : resolveNodeSupertype(node.type ?? null);
+  const resolvedDomain = node.domain !== undefined ? node.domain : resolveNodeDomain(node.type ?? null);
   const ttlDays = node.ttlDays ?? (resolvedCategory === "episodic" ? 30 : null);
   const expiresAt = ttlDays ? now + ttlDays * 86400000 : null;
   const confidence = node.confidence ?? 0.5;
@@ -253,7 +294,7 @@ export async function queryCreateNode(
   const resolvedTags = node.tags !== undefined ? node.tags : (resolvedMetadata?.tags as string[] | undefined) ?? null;
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
@@ -271,7 +312,8 @@ export async function queryCreateNode(
       null,
       node.type ?? null,
       resolvedCategory,
-      resolvedSupertype,
+resolvedSupertype,
+      resolvedDomain,
       resolvedTags ? JSON.stringify(resolvedTags) : null,
       node.source ?? null,
       resolvedMetadata ? JSON.stringify(resolvedMetadata) : null,
@@ -317,6 +359,7 @@ export async function queryCreateNode(
     type: node.type ?? null,
     category: resolvedCategory,
     supertype: resolvedSupertype,
+    domain: resolvedDomain,
     tags: resolvedTags,
     source: node.source ?? null,
     metadata: node.metadata ?? null,
@@ -344,6 +387,7 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
   type: (v) => [["type = ?", v as string | null]],
   category: (v) => [["category = ?", v as string | null]],
   supertype: (v) => [["supertype = ?", v as string | null]],
+  domain: (v) => [["domain = ?", v as string | null]],
   tags: (v) => [["tags = ?", v ? JSON.stringify(v) : null]],
   source: (v) => [["source = ?", v as string | null]],
   metadata: (v) => [["metadata = ?", v ? JSON.stringify(v) : null]],
@@ -367,7 +411,7 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
 export async function queryUpdateNode(
   db: Database,
   id: string,
-  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>
+  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>
 ): Promise<void> {
   const setClauses: string[] = ["updated_at = ?"];
   const params: (string | number | Buffer | null)[] = [Date.now()];
@@ -402,7 +446,7 @@ export function querySearchText(db: Database, scope: MemoryScope, query: string,
   const projectClause = hasProjectFilter ? "AND project_name = ?" : "";
   const rows = db.query(`
     SELECT id, scope, label, content, summary, level, parent_ids, embedding_blob, created_at, updated_at,
-           importance, access_count, last_accessed, type, category, supertype, tags, source, metadata, sticky, ttl_days, expires_at,
+           importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at,
            confidence, last_verified, verification_count, usefulness_score, times_used, times_helpful, project_name
     FROM memory_nodes
     WHERE scope = ? AND (LOWER(label) LIKE ? OR LOWER(content) LIKE ?) ${projectClause}
@@ -421,7 +465,7 @@ export function querySearchBM25(db: Database, scope: MemoryScope, terms: string[
   const rows = db.query(`
     SELECT n.id, n.scope, n.label, n.content, n.summary, n.level, n.parent_ids, n.embedding_blob,
            n.created_at, n.updated_at, n.importance, n.access_count, n.last_accessed,
-           n.type, n.category, n.supertype, n.tags, n.source, n.metadata, n.sticky, n.ttl_days, n.expires_at,
+           n.type, n.category, n.supertype, n.domain, n.tags, n.source, n.metadata, n.sticky, n.ttl_days, n.expires_at,
            n.confidence, n.last_verified, n.verification_count, n.usefulness_score, n.times_used, n.times_helpful, n.project_name,
            COALESCE(SUM(b.frequency), 0) as bm25_score
     FROM memory_nodes n

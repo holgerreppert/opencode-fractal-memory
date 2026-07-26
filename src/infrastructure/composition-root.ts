@@ -18,10 +18,18 @@ export interface ApplicationContext {
 
 async function ensureSeedRules(store: MemoryStore): Promise<void> {
   let created = 0;
+  let updated = 0;
   let errors = 0;
   for (const seed of SEED_NODES) {
     try {
-      await store.getNodeByLabel("global", seed.label);
+      const existing = await store.getNodeByLabel("global", seed.label);
+      if (existing.content !== seed.content) {
+        await store.updateNode(existing.id, {
+          content: seed.content,
+          summary: seed.summary ?? undefined,
+        });
+        updated++;
+      }
     } catch {
       try {
         await store.createNode({
@@ -43,7 +51,7 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
       }
     }
   }
-  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created, errors });
+  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created, updated, errors });
 }
 
 async function initializeStore(directory: string, globalDbPath?: string): Promise<MemoryStore> {

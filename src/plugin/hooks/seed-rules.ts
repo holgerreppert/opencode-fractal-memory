@@ -212,6 +212,16 @@ export function createSeedRulesHandler(
         part.replace(/<available_skills>[\s\S]*?<\/available_skills>/g, "")
       );
 
+      // C4: Recency-end tool decision tree — always injected at array end for max recency
+      const TOOL_DECISION_TREE = `<system_reminder type="mandatory">
+## Tool Decision Guide
+Exploring code (read/grep/glob) → memory(mode="search") first (100× cheaper)
+Editing code (edit/write) → graph(relation="callers") first
+Complex task (3+ steps) → context(mode="check") then context(mode="inject")
+After discovery → memory(mode="set") + learn(mode="verify")
+</system_reminder>`;
+      out.system.push(TOOL_DECISION_TREE);
+
       sessionInjectionLock.delete(sessionId);
 
       if (config?.sessionLog?.enabled) {

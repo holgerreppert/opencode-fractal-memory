@@ -10,6 +10,7 @@ interface DbRow {
   summary: string | null;
   level: number | null;
   type: string | null;
+  domain: string | null;
   importance: number | null;
   usefulness_score: number | null;
   times_used: number | null;
@@ -32,6 +33,7 @@ interface MgmtNode {
   summary: string | null;
   level: number;
   type: string | null;
+  domain: string | null;
   importance: number;
   usefulnessScore: number | null;
   timesUsed: number | null;
@@ -52,6 +54,7 @@ interface NodeLike {
   label: string | null;
   content: string;
   type: string | null;
+  domain: string | null;
   level: number;
   importance: number;
   usefulnessScore: number | null;
@@ -106,6 +109,7 @@ export function rowToNode(r: DbRow): MgmtNode {
     summary: r.summary,
     level: r.level ?? 0,
     type: r.type,
+    domain: r.domain,
     importance: r.importance ?? 0.5,
     usefulnessScore: r.usefulness_score,
     timesUsed: r.times_used,
@@ -200,6 +204,7 @@ export interface StatsResult {
   nodesPerShape: Record<string, number>;
   nodesPerProject: Record<string, number>;
   nodesPerSupertype: Record<string, number>;
+  nodesPerDomain: Record<string, number>;
   nodesPerSource: Record<string, number>;
   tagsFrequency: Record<string, number>;
   confidenceHistogram: Record<string, number>;
@@ -228,6 +233,7 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
   const nodesPerShape: Record<string, number> = {};
   const nodesPerProject: Record<string, number> = {};
   const nodesPerSupertype: Record<string, number> = {};
+  const nodesPerDomain: Record<string, number> = {};
   const nodesPerSource: Record<string, number> = {};
   const tagsFrequency: Record<string, number> = {};
   const confidenceHistogram: Record<string, number> = {};
@@ -246,11 +252,15 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
     }
     const shape = resolveNodeShape(node);
     nodesPerShape[shape] = (nodesPerShape[shape] ?? 0) + 1;
-    const project = node.projectName || "(default)";
-    nodesPerProject[project] = (nodesPerProject[project] ?? 0) + 1;
+    const project = node.projectName;
+    if (project && !project.startsWith("auto-edges-test-")) {
+      nodesPerProject[project] = (nodesPerProject[project] ?? 0) + 1;
+    }
     if (node.supertype) {
       nodesPerSupertype[node.supertype] = (nodesPerSupertype[node.supertype] ?? 0) + 1;
     }
+    const domainKey = node.domain || "unset";
+    nodesPerDomain[domainKey] = (nodesPerDomain[domainKey] ?? 0) + 1;
     const sourceKey = node.source || "auto";
     nodesPerSource[sourceKey] = (nodesPerSource[sourceKey] ?? 0) + 1;
     if (node.tags) {
@@ -279,6 +289,7 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
     nodesPerShape,
     nodesPerProject,
     nodesPerSupertype,
+    nodesPerDomain,
     nodesPerSource,
     tagsFrequency,
     confidenceHistogram,
@@ -381,6 +392,10 @@ export function getBackupDir(): string {
 
 export function getProjectDir(): string {
   return process.env.MGMT_PROJECT_DIR || process.cwd();
+}
+
+export function getProjectName(): string {
+  return process.env.MGMT_PROJECT_NAME || path.basename(getProjectDir());
 }
 
 export function getConfigDir(): string {

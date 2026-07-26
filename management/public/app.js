@@ -82,6 +82,7 @@ class NodeFilterEngine {
     this._allValues = null;
     this.supertypeFilter = null;
     this.sourceFilter = null;
+    this.domainFilter = null;
   }
 
   initFromStats(stats) {
@@ -99,6 +100,7 @@ class NodeFilterEngine {
     this.projects.clear();
     this.supertypeFilter = null;
     this.sourceFilter = null;
+    this.domainFilter = null;
 
     this._allValues.levels.forEach(l => this.levels.add(l));
     this._allValues.types.forEach(t => this.types.add(t));
@@ -125,6 +127,7 @@ class NodeFilterEngine {
     this.projects.clear();
     this.supertypeFilter = null;
     this.sourceFilter = null;
+    this.domainFilter = null;
     this._allValues.levels.forEach(l => this.levels.add(l));
     this._allValues.types.forEach(t => this.types.add(t));
     this._allValues.customTypes.forEach(ct => this.customTypes.add(ct));
@@ -143,6 +146,7 @@ class NodeFilterEngine {
     this.projects.clear();
     this.supertypeFilter = null;
     this.sourceFilter = null;
+    this.domainFilter = null;
     this.searchQuery = "";
     this.serverSearchIds = null;
     this.hideAll = true;
@@ -219,6 +223,7 @@ class NodeFilterEngine {
     // New filters
     if (this.supertypeFilter && node.supertype !== this.supertypeFilter) return false;
     if (this.sourceFilter && node.source !== this.sourceFilter) return false;
+    if (this.domainFilter && node.domain !== this.domainFilter) return false;
 
     if (this.searchQuery) {
       if (this.searchMode === "text") {
@@ -1785,6 +1790,16 @@ function buildDashboardCharts() {
     meta: "#a78bfa",          // purple
   };
 
+  const DOMAIN_COLORS = {
+    architecture: "#4a9eff",
+    operations: "#34d399",
+    knowledge: "#f59e0b",
+    rules: "#ef4444",
+    history: "#fb923c",
+    patterns: "#a78bfa",
+    preferences: "#ec4899",
+  };
+
   const STRATUM_COLORS = {
     hot: "#ef4444",   // red
     warm: "#fbbf24",  // yellow
@@ -1841,6 +1856,20 @@ function buildDashboardCharts() {
     stratumHtml += makeBar(stratum, count, stratumMax, STRATUM_COLORS[stratum] || "#888", Object.values(stratumData).reduce((a,b)=>a+b,0));
   });
 
+  // 5. Domain distribution card
+  const domainData = statsData.nodesPerDomain || {};
+  const domainMax = getMax(domainData);
+  let domainHtml = "";
+  const domainOrder = ["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"];
+  const sortedDomain = Object.entries(domainData).sort((a, b) => {
+    const ai = domainOrder.indexOf(a[0]), bi = domainOrder.indexOf(b[0]);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  sortedDomain.forEach(([d, count]) => {
+    domainHtml += makeBar(d, count, domainMax, DOMAIN_COLORS[d] || "#888");
+  });
+  if (!domainHtml) domainHtml = '<div style="color:#666;font-size:12px;">No domain data</div>';
+
   // Build the cards HTML
   const cardStyle = "background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;margin-bottom:12px;";
   container.innerHTML = `
@@ -1848,6 +1877,10 @@ function buildDashboardCharts() {
       <div style="${cardStyle}">
         <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Supertype Distribution</h4>
         ${supertypeHtml}
+      </div>
+      <div style="${cardStyle}">
+        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Domain Distribution</h4>
+        ${domainHtml}
       </div>
       <div style="${cardStyle}">
         <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Tag Cloud</h4>
@@ -1914,6 +1947,16 @@ function buildFilters() {
     supertypeContainer.innerHTML = `<select id="supertype-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.supertypeFilter = this.value || null; filterEngine.changed();">
       <option value="">All Supertypes</option>
       ${supertypes.map(st => `<option value="${st}">${st} (${statsData.nodesPerSupertype[st]})</option>`).join("")}
+    </select>`;
+  }
+
+  // Domain filters (dropdown)
+  const domains = Object.keys(statsData.nodesPerDomain || {}).sort();
+  const domainContainer = document.getElementById("domain-filters");
+  if (domainContainer) {
+    domainContainer.innerHTML = `<select id="domain-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.domainFilter = this.value || null; filterEngine.changed();">
+      <option value="">All Domains</option>
+      ${domains.map(d => `<option value="${d}">${d} (${statsData.nodesPerDomain[d]})</option>`).join("")}
     </select>`;
   }
 
@@ -2112,6 +2155,7 @@ function showDetailPanel(node) {
       <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${node.level}</span></div>
       <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value">${node.type || "none"}${node.metadata?.customType ? ' <span style="color: #ff6b6b;">[' + escapeHtml(node.metadata.customType) + ']</span>' : ""}</span></div>
       <div class="stat-row"><span class="stat-label">Supertype</span><span class="stat-value" style="text-transform: capitalize;">${node.supertype || "none"}</span></div>
+      <div class="stat-row"><span class="stat-label">Domain</span><span class="stat-value" id="domain-display-${node.id}">${node.domain || "unset"}</span></div>
       <div class="stat-row"><span class="stat-label">Importance</span><span class="stat-value">${node.importance}</span></div>
       <div class="stat-row"><span class="stat-label">Usefulness Score</span><span class="stat-value">${node.usefulnessScore}</span></div>
       <div class="stat-row"><span class="stat-label">Access Count</span><span class="stat-value">${node.accessCount}</span></div>
@@ -2217,6 +2261,13 @@ function showEditForm(node) {
       </select>
     </div>
     <div class="edit-field">
+      <label>Domain</label>
+      <select id="edit-domain">
+        ${["", "architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"].map(d =>
+          `<option value="${d}" ${(node.domain || "") === d ? "selected" : ""}>${d || "— unset —"}</option>`).join("")}
+      </select>
+    </div>
+    <div class="edit-field">
       <label>Level</label>
       <input type="number" id="edit-level" value="${node.level}" min="0" max="10">
     </div>
@@ -2261,6 +2312,7 @@ async function saveNode() {
   const body = {
     label: document.getElementById("edit-label").value,
     type: document.getElementById("edit-type").value,
+    domain: document.getElementById("edit-domain").value || null,
     level: parseInt(document.getElementById("edit-level").value),
     importance: parseFloat(document.getElementById("edit-importance").value),
     content: document.getElementById("edit-content").value,

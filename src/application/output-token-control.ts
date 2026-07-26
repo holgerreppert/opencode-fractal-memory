@@ -147,11 +147,11 @@ let lastLogKey = "";
 export function getCompactionNudge(level: PressureLevel): string | null {
   switch (level) {
     case "warn":
-      return "[Context notice: conversation is growing long. Keep responses concise — prefer short answers, avoid unnecessary tool calls, and summarize where possible.]";
+      return "[Context notice: conversation is growing long. Run `context(mode='check')` to verify pressure. Keep responses concise — prefer short answers and summarize where possible.]";
     case "aggressive":
-      return "[Context notice: approaching context limit. Be extremely concise. Skip verbose explanations. Consider whether the model needs all prior tool outputs or whether they can be summarized.]";
+      return "[Context notice: approaching context limit. Run `context(mode='compress')` to compact older context. Be extremely concise. Use `memory(mode='search')` instead of reading files blind to save tokens.]";
     case "critical":
-      return "[Context notice: near context limit. Respond in as few tokens as possible. Prioritize essential information only.]";
+      return "[Context notice: near context limit. Run `context(mode='compress')` immediately, then `context(mode='recall')` to restore archived context. Respond in as few tokens as possible.]";
     default:
       return null;
   }

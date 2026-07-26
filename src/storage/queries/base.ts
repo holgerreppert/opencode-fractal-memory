@@ -17,6 +17,7 @@ export interface SqliteNode {
   type: string | null;
   category: string | null;
   supertype: string | null;
+  domain: string | null;
   tags: string | null;
   source: string | null;
   metadata: string | null;
@@ -32,8 +33,8 @@ export interface SqliteNode {
   project_name: string | null;
 }
 
-import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype } from "../../storage/types";
-export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype } from "../../storage/types";
+import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain } from "../../storage/types";
+export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain } from "../../storage/types";
 
 export function blobToEmbedding(blob: Buffer | null): number[] | null {
   if (!blob) return null;
@@ -71,6 +72,7 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     type: row.type as MemoryNodeType | null,
     category: row.category as MemoryCategory | null,
     supertype: row.supertype as MemorySupertype | null,
+    domain: row.domain as MemoryDomain,
     tags: row.tags ? JSON.parse(row.tags) : null,
     source: row.source ?? null,
     metadata: row.metadata ? JSON.parse(row.metadata) : null,

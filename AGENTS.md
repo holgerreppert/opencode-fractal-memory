@@ -143,6 +143,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 - After `cp -r dist "$CACHE/"`, verify the change landed: `grep -q "pattern" "$CACHE/dist/..."` 
 - Run `bun run lint` before committing — must be 0 errors, 0 warnings
 - Migration version in `definitions.ts` must increment; never modify existing migrations
+- After adding migrations, bump `CURRENT_VERSION` in `src/storage/migrations/index.ts` to match the last migration version in `definitions.ts`
 - Management app config fields: `id` = kebab-case in HTML, load/save in app.js with same pattern
 - Strategy name in compress-output.ts must be a short string (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic)
 - When graph build has silent failures (file nodes << expected), check the `@kreuzberg/tree-sitter-language-pack-wasm` type definitions (`*.d.ts`) and docs first — `getParser(name)` **throws** on unknown language, returns parser pre-configured (no `setLanguage` needed), module uses `FinalizationRegistry` for auto-cleanup
@@ -165,6 +166,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `rule:mandatory:memory` | rule | Memory tool rules (search→get→set chain) |
 | `rule:mandatory:agent-pull` | rule | No auto-injection |
 | `rule:feature:command-compression` | rule | Compression feature details |
+| `rule:feature:memory-tool-usage` | rule | Memory tool best practices + source-of-truth linking convention |
 | `rule:feature:auto-retrieve` | rule | Auto-retrieve reranking details |
 | `rule:feature:tag-intersection-search` | rule | tagsFilter option in searchByEmbedding — intersection semantics |
 | `rule:feature:source-propagation` | rule | Source must be set on ALL node creation — values table |
@@ -200,3 +202,5 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 - After schema migrations that add columns, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) AND mapNode in routes.ts AND NodeLike in helpers.ts AND computeStats aggregations
 - Management UI chart data flows: backend computeStats → StatsResult → /api/stats → app.js buildDashboardCharts() → DOM
 - Tag editing pattern: inline DOM manipulation + PUT /api/nodes/:id with {tags: [...]} + showDetailPanel refresh
+- Source-of-truth linking: encode verification pointers as tags (`file:`, `fn:`, `commit:`, `line:`, `test:`, `cmd:`) on every node. Searchable via `tagsFilter`. Every node should answer "where in the repo can this be checked?"
+- Use the `memory` tool for ALL node CRUD — never bash+sqlite3. Bash triggers output compression overhead (scratch files, pipe tangles). Memory tool is purpose-built and avoids all that.

@@ -12,18 +12,22 @@ export const SEED_NODES: SeedNode[] = [
   {
     label: "rule:mandatory:memory",
     tag: "rule:mandatory",
-    content: `## Memory Tool Mandatory Rules
+content: `## Memory Tool Mandatory Rules
 tag: rule:mandatory
 
+Memory search costs ~100x less than reading files cold. ALWAYS search before reading.
+
 ### Rules
-- search before get | get only verified labels
-- replace needs re-read first (content can change)
-- edit: read file first | write for new files
-- error → error node | solved → mark + add to rules
+- Search before get — get only verified labels
+- Memory first: memory(mode="search") costs 100x less than grep/read
+- Graph before edit: graph(callers) costs 10-100x less than grep
+- Replace needs re-read first (content can change)
+- Edit: read file first | write for new files
+- Error -> store as error node | Solved -> mark + add to rules
 
 ### Auto-Learned
 - Review tool arguments and ensure correct format
-- Avoid memory(mode="drilldown") with vague queries - use memory(mode="search") first
+- Avoid memory(mode="drilldown") with vague queries — use memory(mode="search") first
 - Re-read file before replace to ensure content is current
 - Verify node exists before memory(mode="delete")
 - Use ripgrep (rg) for direct code search instead of slow tools with timeouts`,
@@ -35,8 +39,9 @@ tag: rule:mandatory
 tag: rule:standard
 
 ### Workflow
-- search → get → set chain
-- verify after confirming something works`,
+- Search before get — set chain: search → drilldown/get → set/verify/replace
+- Verify after confirming something works — builds confidence over time
+- Store every significant tool result — it costs almost nothing and prevents re-discovery`,
   },
   {
     label: "rule:suggestion",
@@ -45,9 +50,10 @@ tag: rule:standard
 tag: rule:suggestion
 
 ### Optimization
-- llm_compress before compressing
-- extract_patterns quarterly
-- higher bm25 (0.6-0.8) for exact | lower (0.2-0.4) for semantic`,
+- llm_compress before compressing — preserves important context better than extractive
+- extract_patterns quarterly — find cross-node patterns you'd miss manually
+- higher bm25 (0.6-0.8) for exact searches | lower (0.2-0.4) for semantic discovery
+- Use context(mode="inject") for automatic memory injection — relieves manual search`,
   },
   {
     label: "rule:mandatory:core",
@@ -137,6 +143,8 @@ never_strip: true
 - NEVER use destructive commands without explicit user request
 - NEVER skip hooks (--no-verify, --no-gpg-sign)
 - For code exploration, prefer grep/glob/graph tools over shell commands
+- NEVER use bash + sqlite3 for memory node CRUD (search/get/set/delete/list/drilldown) — use the memory tool. Bash triggers output compression → scratch file stash → pipe tangles. Memory tool is purpose-built and avoids all overhead.
+- BEFORE reaching for any generic bash command, ask: "Is there a purpose-built consolidated tool (memory/graph/context/learn/journal) for this?" If yes, use that instead.
 
 ### memory (consolidated tool)
 - USE memory(mode="search") FIRST before any get/drilldown
@@ -274,6 +282,32 @@ All memory nodes have a \`source\` field set on creation. Values: \`manual\` (us
 tag: rule:feature
 
 memory(mode="verify") uses a diminishing-returns formula: confidence increases by \`0.2/(1+verificationCount)\`. First verify: +0.20, second: +0.10, third: +0.067. Each verification also increments verification_count. This prevents rapid confidence saturation.`,
+  },
+  {
+    label: "rule:feature:domain-classification",
+    tag: "rule:feature",
+    content: `Domain Classification Feature
+tag: rule:feature
+
+Memory nodes have a \`domain\` field (architecture | operations | knowledge | rules | history | patterns | preferences). Auto-derived from node type; view/edit in management app detail panel. Use \`domain_filter\` in memory(mode=search, ...) to filter results by domain.`,
+  },
+  {
+    label: "rule:feature:memory-tool-usage",
+    tag: "rule:feature",
+    content: `Memory Tool Usage Best Practices
+tag: rule:feature
+
+Golden rule: Use the \`memory\` tool for ALL node CRUD (search/get/set/delete/list). Never use bash+sqlite3 — it bypasses embeddings, BM25, compression tracking, and triggers output compression overhead (scratch file stashing, pipe tangling).
+
+Tool selection order: search (ALWAYS first, 100x cheaper than reading files) → drilldown/get (after search) → set (store discoveries) → replace (fix outdated) → delete (cleanup).
+
+Search params: \`bm25_weight\` 0.6-0.8 for exact, 0.2-0.4 for semantic; \`tagsFilter\` for intersection filtering; \`rerank\` for LLM judge scoring on ambiguous queries.
+
+Source-of-truth linking: encode verification pointers as tags — \`file:src/foo.ts\`, \`fn:calculateTotal\`, \`commit:abc123\`, \`line:42\`, \`test:testCalculateTotal\`, \`cmd:make migrate\`. Searchable via \`tagsFilter\`. Every node should answer "where in the repo can this be checked?"
+
+Cost: memory tool costs less than bash/SQL alternatives in every case — bash triggers compression system that creates scratch files and pipe tangles.
+
+Iterative improvement: update this node when discovering new patterns, mistakes, or optimal parameter combos. Add learned mistakes at the bottom.`,
   },
   // Seed nodes (on-demand, not injected)
   {

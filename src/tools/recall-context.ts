@@ -10,9 +10,11 @@ export function MemoryRecallContext(store: MemoryStore) {
       query: tool.schema.string().optional().describe("Search query to find relevant storedcontext nodes by semantic similarity"),
       sessionId: tool.schema.string().optional().describe("Filter to a specific session by its ID"),
       limit: tool.schema.number().int().positive().optional().describe("Maximum number of storedcontext nodes to return (default: 5)"),
+      project_name: tool.schema.string().optional().describe("Project name to scope the search to"),
     },
     async execute(args) {
       const limit = args.limit ?? 5;
+      const projectName = args.project_name;
       let nodes: MemoryNode[];
 
       if (args.sessionId) {
@@ -35,6 +37,7 @@ export function MemoryRecallContext(store: MemoryStore) {
           typeFilter: "storedcontext" as MemoryNodeType,
           queryText: args.query,
           bm25Weight: 0.3,
+          projectName,
         });
       } else {
         const allNodes = await store.listNodes("all");
