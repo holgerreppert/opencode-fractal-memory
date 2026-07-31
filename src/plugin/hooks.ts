@@ -20,9 +20,16 @@ import { createGraphSearchHintHandler } from "./hooks/graph-search-hint";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
 import { createToolDefinitionHandler } from "./hooks/tool-definition";
-import { createLiveCaptureHandler } from "./hooks/live-capture";
 import { createToolBeforeGuardHandler } from "./hooks/tool-before-guard";
 import type { HookHandler } from "./hooks/types";
+
+const TURN_COUNTERS = new Map<string, number>();
+
+function nextTurnIndex(sessionId: string): number {
+  const cur = TURN_COUNTERS.get(sessionId) ?? 0;
+  TURN_COUNTERS.set(sessionId, cur + 1);
+  return cur;
+}
 
 export function createHookHandlers(
   store: MemoryStore,
@@ -35,7 +42,6 @@ export function createHookHandlers(
   managementServer: { start: () => void; stop: () => void },
   currentSessionId: { value: string },
 ) {
-  const liveCapture = createLiveCaptureHandler(store, currentSessionId);
   const toolBeforeGuard = createToolBeforeGuardHandler();
 
   const handlers: HookHandler[] = [
@@ -59,7 +65,6 @@ export function createHookHandlers(
     createGraphContextHandler(memConfig),
     createGraphEditCheckHandler(memConfig),
     createGraphSearchHintHandler(memConfig),
-    liveCapture as unknown as HookHandler,
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {
@@ -80,8 +85,34 @@ export function createHookHandlers(
       callHooks("system.transform", input, output),
     "tool.execute.before": (input: unknown, output: unknown) =>
       callHooks("tool.before", input, output),
-    "tool.execute.after": (input: unknown, output: unknown) =>
-      callHooks("tool.after", input, output),
+    "tool.execute.after": async (input: unknown, output: unknown) => {
+      const inp = input as { tool?: string; sessionID?: string; callID?: string; args?: Record<string, unknown> };
+      const out = output as { title?: string; output?: string; metadata?: Record<string, unknown> };
+      const toolName = inp?.tool;
+      const sid = inp?.sessionID;
+      if (sid && toolName) {
+        currentSessionId.value = sid;
+        try {
+          const argsPreview = JSON.stringify(inp?.args || {}).slice(0, 500);
+          const outputPreview = (out?.output ?? "").slice(0, 500);
+          await store.recordConversationTurn({
+            sessionId: sid,
+            timestamp: Date.now(),
+            turnIndex: nextTurnIndex(sid),
+            role: "tool",
+            content: out?.title || `tool:${toolName}`,
+            toolName,
+            toolArgs: argsPreview,
+            toolResult: outputPreview,
+            tokenCount: Math.round(outputPreview.length / 4),
+          });
+          memLog("debug", "live-capture", "Captured tool call", { sessionId: sid, tool: toolName });
+        } catch (e) {
+          memLog("error", "live-capture", "Failed to capture tool call", { error: String(e) });
+        }
+      }
+      await callHooks("tool.after", input, output);
+    },
     "tool.definition": (input: unknown, output: unknown) =>
       callHooks("tool.definition", input, output),
     "experimental.session.compacting": (input: unknown, output: unknown) =>

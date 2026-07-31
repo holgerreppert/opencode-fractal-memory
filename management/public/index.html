@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fractal Memory Viewer</title>
+  <script defer src="alpine.local.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
   <style>
     :root { --sidebar-width: 280px; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -194,6 +197,10 @@
     }
     .tab-btn:hover { background: rgba(255,255,255,0.1); }
     .tab-btn.active { background: rgba(100, 150, 255, 0.3); border-color: rgba(100, 150, 255, 0.5); color: #fff; }
+    .tab-group-label {
+      width: 100%; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px;
+      padding: 10px 0 4px 0; text-align: center; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px;
+    }
 
     /* Settings Panel */
     .settings-panel { display: none; }
@@ -418,6 +425,32 @@
     #graph-detail-panel .close-btn:hover { color: #fff; }
     #graph-detail-panel h2 { font-size: 15px; margin-bottom: 12px; color: #fff; word-break: break-word; }
     .graph-nb-none { font-size: 11px; color: #666; font-style: italic; }
+    .filter-select {
+      width:100%; padding:6px 8px; border-radius:4px;
+      border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.05);
+      color:#fff; font-size:12px; outline:none;
+    }
+    .filter-select:focus { border-color: rgba(100,150,255,0.5); }
+    .dashboard-card {
+      background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);
+      border-radius:8px; padding:12px; margin-bottom:16px;
+    }
+    .dashboard-card-title {
+      font-size:12px; color:#aaa; text-transform:uppercase;
+      margin:0 0 10px 0; letter-spacing:0.3px;
+    }
+    .dashboard-chart-wrap {
+      position:relative; height:160px;
+    }
+    @media (max-width:800px) {
+      #dashboard-panel .dashboard-chart-wrap { height:120px; }
+      .dashboard-section-title {
+        font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px;
+        margin: 0 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      #dashboard-panel > div > div { grid-template-columns:1fr; }
+    }
+    .filter-btn.active { background: rgba(100, 150, 255, 0.3); border-color: rgba(100, 150, 255, 0.5); color: #fff; }
   </style>
 </head>
 <body>
@@ -427,19 +460,28 @@
 
     <div class="tab-buttons">
       <button class="tab-btn active" data-tab="visualize">Visualize</button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
+
+      <div class="tab-group-label">MONITOR</div>
+      <button class="tab-btn" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="context">Context</button>
-      <button class="tab-btn" data-tab="backup">Backup</button>
       <button class="tab-btn" data-tab="quality">Quality</button>
+
+      <div class="tab-group-label">DATA</div>
       <button class="tab-btn" data-tab="compress">Compress</button>
       <button class="tab-btn" data-tab="tokens">Tokens</button>
       <button class="tab-btn" data-tab="graph">Graph</button>
+
+      <div class="tab-group-label">LIVE</div>
       <button class="tab-btn" data-tab="live-agent">Live Agent</button>
       <button class="tab-btn" data-tab="live-metrics">Live Metrics</button>
+
+      <div class="tab-group-label">SYSTEM</div>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn" data-tab="backup">Backup</button>
     </div>
 
     <!-- Visualize Panel (stays in sidebar) -->
-    <div id="visualize-panel" class="settings-panel active">
+    <div id="visualize-panel" class="settings-panel active" x-data="searchPanel">
 
     <div class="section" style="margin-bottom:10px;">
       <h3>Scope</h3>
@@ -447,23 +489,60 @@
     </div>
 
     <div class="section" style="margin-bottom:10px;">
-      <input type="text" id="search-input" placeholder="Search nodes...">
-      <div style="display:flex; gap:4px; margin-top:6px;">
-        <button class="search-mode-btn active" data-mode="text">Text</button>
-        <button class="search-mode-btn" data-mode="embedding">Embedding</button>
-        <button class="search-mode-btn" data-mode="bm25">BM25</button>
+      <div class="search-bar" style="display:flex;gap:4px;">
+        <input type="text" x-model="query" @input.debounce="onQueryInput" @keydown.enter="doSearch"
+               placeholder="Search memory..." style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:13px;outline:none;">
       </div>
-      <button class="search-btn" id="search-btn">Search</button>
-      <div id="search-info"></div>
+      <div style="display:flex;gap:4px;margin-top:6px;">
+        <select x-model="mode" style="flex:1;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#ccc;font-size:11px;outline:none;">
+          <option value="auto">Auto</option>
+          <option value="text">Text</option>
+          <option value="embedding">Semantic</option>
+          <option value="bm25">BM25</option>
+        </select>
+        <button @click="doSearch" :disabled="loading"
+                style="flex:0 0 auto;padding:4px 12px;border-radius:6px;border:1px solid rgba(100,150,255,0.5);background:rgba(100,150,255,0.2);color:#fff;font-size:12px;cursor:pointer;">
+          <span x-show="!loading">Search</span>
+          <span x-show="loading">...</span>
+        </button>
+      </div>
+      <div x-show="info" style="font-size:11px;color:#888;margin-top:4px;text-align:center;" x-text="info"></div>
     </div>
 
-    <div class="section" style="margin-bottom:10px;">
-      <div id="stats-container"></div>
-    </div>
+    <!-- Filter chips -->
+    <template x-if="activeFilterCount > 0">
+      <div class="section" style="margin-bottom:8px;">
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          <template x-for="chip in activeFilterChips">
+            <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;background:rgba(100,150,255,0.15);border:1px solid rgba(100,150,255,0.3);font-size:10px;color:#aac8ff;">
+              <span x-text="chip.label"></span>
+              <button @click="removeFilter(chip)" style="background:none;border:none;color:#6af;cursor:pointer;padding:0;font-size:12px;line-height:1;">&times;</button>
+            </span>
+          </template>
+          <button @click="clearAll" style="background:none;border:none;color:#f66;font-size:10px;cursor:pointer;padding:2px 6px;">Clear all</button>
+        </div>
+      </div>
+    </template>
 
-    <div class="section" style="margin-bottom:10px;">
-      <div id="dashboard-charts-container"></div>
-    </div>
+    <!-- Search results -->
+    <template x-if="results.length > 0">
+      <div class="section" style="margin-bottom:8px;">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;" x-text="`${results.length} results`"></div>
+        <div style="max-height:200px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);border-radius:6px;">
+          <template x-for="r in results.slice(0, 30)">
+            <div @click="selectResult(r)"
+                 style="padding:6px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;display:flex;justify-content:space-between;align-items:center;"
+                 :style="window.sceneCtrl?.selectedNode?.userData?.nodeId === r.id ? 'background:rgba(100,150,255,0.2);' : ''">
+              <div>
+                <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" x-text="r.label || 'Unnamed'"></div>
+                <div style="color:#666;font-size:10px;" x-text="`L${r.level} · ${r.type || 'unknown'} · ${r.importance?.toFixed(2) || ''}`"></div>
+              </div>
+              <span x-show="r.score" style="color:#4f4;font-size:10px;" x-text="(r.score * 100).toFixed(0) + '%'"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
 
     <div class="section" style="margin-bottom:8px;">
       <h3>Layout</h3>
@@ -476,51 +555,87 @@
     </div>
 
     <div class="config-category" style="margin-bottom:6px;">
-      <h3 class="category-header" id="filters-header">
-        Filters <span id="filters-badge"></span>
-        <span class="collapse-arrow">&#x25BC;</span>
+      <h3 class="category-header" id="filters-header" @click="showAdvancedFilters = !showAdvancedFilters">
+        Filters
+        <span x-show="activeFilterCount > 0" style="font-size:9px;color:#666;font-weight:normal;" x-text="`(${activeFilterCount} active)`"></span>
+        <span class="collapse-arrow" x-text="showAdvancedFilters ? '&#x25BC;' : '&#x25B6;'"></span>
       </h3>
-      <div class="category-body" id="filters-body">
+      <div class="category-body" id="filters-body" x-show="showAdvancedFilters">
+
+        <!-- Level -->
         <div class="section">
           <h3>Level</h3>
-          <div class="filter-group" id="level-filters"></div>
-        </div>
-        <div class="section">
-          <h3>Type</h3>
-          <div class="filter-group" id="type-filters"></div>
-        </div>
-        <div class="section">
-          <h3>Custom Type</h3>
-          <div class="filter-group" id="custom-type-filters"></div>
-        </div>
-        <div class="section">
-          <h3>Shape</h3>
-          <div class="filter-group" id="shape-filters"></div>
-        </div>
-        <div class="section">
-          <h3>Supertype</h3>
-          <div class="filter-group" id="supertype-filters"></div>
-        </div>
-        <div class="section">
-          <h3>Source</h3>
-          <div class="filter-group" id="source-filters"></div>
-        </div>
-        <div class="section">
-          <h3>Domain</h3>
-          <div class="filter-group" id="domain-filters"></div>
-        </div>
-        <div class="section" style="display:none;">
-          <h3>Project</h3>
-          <select id="project-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;">
-            <option value="">All Projects</option>
-          </select>
-        </div>
-        <div class="section" style="margin-bottom:0;">
-          <div style="display:flex; gap:4px;">
-            <button class="search-btn" id="select-all-filters" style="border-color: rgba(100,200,100,0.4); background: rgba(100,200,100,0.15); flex:1;">Select All</button>
-            <button class="search-btn" id="clear-filters" style="border-color: rgba(255,100,100,0.4); background: rgba(255,100,100,0.15); flex:1;">Clear All</button>
+          <div class="filter-group">
+            <template x-for="l in availableLevels">
+              <button class="filter-btn" :class="{ active: isLevelActive(l) }"
+                      @click="toggleLevel(l)" x-text="'L' + l"></button>
+            </template>
           </div>
         </div>
+
+        <!-- Type -->
+        <div class="section">
+          <h3>Type</h3>
+          <div class="filter-group" style="max-height:120px;overflow-y:auto;">
+            <template x-for="t in availableTypes">
+              <button class="filter-btn" :class="{ active: isTypeActive(t) }"
+                      @click="toggleType(t)" x-text="t"></button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Supertype -->
+        <div class="section">
+          <h3>Supertype</h3>
+          <select x-model="supertype" @change="setSupertype(supertype)" class="filter-select">
+            <option value="">All</option>
+            <template x-for="st in availableSupertypes">
+              <option :value="st" x-text="st"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Domain -->
+        <div class="section">
+          <h3>Domain</h3>
+          <select x-model="domain" @change="setDomain(domain)" class="filter-select">
+            <option value="">All</option>
+            <template x-for="d in availableDomains">
+              <option :value="d" x-text="d"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Source -->
+        <div class="section">
+          <h3>Source</h3>
+          <select x-model="source" @change="setSource(source)" class="filter-select">
+            <option value="">All</option>
+            <template x-for="s in availableSources">
+              <option :value="s" x-text="s"></option>
+            </template>
+          </select>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Node list (Alpine-rendered) -->
+    <div class="section" style="margin-bottom:8px;">
+      <h3>Nodes <span style="font-size:11px;color:#666;font-weight:normal;" x-text="`(${nodeListItems.length})`"></span></h3>
+      <div class="node-list-container" style="max-height:250px;overflow-y:auto;border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
+        <template x-for="n in nodeListItems.slice(0, 100)">
+          <div @click="selectNode(n)"
+               style="padding:4px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;display:flex;justify-content:space-between;align-items:center;"
+               :style="window.sceneCtrl?.selectedNode?.userData?.nodeId === n.id ? 'background:rgba(100,150,255,0.2);' : ''">
+            <div style="flex:1;min-width:0;">
+              <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" x-text="n.label || 'Unnamed'"></div>
+              <div style="color:#666;font-size:10px;" x-text="`L${n.level} · ${n.type || 'unknown'} · imp: ${n.importance?.toFixed(2) || '?'}`"></div>
+            </div>
+            <span x-show="n.score" style="color:#4f4;font-size:10px;flex-shrink:0;margin-left:4px;" x-text="(n.score * 100).toFixed(0) + '%'"></span>
+          </div>
+        </template>
+        <div x-show="nodeListItems.length === 0" style="text-align:center;padding:12px;color:#555;font-size:11px;">No matching nodes</div>
       </div>
     </div>
 
@@ -532,29 +647,8 @@
       <div id="legend-popover"></div>
     </div>
 
-    <div class="config-category" style="margin-bottom:0;">
-      <h3 class="category-header" id="node-list-header">
-        Nodes <span class="node-list-count" id="node-list-count"></span>
-        <span class="collapse-arrow">&#x25BC;</span>
-      </h3>
-      <div class="category-body" id="node-list-body">
-        <div class="sort-controls" id="sort-controls">
-          <span style="font-size:10px;color:#888;margin-right:4px;">Sort:</span>
-          <select id="sort-field" class="sort-select">
-            <option value="level">Level</option>
-            <option value="importance">Importance</option>
-            <option value="createdAt">Created</option>
-            <option value="updatedAt">Updated</option>
-            <option value="label">Label</option>
-            <option value="type">Type</option>
-            <option value="usefulnessScore">Usefulness</option>
-            <option value="accessCount">Access Count</option>
-            <option value="confidence">Confidence</option>
-          </select>
-          <button id="sort-dir-btn" class="sort-dir-btn" title="Toggle sort direction">&#x25B2;</button>
-        </div>
-        <div id="node-list"></div>
-      </div>
+    <div id="sidebar-stats-mini" style="font-size:10px;color:#888;padding:4px 0;">
+      <span id="stats-text"></span>
     </div>
     </div>
 
@@ -611,6 +705,54 @@
     <div id="loading">Loading memory nodes...</div>
 
     <button class="toggle-sidebar" id="toggle-sidebar">☰</button>
+
+    <!-- Dashboard Panel -->
+    <div id="dashboard-panel" class="main-tab-panel" x-data="dashboardPanel">
+      <div class="section">
+        <h3>Dashboard</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">Memory system health and distribution at a glance.</p>
+
+        <div x-show="loading" style="text-align:center;padding:20px;color:#666;">Loading stats...</div>
+
+        <template x-if="!loading && stats">
+          <!-- Mini stats row -->
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#888;margin-bottom:16px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+            <span><strong style="color:#e0e0e0;" x-text="stats.totalNodes"></strong> nodes</span>
+            <span x-show="stats.memoryTokens"><strong style="color:#e0e0e0;" x-text="fmtTokens(stats.memoryTokens)"></strong> tokens</span>
+            <span x-show="stats.compressionSavings !== undefined"><strong style="color:#e0e0e0;" x-text="stats.compressionSavings + '%'"></strong> saved</span>
+            <span x-show="stats.memoryTokens"><span class="stat-ctx" :class="ctxPct() >= 85 ? 'crit' : ctxPct() >= 70 ? 'high' : ctxPct() >= 50 ? 'warn' : 'ok'" x-text="ctxPct() + '% ctx'"></span></span>
+            <span x-show="stats.injectionCount"><strong style="color:#e0e0e0;" x-text="stats.injectionCount"></strong> injections</span>
+            <span><strong style="color:#e0e0e0;" x-text="stats.totalAccessCount"></strong> accesses</span>
+          </div>
+
+          <!-- Memory Distribution -->
+          <h4 class="dashboard-section-title">Memory Distribution</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+            <div class="dashboard-card">
+              <h4 class="dashboard-card-title">Supertype Distribution</h4>
+              <div class="dashboard-chart-wrap"><canvas id="chart-supertype"></canvas></div>
+            </div>
+            <div class="dashboard-card">
+              <h4 class="dashboard-card-title">Domain Distribution</h4>
+              <div class="dashboard-chart-wrap"><canvas id="chart-domain"></canvas></div>
+            </div>
+          </div>
+
+          <!-- Quality Metrics -->
+          <h4 class="dashboard-section-title">Quality Metrics</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="dashboard-card">
+              <h4 class="dashboard-card-title">Confidence Histogram</h4>
+              <div class="dashboard-chart-wrap"><canvas id="chart-confidence"></canvas></div>
+            </div>
+            <div class="dashboard-card">
+              <h4 class="dashboard-card-title">Stratum Breakdown</h4>
+              <div class="dashboard-chart-wrap"><canvas id="chart-stratum"></canvas></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
 
     <!-- Settings Panel -->
     <div id="settings-panel" class="main-tab-panel">
@@ -1372,5 +1514,6 @@
   <script src="graph-viz.js"></script>
   <script src="glb-loader.js"></script>
   <script src="app.js"></script>
+  <script src="alpine-components.js"></script>
 </body>
 </html>

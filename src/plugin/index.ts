@@ -63,12 +63,55 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   const composedChatMessage = async (input: { sessionID: string }, output: unknown) => {
     currentSessionId.value = input.sessionID;
+    memLog("info", "live-capture", "composedChatMessage called", { sessionID: input.sessionID, hasHandler: !!handlers["chat.message"] });
     if (handlers["chat.message"]) {
       await handlers["chat.message"](input, output);
     }
   };
 
+  const capturedMessageCounts = new Map<string, number>();
+  const turnIndexCounters = new Map<string, number>();
+
+  function nextTurnIndex(sessionId: string): number {
+    const cur = turnIndexCounters.get(sessionId) ?? 0;
+    turnIndexCounters.set(sessionId, cur + 1);
+    return cur;
+  }
+
   const composedMessagesTransform = async (input: unknown, output: unknown) => {
+    const out = output as { messages?: Array<{ info: { role?: string; content?: string }; parts?: Array<{ type?: string; text?: string }> }> };
+    const messages = out?.messages;
+    const sid = currentSessionId.value;
+
+    if (sid && messages && messages.length > 0) {
+      const lastCount = capturedMessageCounts.get(sid) ?? 0;
+      if (messages.length > lastCount) {
+        const newMessages = messages.slice(lastCount);
+        for (const msg of newMessages) {
+          const role = msg.info?.role;
+          if (role !== "user" && role !== "assistant") continue;
+          const content = msg.info?.content || "";
+          const partText = (msg.parts || []).map((p: any) => p.text || "").join("");
+          const fullContent = content || partText;
+          if (!fullContent) continue;
+          try {
+            await store.recordConversationTurn({
+              sessionId: sid,
+              timestamp: Date.now(),
+              turnIndex: nextTurnIndex(sid),
+              role,
+              content: fullContent,
+              tokenCount: Math.round(fullContent.length / 4),
+            });
+            memLog("debug", "live-capture", `Captured ${role} from messages.transform`, { sessionId: sid, textLen: fullContent.length });
+          } catch (e) {
+            memLog("error", "live-capture", `Failed to capture ${role}`, { error: String(e) });
+          }
+        }
+        capturedMessageCounts.set(sid, messages.length);
+      }
+    }
+
     if (autoRetrieveHook) {
       const arHandler = autoRetrieveHook["experimental.chat.messages.transform"];
       if (arHandler) {

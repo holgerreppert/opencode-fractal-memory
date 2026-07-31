@@ -25,9 +25,13 @@
       }
     },
     {
-      "files": ["management/public/**"],
+      "files": ["management/public/alpine.local.js", "management/public/alpine-components.js"],
       "rules": {
-        "no-unused-vars": "warn"
+        "no-unused-vars": "off",
+        "no-unused-expressions": "off",
+        "no-empty-function": "off",
+        "no-empty": "off",
+        "no-useless-escape": "off"
       }
     }
   ]
