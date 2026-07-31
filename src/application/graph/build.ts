@@ -15,7 +15,7 @@ type WasmModule = any;
 
 let wasmMod: WasmModule | null = null;
 
-function getWasm(): WasmModule {
+export function getWasm(): WasmModule {
   if (!wasmMod) {
     const req = createRequire(import.meta.url);
     wasmMod = req("@kreuzberg/tree-sitter-language-pack-wasm");

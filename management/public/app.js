@@ -432,8 +432,9 @@ class SceneController {
   }
 
   _onMouseMove(event) {
-    this._lastMouseX = (event.clientX / window.innerWidth) * 2 - 1;
-    this._lastMouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this._lastMouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._lastMouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     this.mouse.x = this._lastMouseX;
     this.mouse.y = this._lastMouseY;
     this.raycaster.setFromCamera(this.mouse, this.camera);
@@ -495,8 +496,9 @@ class SceneController {
 
     // Check brain region click
     if (this.brainMeshGroup && this.layoutMode === "brain") {
-      this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       this.raycaster.setFromCamera(this.mouse, this.camera);
       const brainMeshes = [];
       this.brainMeshGroup.traverse(c => { if (c.isMesh) brainMeshes.push(c); });
@@ -1230,7 +1232,6 @@ class SceneController {
     this.selectedNode = mesh;
     this._updateHighlight();
     showDetailPanel(mesh.userData.nodeData);
-    buildNodeList();
 
     const target = mesh.position.clone();
     const size = getNodeSize(mesh.userData.nodeData);
@@ -1297,7 +1298,6 @@ let temporalEdgeData = [];
 let statsData = null;
 let editingNode = null;
 let currentScope = "project";
-let currentProject = "";
 let availableScopes = [];
 let currentLayoutMode = "shell";
 
@@ -1310,6 +1310,9 @@ let _graphAnalysis = null;
 function init() {
   filterEngine = new NodeFilterEngine();
   sceneCtrl = new SceneController();
+  window.filterEngine = filterEngine;
+  window.sceneCtrl = sceneCtrl;
+  window.currentScope = currentScope;
 
   // Wire filter engine to trigger view updates
   filterEngine.onUpdate = () => {
@@ -1327,22 +1330,6 @@ function init() {
 
 function setupEventListeners() {
   window.addEventListener("resize", () => sceneCtrl.resize());
-
-  document.getElementById("search-input").addEventListener("input", (e) => {
-    filterEngine.setSearchQuery(e.target.value);
-    filterEngine.setServerSearchIds(null);
-    filterEngine.changed();
-  });
-
-  document.getElementById("search-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      if (filterEngine.searchMode === "text") {
-        filterEngine.changed();
-      } else {
-        performServerSearch(filterEngine.searchQuery);
-      }
-    }
-  });
 
   document.getElementById("close-detail").addEventListener("click", () => {
     document.getElementById("detail-panel").classList.remove("open");
@@ -1374,113 +1361,19 @@ function setupEventListeners() {
     sidebar.classList.toggle("sidebar-collapsed");
   });
 
-  // Consolidated filter button handler
+  // Scope buttons
   document.getElementById("sidebar").addEventListener("click", (e) => {
-      const btn = e.target.closest(".filter-btn");
+    const btn = e.target.closest(".filter-btn");
     if (!btn) return;
-
-    if (btn.dataset.selectAll !== undefined) {
-      const category = btn.dataset.selectAll;
-      filterEngine.toggleAll(category);
-      const container = btn.parentElement;
-      const set = filterEngine._getSet(category);
-      const allSelected = set && set.size > 0;
-      container.querySelectorAll(".filter-btn:not(.select-all-btn)").forEach(b => {
-        const val = b.dataset.level !== undefined ? parseInt(b.dataset.level) :
-                    b.dataset.type || b.dataset.customType || b.dataset.shape || b.dataset.project;
-        if (val === undefined) return;
-        b.classList.toggle("active", allSelected && set.has(val));
-      });
-      return;
-    }
-
-    if (btn.dataset.scope !== undefined) {
-      const scope = btn.dataset.scope;
-      if (scope === currentScope) return;
-      currentScope = scope;
-      document.querySelectorAll("#scope-filters .filter-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      filterEngine.clearAll();
-      filterEngine.setSearchQuery("");
-      filterEngine.setServerSearchIds(null);
-      document.getElementById("search-input").value = "";
-      document.getElementById("search-info").textContent = "";
-      document.querySelectorAll(".filter-btn[data-level], .filter-btn[data-type], .filter-btn[data-custom-type], .filter-btn[data-shape]").forEach(b => b.classList.remove("active"));
-      loadData();
-    } else if (btn.dataset.level !== undefined) {
-      filterEngine.toggleLevel(parseInt(btn.dataset.level));
-      btn.classList.toggle("active");
-    } else if (btn.dataset.type !== undefined) {
-      filterEngine.toggleType(btn.dataset.type);
-      btn.classList.toggle("active");
-    } else if (btn.dataset.customType !== undefined) {
-      filterEngine.toggleCustomType(btn.dataset.customType);
-      btn.classList.toggle("active");
-    } else if (btn.dataset.shape !== undefined) {
-      filterEngine.toggleShape(btn.dataset.shape);
-      btn.classList.toggle("active");
-    } else if (btn.dataset.project !== undefined) {
-      filterEngine.toggleProject(btn.dataset.project);
-      btn.classList.toggle("active");
-    }
-  });
-
-  // Clear all filters button
-  document.getElementById("clear-filters").addEventListener("click", () => {
+    if (btn.dataset.scope === undefined) return;
+    const scope = btn.dataset.scope;
+    if (scope === currentScope) return;
+    currentScope = scope;
+    window.currentScope = currentScope;
+    document.querySelectorAll("#scope-filters .filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
     filterEngine.clearAll();
-    filterEngine.setSearchQuery("");
-    filterEngine.setServerSearchIds(null);
-
-    document.querySelectorAll(".filter-btn[data-level], .filter-btn[data-type], .filter-btn[data-custom-type], .filter-btn[data-shape]").forEach(b => b.classList.remove("active"));
-    document.getElementById("search-input").value = "";
-    document.getElementById("search-info").textContent = "";
-    document.getElementById("project-dropdown").value = "";
-    sceneCtrl.updateVisibility(filterEngine);
-  });
-
-  // Select all filters button
-  document.getElementById("select-all-filters").addEventListener("click", () => {
-    filterEngine.selectAll();
-    document.querySelectorAll(".filter-btn[data-level], .filter-btn[data-type], .filter-btn[data-custom-type], .filter-btn[data-shape], .select-all-btn").forEach(b => b.classList.add("active"));
-    document.getElementById("search-input").value = "";
-    document.getElementById("search-info").textContent = "";
-    document.getElementById("project-dropdown").value = "";
-  });
-
-  // Project dropdown
-  document.getElementById("project-dropdown").addEventListener("change", (e) => {
-    currentProject = e.target.value;
-    filterEngine.projects.clear();
-    if (currentProject) filterEngine.projects.add(currentProject);
-    sceneCtrl.updateVisibility(filterEngine);
-  });
-
-  // Search mode toggles
-  document.querySelectorAll(".search-mode-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".search-mode-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      filterEngine.setSearchMode(btn.dataset.mode);
-      filterEngine.setServerSearchIds(null);
-      const info = document.getElementById("search-info");
-      if (filterEngine.searchMode === "text") {
-        info.textContent = "";
-      } else if (filterEngine.searchMode === "embedding") {
-        info.textContent = "Semantic search via embeddings \u2014 type query and press Search";
-      } else if (filterEngine.searchMode === "bm25") {
-        info.textContent = "Full-text search via BM25 index \u2014 type query and press Search";
-      }
-      sceneCtrl.updateVisibility(filterEngine);
-    });
-  });
-
-  // Search button
-  document.getElementById("search-btn").addEventListener("click", () => {
-    if (filterEngine.searchMode === "text") {
-      sceneCtrl.updateVisibility(filterEngine);
-    } else {
-      performServerSearch(filterEngine.searchQuery);
-    }
+    loadData();
   });
 
   // Layout buttons
@@ -1511,13 +1404,6 @@ function setupEventListeners() {
     });
   }
 
-  // Node list click
-  document.getElementById("node-list").addEventListener("click", (e) => {
-    const item = e.target.closest(".node-list-item");
-    if (!item) return;
-    sceneCtrl.focusOnNode(item.dataset.nodeId);
-  });
-
   // Tab buttons
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1535,6 +1421,7 @@ function setupEventListeners() {
       const visualizePanel = document.getElementById("visualize-panel");
       const graphSidebarPanel = document.getElementById("graph-sidebar-panel");
       const settingsPanel = document.getElementById("settings-panel");
+      const dashboardPanel = document.getElementById("dashboard-panel");
       const contextPanel = document.getElementById("context-panel");
       const backupPanel = document.getElementById("backup-panel");
       const qualityPanel = document.getElementById("quality-panel");
@@ -1553,7 +1440,7 @@ function setupEventListeners() {
       if (graphSidebarPanel) graphSidebarPanel.style.display = isGraph ? "block" : "none";
 
       // Main-content panels (hidden for fullscreen tabs)
-      const panelMap = { settings: settingsPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, compress: compressPanel, tokens: tokensPanel, graph: graphPanel, "live-agent": document.getElementById("live-agent-panel"), "live-metrics": document.getElementById("live-metrics-panel") };
+      const panelMap = { settings: settingsPanel, dashboard: dashboardPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, compress: compressPanel, tokens: tokensPanel, graph: graphPanel, "live-agent": document.getElementById("live-agent-panel"), "live-metrics": document.getElementById("live-metrics-panel") };
       for (const [key, p] of Object.entries(panelMap)) {
         if (p) p.classList.toggle("active", key === tab && (isLiveTab || !isFullscreenTab));
       }
@@ -1563,6 +1450,9 @@ function setupEventListeners() {
       if (graphVizContainer) graphVizContainer.classList.toggle("active", isGraph);
 
       if (tab === "settings") loadSettings();
+      if (tab === "dashboard") { 
+        document.dispatchEvent(new CustomEvent('dashboard:show'));
+      }
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
       if (tab === "context") loadContextDashboard();
       if (tab === "quality") loadQuality();
@@ -1631,11 +1521,20 @@ async function loadData() {
     }
 
     try {
-      buildUI();
+      buildScopeButtons();
+      buildLegend();
     } catch (uiErr) {
       console.error("[viewer] UI build error:", uiErr);
     }
 
+    // Notify Alpine components that stats are ready
+    window.statsData = statsData;
+    window.nodeData = nodeData;
+    filterEngine.initFromStats(statsData);
+    window.dispatchEvent(new CustomEvent('alpine:stats-loaded', { detail: { stats: statsData } }));
+
+    // Double-ensure filter engine is in clean state
+    filterEngine.selectAll();
     sceneCtrl.updateVisibility(filterEngine);
   } catch (err) {
     console.error("[viewer] Load error:", err);
@@ -1731,15 +1630,6 @@ function createTextSprite(text, color, big = false) {
 
 // ==================== UI Builders ====================
 
-function buildUI() {
-  buildScopeButtons();
-  buildStats();
-  buildDashboardCharts();
-  buildFilters();
-  buildLegend();
-  buildNodeList();
-}
-
 function buildScopeButtons() {
   const container = document.getElementById("scope-filters");
   container.innerHTML = availableScopes.map(s =>
@@ -1747,256 +1637,7 @@ function buildScopeButtons() {
   ).join("");
 }
 
-function buildStats() {
-  if (!statsData) return;
-  const container = document.getElementById("stats-container");
 
-  // Token formatting
-  const fmtTokens = (n) => {
-    if (!n && n !== 0) return "";
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-    if (n >= 1000) return (n / 1000).toFixed(1) + "K";
-    return String(n);
-  };
-
-  const tokens = statsData.memoryTokens;
-  const savings = statsData.compressionSavings;
-  const ctxLimit = 128000;
-  const ctxPct = tokens ? Math.round((tokens / ctxLimit) * 100) : 0;
-  const ctxClass = ctxPct >= 85 ? "crit" : ctxPct >= 70 ? "high" : ctxPct >= 50 ? "warn" : "ok";
-
-  let html = `<div class="mini-stats">`;
-  html += `<span><strong>${statsData.totalNodes}</strong> nodes</span>`;
-  if (tokens) html += `<span><strong>${fmtTokens(tokens)}</strong> tokens</span>`;
-  if (savings !== undefined) html += `<span><strong>${savings}%</strong> saved</span>`;
-  if (tokens) html += `<span class="stat-ctx ${ctxClass}">${ctxPct}% ctx</span>`;
-  if (statsData.injectionCount) html += `<span><strong>${statsData.injectionCount}</strong> inj.</span>`;
-  html += `<span><strong>${statsData.totalAccessCount}</strong> accesses</span>`;
-  html += `</div>`;
-
-  container.innerHTML = html;
-}
-
-function buildDashboardCharts() {
-  if (!statsData) return;
-  const container = document.getElementById("dashboard-charts-container");
-  if (!container) return;
-
-  // Color definitions
-  const SUPERTYPE_COLORS = {
-    declarative: "#4a9eff",   // blue
-    procedural: "#34d399",    // green
-    experiential: "#fb923c",  // orange
-    meta: "#a78bfa",          // purple
-  };
-
-  const DOMAIN_COLORS = {
-    architecture: "#4a9eff",
-    operations: "#34d399",
-    knowledge: "#f59e0b",
-    rules: "#ef4444",
-    history: "#fb923c",
-    patterns: "#a78bfa",
-    preferences: "#ec4899",
-  };
-
-  const STRATUM_COLORS = {
-    hot: "#ef4444",   // red
-    warm: "#fbbf24",  // yellow
-    cold: "#3b82f6",  // blue
-  };
-
-  // Helper to get max value for scaling
-  const getMax = (obj) => Math.max(...Object.values(obj || {}));
-
-  // Helper to create colored bar div
-  const makeBar = (label, value, max, color) => {
-    const pct = max > 0 ? (value / max) * 100 : 0;
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <span style="flex:0 0 80px;font-size:11px;color:#888;">${label}</span>
-      <span style="flex:1;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">
-        <div style="width:${pct}%;height:16px;background:${color};transition:width 0.3s;"></div>
-      </span>
-      <span style="flex:0 0 40px;font-size:11px;color:#fff;text-align:right;">${value}</span>
-    </div>`;
-  };
-
-  // 1. Supertype distribution card
-  const supertypeData = statsData.nodesPerSupertype || {};
-  const supertypeMax = getMax(supertypeData);
-  let supertypeHtml = "";
-  Object.entries(supertypeData).forEach(([st, count]) => {
-    supertypeHtml += makeBar(st, count, supertypeMax, SUPERTYPE_COLORS[st] || "#888", Object.values(supertypeData).reduce((a,b)=>a+b,0));
-  });
-
-  // 2. Tag cloud card
-  const tagsData = statsData.tagsFrequency || {};
-  const tagMax = getMax(tagsData);
-  const tagEntries = Object.entries(tagsData).sort((a,b) => b[1]-a[1]).slice(0, 20);
-  let tagHtml = "";
-  tagEntries.forEach(([tag, count]) => {
-    const size = Math.max(12, Math.min(36, 12 + (count / (tagMax || 1)) * 24));
-    tagHtml += `<span style="display:inline-block;margin:2px 4px;font-size:${size}px;color:#aaa;cursor:pointer;" onclick="console.log('Tag clicked:', '${tag}')">${tag} <span style="font-size:10px;color:#666;">(${count})</span></span>`;
-  });
-  if (tagEntries.length === 0) tagHtml = '<div style="color:#666;font-size:12px;">No tags found</div>';
-
-  // 3. Confidence histogram card
-  const confidenceData = statsData.confidenceHistogram || {};
-  const confMax = getMax(confidenceData);
-  let confHtml = "";
-  Object.entries(confidenceData).sort().forEach(([bucket, count]) => {
-    confHtml += makeBar(bucket, count, confMax, "#d946ef", Object.values(confidenceData).reduce((a,b)=>a+b,0));
-  });
-
-  // 4. Stratum breakdown card
-  const stratumData = statsData.stratumBreakdown || {};
-  const stratumMax = getMax(stratumData);
-  let stratumHtml = "";
-  Object.entries(stratumData).forEach(([stratum, count]) => {
-    stratumHtml += makeBar(stratum, count, stratumMax, STRATUM_COLORS[stratum] || "#888", Object.values(stratumData).reduce((a,b)=>a+b,0));
-  });
-
-  // 5. Domain distribution card
-  const domainData = statsData.nodesPerDomain || {};
-  const domainMax = getMax(domainData);
-  let domainHtml = "";
-  const domainOrder = ["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"];
-  const sortedDomain = Object.entries(domainData).sort((a, b) => {
-    const ai = domainOrder.indexOf(a[0]), bi = domainOrder.indexOf(b[0]);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
-  sortedDomain.forEach(([d, count]) => {
-    domainHtml += makeBar(d, count, domainMax, DOMAIN_COLORS[d] || "#888");
-  });
-  if (!domainHtml) domainHtml = '<div style="color:#666;font-size:12px;">No domain data</div>';
-
-  // Build the cards HTML
-  const cardStyle = "background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;margin-bottom:12px;";
-  container.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div style="${cardStyle}">
-        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Supertype Distribution</h4>
-        ${supertypeHtml}
-      </div>
-      <div style="${cardStyle}">
-        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Domain Distribution</h4>
-        ${domainHtml}
-      </div>
-      <div style="${cardStyle}">
-        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Tag Cloud</h4>
-        <div style="padding:8px 0;">${tagHtml}</div>
-      </div>
-      <div style="${cardStyle}">
-        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Confidence Histogram</h4>
-        ${confHtml}
-      </div>
-      <div style="${cardStyle}">
-        <h4 style="font-size:12px;color:#aaa;text-transform:uppercase;margin:0 0 10px 0;">Stratum Breakdown</h4>
-        ${stratumHtml}
-      </div>
-    </div>
-  `;
-}
-
-function buildFilters() {
-  if (!statsData) return;
-
-  filterEngine.initFromStats(statsData);
-
-  // Build compact badge summary for the accordion header
-  const badgeLevels = Object.keys(statsData.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
-  const badgeTypes = Object.keys(statsData.nodesPerType || {}).sort();
-  const badgeShapes = Object.keys(statsData.nodesPerShape || {}).sort();
-  const badgeParts = [];
-  if (badgeLevels.length) badgeParts.push(badgeLevels.map(l => `L${l}:${statsData.nodesPerLevel[l]}`).join(' '));
-  if (badgeTypes.length) badgeParts.push(`${badgeTypes.length} types`);
-  if (badgeShapes.length) badgeParts.push(`${badgeShapes.length} shapes`);
-  const badgeEl = document.getElementById("filters-badge");
-  if (badgeEl) badgeEl.textContent = badgeParts.join(' · ');
-
-  // Level filters
-  const levels = Object.keys(statsData.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
-  const levelContainer = document.getElementById("level-filters");
-  levelContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="level">All</button>` +
-    levels.map(l =>
-      `<button class="filter-btn active" data-level="${l}">L${l} (${statsData.nodesPerLevel[l]})</button>`
-    ).join("");
-
-  // Type filters
-  const types = Object.keys(statsData.nodesPerType || {}).sort();
-  const typeContainer = document.getElementById("type-filters");
-  typeContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="type">All</button>` +
-    types.map(t =>
-      `<button class="filter-btn active" data-type="${t}">${t} (${statsData.nodesPerType[t]})</button>`
-    ).join("");
-
-  // Custom type filters
-  const customTypes = Object.keys(statsData.nodesPerCustomType || {}).sort();
-  const customTypeContainer = document.getElementById("custom-type-filters");
-  if (customTypeContainer) {
-    customTypeContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="customType">All</button>` +
-      customTypes.map(ct =>
-        `<button class="filter-btn active" data-custom-type="${ct}">${ct} (${statsData.nodesPerCustomType[ct]})</button>`
-      ).join("");
-  }
-
-  // Supertype filters (dropdown)
-  const supertypes = Object.keys(statsData.nodesPerSupertype || {}).sort();
-  const supertypeContainer = document.getElementById("supertype-filters");
-  if (supertypeContainer) {
-    supertypeContainer.innerHTML = `<select id="supertype-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.supertypeFilter = this.value || null; filterEngine.changed();">
-      <option value="">All Supertypes</option>
-      ${supertypes.map(st => `<option value="${st}">${st} (${statsData.nodesPerSupertype[st]})</option>`).join("")}
-    </select>`;
-  }
-
-  // Domain filters (dropdown)
-  const domains = Object.keys(statsData.nodesPerDomain || {}).sort();
-  const domainContainer = document.getElementById("domain-filters");
-  if (domainContainer) {
-    domainContainer.innerHTML = `<select id="domain-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.domainFilter = this.value || null; filterEngine.changed();">
-      <option value="">All Domains</option>
-      ${domains.map(d => `<option value="${d}">${d} (${statsData.nodesPerDomain[d]})</option>`).join("")}
-    </select>`;
-  }
-
-  // Source filters (dropdown)
-  const sources = Object.keys(statsData.nodesPerSource || {}).sort();
-  const sourceContainer = document.getElementById("source-filters");
-  if (sourceContainer) {
-    sourceContainer.innerHTML = `<select id="source-dropdown" class="config-field" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;" onchange="filterEngine.sourceFilter = this.value || null; filterEngine.changed();">
-      <option value="">All Sources</option>
-      ${sources.map(s => `<option value="${s}">${s} (${statsData.nodesPerSource[s]})</option>`).join("")}
-    </select>`;
-  }
-
-  // Shape filters
-  const shapes = Object.keys(statsData.nodesPerShape || {}).sort();
-  const shapeContainer = document.getElementById("shape-filters");
-  if (shapeContainer) {
-    const shapeLabels = {
-      sphere: "Sphere", box: "Box", octahedron: "Octahedron",
-      dodecahedron: "Dodecahedron", icosahedron: "Icosahedron", torus: "Torus",
-    };
-    shapeContainer.innerHTML = `<button class="filter-btn select-all-btn" data-select-all="shape">All</button>` +
-      shapes.map(s =>
-        `<button class="filter-btn active" data-shape="${s}">${shapeLabels[s] || s} (${statsData.nodesPerShape[s]})</button>`
-      ).join("");
-  }
-
-  // Project dropdown
-  const projects = Object.keys(statsData.nodesPerProject || {}).sort();
-  const dropdown = document.getElementById("project-dropdown");
-  const projectSection = dropdown && dropdown.closest(".section");
-  if (projects.length > 1 && projectSection) {
-    projectSection.style.display = "block";
-    dropdown.innerHTML = `<option value="">All Projects</option>` +
-      projects.map(p =>
-        `<option value="${p}">${p} (${statsData.nodesPerProject[p]})</option>`
-      ).join("");
-    dropdown.value = currentProject || "";
-  }
-}
 
 function buildLegend() {
   if (!statsData) return;
@@ -2028,57 +1669,50 @@ function buildLegend() {
   popover.innerHTML = html;
 }
 
-let sortField = "level";
-let sortAsc = true;
-
-const SORT_COMPARATORS = {
-  level: (a, b) => a.level - b.level,
-  importance: (a, b) => a.importance - b.importance,
-  createdAt: (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
-  updatedAt: (a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0),
-  label: (a, b) => (a.label || "").localeCompare(b.label || ""),
-  type: (a, b) => (a.type || "").localeCompare(b.type || ""),
-  usefulnessScore: (a, b) => (a.usefulnessScore || 0) - (b.usefulnessScore || 0),
-  accessCount: (a, b) => (a.accessCount || 0) - (b.accessCount || 0),
-  confidence: (a, b) => (a.confidence || 0) - (b.confidence || 0),
-};
-
 function buildNodeList() {
-  const container = document.getElementById("node-list");
-  const countEl = document.getElementById("node-list-count");
-  const filtered = filterEngine.apply(nodeData);
+  // Delegate to Alpine searchPanel component if available
+  const alpinePanel = document.getElementById('visualize-panel');
+  if (alpinePanel && alpinePanel.__x) {
+    alpinePanel.__x.$data._updateNodeList();
+    return;
+  }
 
-  countEl.textContent = `(${filtered.length})`;
+  // Fallback for when Alpine.js hasn't loaded
+  if (!window.nodeData || !window.filterEngine) return;
 
-  const cmp = SORT_COMPARATORS[sortField] || SORT_COMPARATORS.level;
-  const sorted = [...filtered].sort((a, b) => sortAsc ? cmp(a, b) : cmp(b, a));
+  const container = document.querySelector('#visualize-panel .node-list-container');
+  if (!container) return;
 
-  container.innerHTML = sorted.map(node => {
-    const isSelected = sceneCtrl.selectedNode && sceneCtrl.selectedNode.userData.nodeId === node.id;
+  const visible = window.nodeData.filter(n => window.filterEngine.matches(n));
+  const items = visible.slice(0, 100);
 
-    let customIndicator = "";
-    if (node.metadata?.customType) {
-      const ct = node.metadata.customType;
-      if (ct === 'middle-term') {
-        customIndicator = ' <span style="color: #ff6b6b; font-size: 10px;">[MT]</span>';
-      } else {
-        customIndicator = ` <span style="color: #ff6b6b; font-size: 10px;">[${ct}]</span>`;
-      }
-    }
-    if (node.type === 'skill') {
-      customIndicator += ' <span style="color: #fbbf24; font-size: 10px;">[SKILL]</span>';
-    }
-    if (node.type === 'playbook') {
-      customIndicator += ' <span style="color: #ff8c00; font-size: 10px;">[PLAYBOOK]</span>';
-    }
+  if (items.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:12px;color:#555;font-size:11px;">No matching nodes</div>';
+    return;
+  }
 
-    return `
-      <div class="node-list-item ${isSelected ? 'selected' : ''}" data-node-id="${node.id}">
-        <div class="node-label">${escapeHtml(node.label || "Unnamed")}${customIndicator}</div>
-        <div class="node-meta">L${node.level} · ${node.type || "unknown"} · imp: ${node.importance}</div>
+  container.innerHTML = items.map(n => `
+    <div class="node-list-item" data-id="${n.id}"
+         style="padding:4px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;display:flex;justify-content:space-between;align-items:center;
+                ${window.sceneCtrl?.selectedNode?.userData?.nodeId === n.id ? 'background:rgba(100,150,255,0.2);' : ''}">
+      <div style="flex:1;min-width:0;">
+        <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(n.label || 'Unnamed')}</div>
+        <div style="color:#666;font-size:10px;">L${n.level} · ${n.type || 'unknown'} · imp: ${(n.importance || 0).toFixed(2)}</div>
       </div>
-    `;
-  }).join("");
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.node-list-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      const n = window.nodeData?.find(x => x.id === id);
+      if (n && window.sceneCtrl) window.sceneCtrl.focusOnNode(n.id);
+    });
+  });
+
+  // Update count in the heading
+  const heading = container.closest('.section')?.querySelector('h3 span');
+  if (heading) heading.textContent = `(${items.length})`;
 }
 
 // ==================== Detail Panel ====================
@@ -2485,6 +2119,7 @@ async function injectNode(node) {
 
 // ==================== Server Search ====================
 
+// eslint-disable-next-line no-unused-vars
 async function performServerSearch(query) {
   const info = document.getElementById("search-info");
   if (!query || query.length < 2) {
@@ -2549,7 +2184,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-config').addEventListener('click', saveSettings);
 
   // Collapsible settings categories
-  document.querySelectorAll('.category-header').forEach(header => {
+  document.querySelectorAll('.config-category .category-header').forEach(header => {
     header.addEventListener('click', () => {
       header.parentElement.classList.toggle('collapsed');
     });
@@ -2591,17 +2226,6 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
-  });
-
-  // Sort controls
-  document.getElementById("sort-field").addEventListener("change", (e) => {
-    sortField = e.target.value;
-    buildNodeList();
-  });
-  document.getElementById("sort-dir-btn").addEventListener("click", () => {
-    sortAsc = !sortAsc;
-    document.getElementById("sort-dir-btn").innerHTML = sortAsc ? "&#x25B2;" : "&#x25BC;";
-    buildNodeList();
   });
 
   // Backup / Restore event listeners
@@ -3765,11 +3389,6 @@ function showCompressDetail(event) {
   });
 }
 
-function escHtml(s) {
-  if (!s) return "";
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 // ==================== Token History ====================
 
 async function loadTokenHistory() {
@@ -4257,20 +3876,64 @@ function renderLiveFeed(data) {
   if (!feed) return;
 
   const turns = data.turns || [];
-  status.textContent = `${turns.length} turns`;
+  const toolCalls = data.toolCalls || [];
+  const injections = data.injections || [];
+  const compressions = data.compressions || [];
 
-  let html = "";
-  for (const t of turns.slice().reverse()) {
-    const ts = new Date(t.timestamp).toLocaleTimeString();
+  // Merge all entries into a single timeline, each with a ts for sorting
+  const entries = [];
+
+  for (const t of turns) {
+    const ts = t.timestamp;
     const role = t.role || "unknown";
     const content = (t.content || "").slice(0, 500);
-    const line = `[${ts}] ${role.toUpperCase()}: ${content}`;
-
-    if (filterVal && !line.toLowerCase().includes(filterVal)) continue;
-
     const cls = `live-${role}`;
-    html += `<div class="${cls}"><span class="live-ts">[${ts}]</span> <strong>${role.toUpperCase()}</strong> ${escHtml(content)}</div>`;
+    const text = `[turn] ${role.toUpperCase()}: ${content}`;
+    entries.push({ ts, text, html: `<div class="${cls}"><span class="live-ts">[${new Date(ts).toLocaleTimeString()}]</span> <strong>${role.toUpperCase()}</strong> ${escHtml(content)}</div>` });
   }
+
+  for (const tc of toolCalls) {
+    const ts = tc.timestamp || tc.ts || 0;
+    const name = tc.tool_name || "?";
+    const args = tc.args_json ? JSON.stringify(tc.args_json).slice(0, 120) : "";
+    const preview = (tc.output_preview || "").slice(0, 200);
+    const ok = tc.success ? "✓" : tc.success === 0 ? "✗" : "→";
+    const text = `[tool] ${ok} ${name} ${args}`;
+    entries.push({ ts, text, html: `<div class="live-tool"><span class="live-ts">[${new Date(ts).toLocaleTimeString()}]</span> <strong>${ok} ${escHtml(name)}</strong> ${escHtml(args)} <span style="color:#888;">${escHtml(preview)}</span></div>` });
+  }
+
+  for (const inj of injections) {
+    const ts = inj.timestamp || 0;
+    const mode = inj.injection_mode || "?";
+    const strategy = inj.rerank_strategy || "?";
+    const nodes = inj.injected_node_count ?? "?";
+    const toks = (inj.injected_tokens || 0).toLocaleString();
+    const text = `[inj] ${mode} / ${strategy} / ${nodes}n / ${toks}t`;
+    entries.push({ ts, text, html: `<div class="live-assistant"><span class="live-ts">[${new Date(ts).toLocaleTimeString()}]</span> <span style="color:#d946ef;">INJECT</span> ${escHtml(mode)} / ${escHtml(strategy)} / ${nodes}n / ${toks}t</div>` });
+  }
+
+  for (const comp of compressions) {
+    const ts = comp.timestamp || 0;
+    const cmd = comp.cmd_preview || comp.command || "?";
+    const strategy = comp.strategy || "?";
+    const savings = comp.savings_ratio ? Math.round((1 - comp.savings_ratio) * 100) : 0;
+    const orig = (comp.original_chars || 0).toLocaleString();
+    const compr = (comp.compressed_chars || 0).toLocaleString();
+    const text = `[comp] ${cmd} / ${strategy} / ${orig}→${compr} (-${savings}%)`;
+    entries.push({ ts, text, html: `<div class="live-reasoning"><span class="live-ts">[${new Date(ts).toLocaleTimeString()}]</span> <span style="color:#f59e0b;">COMPRESS</span> ${escHtml(cmd)} / ${escHtml(strategy)} / ${orig}→${compr} <span style="color:#4f4;">-${savings}%</span></div>` });
+  }
+
+  // Sort by timestamp ascending (oldest first, newest at bottom — chat-style)
+  entries.sort((a, b) => a.ts - b.ts);
+  status.textContent = `${turns.length} turns · ${toolCalls.length} tools · ${injections.length} injections · ${compressions.length} compressions`;
+
+  let html = "";
+  for (const e of entries) {
+    if (filterVal && !e.text.toLowerCase().includes(filterVal)) continue;
+    html += e.html;
+  }
+  if (!html) html = '<div style="text-align:center;padding:12px;color:#555;font-size:11px;">No live data yet</div>';
+
   feed.innerHTML = html;
   feed.scrollTop = feed.scrollHeight;
 }
@@ -4450,7 +4113,7 @@ function startLiveMetricsPolling() {
 
 function escHtml(s) {
   if (!s) return "";
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function fmtDuration(ms) {

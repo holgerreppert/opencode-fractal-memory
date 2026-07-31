@@ -13,10 +13,12 @@ export function createLiveCaptureHandler(store: MemoryStore, currentSessionId: {
   return {
     "chat.message": async (_input: unknown, output: unknown) => {
       const sid = currentSessionId.value;
+      memLog("debug", "live-capture", "chat.message handler", { sid: sid || "(empty)", hasOutput: !!output, outputKeys: output ? Object.keys(output as object).join(",") : "none" });
       if (!sid) return;
 
       const out = output as { message?: { role?: string; content?: string }; parts?: Array<{ type?: string; text?: string }> };
       const text = out?.message?.content || "";
+      memLog("debug", "live-capture", "chat.message content check", { hasMessage: !!out?.message, textLen: text.length, role: out?.message?.role });
       if (!text) return;
 
       try {
@@ -41,7 +43,7 @@ export function createLiveCaptureHandler(store: MemoryStore, currentSessionId: {
       }
     },
 
-    "experimental.chat.messages.transform": async (_input: unknown, output: unknown) => {
+    "chat.messages.transform": async (_input: unknown, output: unknown) => {
       const sid = currentSessionId.value;
       if (!sid) return;
 
@@ -99,7 +101,7 @@ export function createLiveCaptureHandler(store: MemoryStore, currentSessionId: {
       }
     },
 
-    "tool.execute.after": async (input: unknown, _output: unknown) => {
+    "tool.after": async (input: unknown, _output: unknown) => {
       const sid = currentSessionId.value;
       if (!sid) return;
 
