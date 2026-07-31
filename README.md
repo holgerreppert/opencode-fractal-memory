@@ -613,6 +613,8 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 
 ### Usage
 
+The app is organized into tab groups — **Monitor** (Dashboard, Settings), **Data** (Nodes/Graph, Search, Context, Backup, Quality, Compress, Tokens), and **Live** (Live Agent, Live Metrics). It runs fully from local files — no CDN is required.
+
 **3D Graph** — the default view shows memory nodes as spheres connected by `[[wiki-link]]` relationships and temporal edges:
 - **Drag** to rotate the scene
 - **Scroll** to zoom in/out
@@ -663,7 +665,13 @@ Opens at [http://localhost:8787](http://localhost:8787). The server starts as a 
 
 **Context** — shows a unified dashboard of all memory node tokens by level/type, active rules, compression savings, recent injection history, and estimated total LLM context usage (memory + system prompts + tool defs + conversation estimate).
 
+**Dashboard** — memory distribution by level/type/supertype, tag cloud, confidence histogram, and stratum breakdown cards.
+
 **Compress (Before/After)** — the compression tab now shows each event with before/after char counts, line counts, and duration. Click any row to see a modal with the full before/after content preview side-by-side.
+
+**Live Agent** — a real-time conversation feed (polls `/api/live` every 2s) that merges conversation turns, tool calls, injections, and compressions into one filterable, chat-style timeline (newest at the bottom, auto-scrolled into view). The side panel shows live session context and token history.
+
+**Live Metrics** — auto-refreshing cards for injections, compressions, tool calls, and token usage, sourced from the `injection_metrics`, `compression_stats`, and `agent_tool_calls` tables.
 
 ## How Plugin Initialization Works
 

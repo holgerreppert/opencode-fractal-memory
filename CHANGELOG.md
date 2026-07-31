@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.8
+- **Management app — no external CDN dependencies**: Alpine.js vendored locally (`alpine.local.js`, was loading from jsdelivr and blocked by adblockers/firewalls); chart.js and fuse.js still load from CDN but no longer block app boot. Fixes node list, dashboard, search, and filters rendering when the CDN is unreachable.
+- **Management app — live agent feed**: New unified timeline merging conversation turns, tool calls, injections, and compressions into a single sortable/filterable feed. Chat-style ordering (newest at bottom with auto-scroll to newest — fixes newest entries being rendered off-screen above the viewport). Polls `/api/live` every 2s. Live Metrics tab shows injections, compressions, tool calls, and token history.
+- **Management app — tab grouping**: Tabs reorganized into Monitor / Data / Live / System groups. Dashboard split into Memory Distribution + Quality Metrics sections.
+- **Management app — fixes**: duplicate `escHtml` definition removed; mouse NDC coordinates corrected (was offset by the 280px sidebar, breaking brain/3D region picking); node list fallback without Alpine internals.
+- **Live capture fallback** (`src/plugin/hooks.ts`, `src/plugin/index.ts`): Conversation turn recording no longer depends solely on the `chat.message` hook (which the SDK never fired). Direct capture added inside `tool.execute.after` (tool calls) and `composedMessagesTransform` (user/assistant messages) with per-session turn-index counters. Writes to `agent_conversation_turns`; visible in the Live Agent feed.
+- **Hook method-name fixes** (`src/plugin/hooks/live-capture.ts`): `experimental.chat.messages.transform` → `chat.messages.transform`, `tool.execute.after` → `tool.after` to match the SDK's `callHooks` dispatch keys.
+- **Skeletonize refactor** (`src/application/skeletonize.ts`): Stronger Wasm result typing; `getWasm` exported from `src/application/graph/build.ts` for reuse.
+- Lint + build clean.
+
+## v0.7.7
+- Version bump only (no code changes).
+
 ## v0.7.6
 - **Auto graph hints on search** (`src/plugin/hooks/graph-search-hint.ts`): After `grep`, `glob`, or `search` tools, calls `searchNodes` on the code graph and appends up to 3 matching symbol suggestions (function/class/interface) as a compact `[code-graph-search-hint]` block. Dedup guard: only fires if output doesn't already contain a graph context. Gated by `graph.enabled`.
 - **Auto-skeletonize on large reads** (`src/plugin/hooks/graph-context.ts`): When reading a file with ≥ `autoSkeletonizeMinLines` lines (default 300), generates a skeleton via `extractSkeleton` and prepends it before the file content. Guards: skipped on offset reads, skipped when skeleton extraction returns empty/zero length. Config via `graph.autoSkeletonizeMinLines`.
