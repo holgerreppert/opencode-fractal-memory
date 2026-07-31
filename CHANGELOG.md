@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.11
+- **Payload-preserving strategies exempt from `isSignalOutput` gate** (`src/application/command-compression.ts`): grep/rg, ls, tree, git, and test-runner output containing error words (e.g. matched lines like `memLog("error", …)`) was never compressed because the signal gate ran before strategy dispatch. The command prefix is now computed first; payload-preserving commands bypass the gate since they keep answer lines by design (matched lines / filenames / file lists / failures). Lossy strategies (generic/truncate/shape) remain gated so real errors still pass through verbatim.
+- Tests: 89 pass (was 88) — new regression test "grep with error-bearing matches still compresses".
+
 ## v0.7.10
 - **Tiered command compression** (`src/application/command-compression.ts`, strategies in `src/application/command-compression/`): Replaces the flat "compress everything large" model with graduated tiers:
   - **Tier 0 — verbatim pass-through**: Outputs under `verbatimBelowLines` (default 40) or < 80 chars are never compressed. Small `ls`/`grep`/`git status` results arrive intact.
