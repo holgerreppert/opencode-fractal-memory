@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.10
+- **Tiered command compression** (`src/application/command-compression.ts`, strategies in `src/application/command-compression/`): Replaces the flat "compress everything large" model with graduated tiers:
+  - **Tier 0 — verbatim pass-through**: Outputs under `verbatimBelowLines` (default 40) or < 80 chars are never compressed. Small `ls`/`grep`/`git status` results arrive intact.
+  - **Net-win gate**: Compression is skipped unless BPE-estimated token savings clear `netWinMinTokens` (default 24) — no net-loss invocations.
+  - **Benign-aware threshold**: Clean output compresses only beyond `benignThreshold` (1000 lines); error-bearing output beyond `errorThreshold` (500). Error output always passes through verbatim (`isSignalOutput`).
+  - **grep** (`strategies/grep.ts`): Matched lines kept verbatim up to `keepMatches` (15); beyond that, first 15 matched lines + per-file counts + "… +N more". Strict `path:line:content` detection rejects ps/table-style lines (fixes the "no-ext: 1 file, 5 77916996 1229920 pts/0 Sl+" garble).
+  - **ls** (`strategies/ls.ts`): Filenames kept verbatim up to `keepNames` (50); never folded to bare "N files". `tree` shares this path.
+  - **git status** (`strategies/git.ts`): Changed-file list is the payload and is always kept (up to 50 files + "… +N more"); only headers/instructions are stripped. Fixes a pre-existing trim bug that silently dropped the file list.
+  - **tables** (`shape.ts`): Header + rows kept verbatim up to `keepRows` (20); token-count-based table detection replaces the 2+space heuristic that misread `ps aux` as 1 column. Optional per-command `essentialColumns` column trimming.
+  - **Always-reversible** (`src/plugin/hooks/compression.ts`): Original output stashed on *every* compression (was > 2000 chars only) with `[Original stashed — cat <path>]` recovery marker. New `[ids_preserved: …]` factsheet lists SHAs/UUIDs/versions dropped by lossy summaries.
+  - **Path-safe abbreviations** (`utils.ts`): `applyWordAbbreviations` never rewrites tokens containing `/`, `.`, or `:` — fixes the `src/management/…` → `src/mgmt/…` path corruption.
+- **Config**: New `commandCompression` knobs — `netWinMinTokens`, `verbatimBelowLines`, `benignThreshold`, `errorThreshold`, `keepMatches`, `keepNames`, `keepRows`, `essentialColumns` (all with defaults, overridable in `opencode-mem.json`).
+- Tests: 88 pass (was 79); lint 0 errors; build clean.
+
 ## v0.7.8
 - **Management app — no external CDN dependencies**: Alpine.js vendored locally (`alpine.local.js`, was loading from jsdelivr and blocked by adblockers/firewalls); chart.js and fuse.js still load from CDN but no longer block app boot. Fixes node list, dashboard, search, and filters rendering when the CDN is unreachable.
 - **Management app — live agent feed**: New unified timeline merging conversation turns, tool calls, injections, and compressions into a single sortable/filterable feed. Chat-style ordering (newest at bottom with auto-scroll to newest — fixes newest entries being rendered off-screen above the viewport). Polls `/api/live` every 2s. Live Metrics tab shows injections, compressions, tool calls, and token history.

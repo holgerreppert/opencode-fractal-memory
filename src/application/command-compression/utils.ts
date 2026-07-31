@@ -25,6 +25,13 @@ export function contentPreview(text: string, maxLen = 80): string {
   return first ? first.trim().slice(0, maxLen) : "";
 }
 
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  const codeChars = "{}()[];=<>+*&|!?:,.\\/\"'-\t\r\n";
+  const codeLike = [...text].some(c => codeChars.includes(c));
+  return Math.max(1, Math.ceil(codeLike ? text.length / 3.2 : text.length / 4.5));
+}
+
 export function getCommandPrefix(rawCmd: string): string {
   const cmd = rawCmd.trim();
   const firstPipe = cmd.indexOf("|");
@@ -176,16 +183,18 @@ const WORD_ABBREVIATIONS: Record<string, string> = {
 };
 
 export function applyWordAbbreviations(text: string): string {
-  // Apply to each line: replace long words with abbreviations
+  // Apply to each line: replace long words with abbreviations. Whitespace-delimited
+  // runs that look like paths (contain /), filenames/extensions (contain .), or
+  // URLs (contain :) are NEVER rewritten — abbreviating them corrupts the path.
   const lines = text.split("\n");
   let changed = false;
-  const result = lines.map(line => {
-    const updated = line.replace(/\b([a-zA-Z]{6,})\b/g, (match) => {
+  const abbreviateRun = (run: string): string => {
+    if (run.includes("/") || run.includes(".") || run.includes(":")) return run;
+    return run.replace(/\b([a-zA-Z]{6,})\b/g, (match) => {
       const lower = match.toLowerCase();
       const abbrev = WORD_ABBREVIATIONS[lower];
       if (abbrev) {
         changed = true;
-        // Preserve capitalization of first letter
         if (match[0] === match[0]!.toUpperCase()) {
           return abbrev[0]!.toUpperCase() + abbrev.slice(1);
         }
@@ -193,8 +202,8 @@ export function applyWordAbbreviations(text: string): string {
       }
       return match;
     });
-    return updated;
-  });
+  };
+  const result = lines.map(line => line.replace(/\S+/g, abbreviateRun));
   if (!changed) return text;
   return result.join("\n");
 }

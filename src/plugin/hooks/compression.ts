@@ -52,6 +52,30 @@ function offloadOutput(output: string): string | null {
   }
 }
 
+// Extract identifiers (SHAs, UUIDs, versions, ticket codes) from dropped
+// content so lossy compression can never silently lose a hash or id.
+const ID_RE = /\b(?:[a-f0-9]{7,40}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Z]+-\d+|\d+\.\d+\.\d+)\b/gi;
+
+function extractIdentifiers(text: string, cap = 16): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const matches = text.match(ID_RE) ?? [];
+  for (const m of matches) {
+    const normalized = m.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(m);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+function droppedIdentifiers(raw: string, compressed: string, cap = 16): string[] {
+  const rawIds = extractIdentifiers(raw, 64);
+  const compressedLower = compressed.toLowerCase();
+  return rawIds.filter(id => !compressedLower.includes(id.toLowerCase())).slice(0, cap);
+}
+
 async function purgeOldScratch(): Promise<void> {
   try {
     const cutoff = Date.now() - 86400000;
@@ -222,8 +246,9 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             : `[Compressed via ${strategyLabel} — ${raw.length}→${deduped.output.length} chars]\n`;
           let finalOutput = deduped.output;
 
-          // Reversible compression: stash original when output is big
-          const reversible = !deduped.dedup && raw.length > 2000; // always enabled for large output
+          // Reversible compression: always stash the original so the model can
+          // recover any dropped detail via `cat <path>` (progressive disclosure).
+          const reversible = !deduped.dedup;
           let stashPath: string | null = null;
           if (reversible) {
             stashPath = stashOriginal(raw);
@@ -283,8 +308,18 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             }
           }
 
+          // Identifier factsheet: list hashes/ids that the summary dropped so
+          // lossy compression can never silently lose one.
+          let idsNote = "";
+          if (!deduped.dedup) {
+            const dropped = droppedIdentifiers(raw, finalOutput);
+            if (dropped.length > 0) {
+              idsNote = `\n[ids_preserved: ${dropped.join(", ")}]`;
+            }
+          }
+
           const reversibleNote = stashPath ? `\n[Original stashed — use \`cat ${stashPath}\`]` : "";
-          out.output = banner + finalOutput + reversibleNote;
+          out.output = banner + finalOutput + reversibleNote + idsNote;
           out.metadata = {
             ...((out.metadata as Record<string, unknown>) ?? {}),
             compressed: true,

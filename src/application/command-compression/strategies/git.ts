@@ -1,11 +1,12 @@
+const GIT_STATUS_KEEP_FILES = 50;
+
 export function compressGitStatus(raw: string): string {
   const lines = raw.split("\n").filter(Boolean);
   if (lines.length === 0) return raw;
 
   const branch = lines.find(l => l.startsWith("On branch ") || l.startsWith("HEAD detached at "));
-  const staged: string[] = [];
-  const unstaged: string[] = [];
-  const untracked: string[] = [];
+  const changed: string[] = [];
+  let total = 0;
 
   for (const line of lines) {
     const s = line.trim();
@@ -14,26 +15,33 @@ export function compressGitStatus(raw: string): string {
     if (s.startsWith("Untracked files:")) continue;
     if (s.startsWith("  (use")) continue;
     if (s.startsWith("no changes")) break;
-    if (s.startsWith("\t") || s.startsWith("  ")) {
+    if (/^(modified|new file|deleted|renamed):\s*/i.test(s)) {
       const clean = s.replace(/^(modified|new file|deleted|renamed):\s*/i, "").trim();
       if (clean && !clean.startsWith("(")) {
-        if (staged.length < 5) staged.push(clean);
+        total++;
+        if (changed.length < GIT_STATUS_KEEP_FILES) changed.push(clean);
+      }
+    } else if (line.startsWith("\t") || s.startsWith("?? ") || s.startsWith("!")) {
+      const name = s.replace(/^(\?\?\s*|!\s*)/, "").trim();
+      if (name) {
+        total++;
+        if (changed.length < GIT_STATUS_KEEP_FILES) changed.push(`? ${name}`);
       }
     }
   }
 
-  if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) {
+  if (changed.length === 0 && total === 0) {
     const m = lines.find(l => /nothing to commit|up to date/i.test(l));
     if (m) return "clean";
   }
 
+  // The changed-file list is the payload: always keep the file paths.
   const parts: string[] = [];
   if (branch) parts.push(branch.trim());
-  if (staged.length > 0) parts.push(`${staged.length} staged`);
-  if (unstaged.length > 0) parts.push(`${unstaged.length} unstaged`);
-  if (untracked.length > 0) parts.push(`${untracked.length} untracked`);
+  if (changed.length > 0) parts.push(changed.join("\n"));
+  if (total > changed.length) parts.push(`… +${total - changed.length} more files`);
 
-  return parts.length > 0 ? parts.join(" | ") : raw;
+  return parts.join("\n");
 }
 
 export function compressGitLog(raw: string): string {

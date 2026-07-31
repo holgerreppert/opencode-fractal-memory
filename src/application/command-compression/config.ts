@@ -14,7 +14,25 @@ export interface CompressConfig {
   deltaMaxCacheSize?: number;
   deltaMinSimilarity?: number;
   ollamaExtraction?: OllamaExtractionConfig | undefined;
+  netWinMinTokens?: number;
+  verbatimBelowLines?: number;
+  benignThreshold?: number;
+  errorThreshold?: number;
+  keepMatches?: number;
+  keepNames?: number;
+  keepRows?: number;
+  essentialColumns?: Record<string, string[]>;
 }
+
+export const DEFAULT_TIERED = {
+  netWinMinTokens: 24,
+  verbatimBelowLines: 40,
+  benignThreshold: 1000,
+  errorThreshold: 500,
+  keepMatches: 15,
+  keepNames: 50,
+  keepRows: 20,
+} as const;
 
 export interface OllamaExtractionConfig {
   enabled: boolean;
