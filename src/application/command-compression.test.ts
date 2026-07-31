@@ -8,7 +8,7 @@ import { classifyShape, applyShapeCompression } from "./command-compression/shap
 import { compressCommandOutput, type CompressConfig } from "./command-compression";
 import { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 import { addContentDedup, trigramJaccard } from "./command-compression/dedup";
-import { smartFilter, scoreLine } from "./command-compression/utils";
+import { smartFilter, scoreLine, applyWordAbbreviations, estimateTokens } from "./command-compression/utils";
 
 const defaultConfig: CompressConfig = {
   enabled: true,
@@ -21,9 +21,9 @@ const defaultConfig: CompressConfig = {
 };
 
 describe("compressLs", () => {
-  test("summarizes file listing", () => {
+  test("keeps listing verbatim when under keepNames", () => {
     const input = ["file1.ts", "file2.ts", "dir1/", "dir2/", "Makefile"].join("\n");
-    expect(compressLs(input)).toBe("2 dirs, 3 files");
+    expect(compressLs(input)).toBe(input);
   });
 
   test("returns raw when empty", () => {
@@ -31,16 +31,24 @@ describe("compressLs", () => {
   });
 
   test("handles single file", () => {
-    expect(compressLs("README.md")).toBe("1 file");
+    expect(compressLs("README.md")).toBe("README.md");
   });
 
   test("handles single dir", () => {
-    expect(compressLs("src/")).toBe("1 dir");
+    expect(compressLs("src/")).toBe("src/");
   });
 
-  test("strips total prefix", () => {
+  test("strips total prefix but keeps names", () => {
     const input = "total 128\ndir1/\nfile1.ts";
-    expect(compressLs(input)).toBe("1 dir, 1 file");
+    expect(compressLs(input)).toBe(input);
+  });
+
+  test("keeps first keepNames names, summarizes the rest", () => {
+    const input = Array.from({ length: 60 }, (_, i) => i % 2 === 0 ? `file${i}.ts` : `dir${i}/`).join("\n");
+    const result = compressLs(input, 10);
+    expect(result).toContain("file0.ts");
+    expect(result).toContain("… +50 more");
+    expect(result).not.toContain("60 files");
   });
 });
 
@@ -122,6 +130,24 @@ describe("classifyShape", () => {
   test("detects stack trace with File:line format", () => {
     expect(classifyShape('  File "/src/file.py", line 42, in main')).toBe("stack-trace");
   });
+
+  test("detects consistent aligned table", () => {
+    const input = [
+      "CONTAINER ID   IMAGE     STATUS",
+      "abc123def456   nginx     Up 2 hours",
+      "def456abc789   redis     Up 5 days",
+    ].join("\n");
+    expect(classifyShape(input)).toBe("table");
+  });
+
+  test("rejects ragged output as table", () => {
+    const input = [
+      "short line",
+      "a much longer line that has different token counts than the others here",
+      "tiny",
+    ].join("\n");
+    expect(classifyShape(input)).not.toBe("table");
+  });
 });
 
 describe("applyShapeCompression", () => {
@@ -167,40 +193,76 @@ describe("compressCommandOutput", () => {
     expect(result).toBeNull();
   });
 
-  test("ls strategy", () => {
-    const output = Array.from({ length: 20 }, (_, i) => i % 2 === 0 ? `file${i}.ts` : `dir${i}/`).join("\n");
+  test("ls strategy keeps names beyond verbatim threshold", () => {
+    const output = Array.from({ length: 200 }, (_, i) => i % 2 === 0 ? `file${i}.ts` : `dir${i}/`).join("\n");
     const result = compressCommandOutput("ls -la", output, false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("ls");
+    expect(result!.output).toContain("file0.ts");
+    expect(result!.output).toContain("… +");
+  });
+
+  test("small ls output passes through verbatim", () => {
+    const output = Array.from({ length: 5 }, (_, i) => `file${i}.ts`).join("\n");
+    const result = compressCommandOutput("ls -la", output, false, defaultConfig);
+    expect(result).toBeNull();
   });
 
   test("test strategy", () => {
-    const output = Array.from({ length: 10 }, () => "✓ some passing test with a long enough name to hit 80 chars").concat(["10 tests run"]).join("\n");
+    const output = Array.from({ length: 45 }, () => "✓ some passing test with a long enough name to hit 80 chars").concat(["45 tests run"]).join("\n");
     const result = compressCommandOutput("npm test", output, false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("test");
   });
 
-  test("grep strategy", () => {
-    const output = Array.from({ length: 10 }, (_, i) => `src/file${i}.ts:${i + 1}:export const someFunctionName = () => {}`).join("\n");
+  test("grep strategy keeps matched lines, not counts", () => {
+    const output = Array.from({ length: 45 }, (_, i) => `src/file${i}.ts:${i + 1}:export const someFunctionName = () => {}`).join("\n");
     const result = compressCommandOutput("rg something", output, false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("grep");
+    expect(result!.output).toContain("src/file0.ts:1:");
+    expect(result!.output).toContain("matches across");
+    expect(result!.output).toContain("… ");
   });
 
-  test("git status strategy", () => {
-    const output = ["On branch main", "Changes not staged:", "  modified: src/a.ts", "  modified: src/b.ts", "  modified: src/c.ts", "Untracked files:", "  src/d.ts"].join("\n");
+  test("git status strategy keeps changed-file list", () => {
+    const lines = ["On branch main", "Changes not staged:"];
+    for (let i = 0; i < 55; i++) lines.push(`  modified: src/file${i}.ts`);
+    const output = lines.join("\n");
     const result = compressCommandOutput("git status", output, false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("git-status");
+    expect(result!.output).toContain("src/file0.ts");
+    expect(result!.output).toContain("src/file49.ts");
+    expect(result!.output).not.toContain("55 unstaged");
   });
 
-  test("generic fallback for long output", () => {
+  test("small git status passes through verbatim", () => {
+    const output = ["On branch main", "Changes not staged:", "  modified: src/a.ts"].join("\n");
+    const result = compressCommandOutput("git status", output, false, defaultConfig);
+    expect(result).toBeNull();
+  });
+
+  test("generic fallback only for output beyond benign threshold", () => {
     const lines: string[] = [];
     for (let i = 0; i < 100; i++) lines.push(`line ${i}`);
     const result = compressCommandOutput("npm run build", lines.join("\n"), false, defaultConfig);
+    expect(result).toBeNull();
+  });
+
+  test("generic fallback compresses huge clean output", () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 1100; i++) lines.push(`line ${i} with some padding text to make each line reasonably long`);
+    const result = compressCommandOutput("npm run build", lines.join("\n"), false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("truncate");
+  });
+
+  test("net-win gate: rejects compression that saves too few tokens", () => {
+    const output = Array.from({ length: 45 }, (_, i) => `src/f${i}.ts:${i + 1}:const x = ${i}`).join("\n");
+    const strictConfig = { ...defaultConfig, netWinMinTokens: 10_000 };
+    const result = compressCommandOutput("rg something", output, false, strictConfig);
+    expect(result).toBeNull();
   });
 
   test("size guard: rejects compression that makes output bigger", () => {
@@ -210,7 +272,7 @@ describe("compressCommandOutput", () => {
   });
 
   test("pipelines: extracts prefix before pipe for strategy matching", () => {
-    const output = Array.from({ length: 10 }, (_, i) => `src/file${i}.ts:${i + 1}:export const fn = () => {}`).join("\n");
+    const output = Array.from({ length: 45 }, (_, i) => `src/file${i}.ts:${i + 1}:export const fn = () => {}`).join("\n");
     const result = compressCommandOutput("rg something 2>&1 | tail -5", output, false, defaultConfig);
     expect(result).not.toBeNull();
     expect(result!.strategy).toBe("grep");
@@ -218,7 +280,7 @@ describe("compressCommandOutput", () => {
 });
 
 describe("compressGrep", () => {
-  test("regular grep output groups by file", () => {
+  test("keeps matches verbatim when under keepMatches", () => {
     const output = [
       "src/a.ts:1:const x = 1",
       "src/a.ts:5:const y = 2",
@@ -226,9 +288,25 @@ describe("compressGrep", () => {
       "src/b.ts:3:const z = 3",
     ].join("\n");
     const result = compressGrep(output);
-    expect(result).toContain("4 matches across 2 files");
-    expect(result).toContain("src/a.ts: 3 matches");
-    expect(result).toContain("src/b.ts: 1 match");
+    expect(result).toBe(output);
+  });
+
+  test("keeps first keepMatches matched lines verbatim, then counts", () => {
+    const output = Array.from({ length: 30 }, (_, i) => `src/a.ts:${i + 1}:const line${i} = ${i}`).join("\n");
+    const result = compressGrep(output, 10);
+    expect(result).toContain("const line0 = 0");
+    expect(result).toContain("const line9 = 9");
+    expect(result).toContain("30 matches across 1 files");
+    expect(result).toContain("… ");
+  });
+
+  test("does not garble non-grep output (ps-style lines with colons)", () => {
+    const output = [
+      "awahe 77916996 1229920 pts/0 Sl+ 11:03:24 0:00 ps aux",
+      "awahe 74052996 26616 pts/0 Sl+ 11:03:25 0:00 grep foo",
+    ].join("\n");
+    const result = compressGrep(output);
+    expect(result).toBe(output);
   });
 
   test("rg --count output is passed through unchanged", () => {
@@ -510,5 +588,59 @@ describe("compressByType — coverage log", () => {
     expect(result!.compressed).toContain("3 files");
     const lines = result!.compressed.split("\n");
     expect(lines[1]).toMatch(/50\.0|bar/);
+  });
+});
+
+describe("applyWordAbbreviations", () => {
+  test("abbreviates bare words", () => {
+    expect(applyWordAbbreviations("the configuration is under management")).toContain("config");
+    expect(applyWordAbbreviations("the configuration is under management")).toContain("mgmt");
+  });
+
+  test("never rewrites tokens inside paths", () => {
+    const input = "src/management/public/app.js";
+    expect(applyWordAbbreviations(input)).toBe(input);
+  });
+
+  test("never rewrites tokens with extensions or colons", () => {
+    expect(applyWordAbbreviations("import.meta.js https://example.com")).toBe("import.meta.js https://example.com");
+  });
+});
+
+describe("estimateTokens", () => {
+  test("empty input is 0", () => {
+    expect(estimateTokens("")).toBe(0);
+  });
+
+  test("code-like text estimates more tokens per char than prose", () => {
+    const code = "const x = (a) => { return a + 1; }";
+    const prose = "hello world this is some prose text";
+    expect(estimateTokens(code)).toBeGreaterThan(estimateTokens(prose));
+  });
+
+  test("never returns 0 for non-empty text", () => {
+    expect(estimateTokens("a")).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("applyShapeCompression — table", () => {
+  test("keeps table verbatim when rows fit keepRows", () => {
+    const input = [
+      "CONTAINER ID   IMAGE     STATUS",
+      "abc123def456   nginx     Up 2 hours",
+      "def456abc789   redis     Up 5 days",
+    ].join("\n");
+    const result = applyShapeCompression(input, 50, 20);
+    expect(result).toBeNull();
+  });
+
+  test("compresses table beyond keepRows, keeping header and rows", () => {
+    const lines = ["NAME     STATUS", ...Array.from({ length: 30 }, (_, i) => `svc${i}     Running`)];
+    const input = lines.join("\n");
+    const result = applyShapeCompression(input, 50, 10);
+    expect(result).not.toBeNull();
+    expect(result!.strategy).toBe("shape-table");
+    expect(result!.output).toContain("svc0");
+    expect(result!.output).toContain("… +20 more rows");
   });
 });

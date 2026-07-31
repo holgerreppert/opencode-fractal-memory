@@ -1,25 +1,33 @@
-export function compressLs(raw: string): string {
+export function compressLs(raw: string, keepNames = 50): string {
   const lines = raw.split("\n").filter(Boolean);
   if (lines.length === 0) return raw;
 
-  
-  const dirs: string[] = [];
-  const files: string[] = [];
+  const entries: string[] = [];
+  let dirs = 0;
+  let files = 0;
 
   for (const line of lines) {
     const cleaned = line.replace(/^total \d+/, "").trim();
     if (!cleaned) continue;
     if (cleaned.endsWith("/")) {
       const name = cleaned.replace(/\/$/, "").replace(/.*\s+/, "");
-      dirs.push(name);
+      entries.push(`${name}/`);
+      dirs++;
     } else {
       const name = cleaned.replace(/.*\s+/, "");
-      files.push(name);
+      entries.push(name);
+      files++;
     }
   }
 
-  const parts: string[] = [];
-  if (dirs.length > 0) parts.push(`${dirs.length} dir${dirs.length !== 1 ? "s" : ""}`);
-  if (files.length > 0) parts.push(`${files.length} file${files.length !== 1 ? "s" : ""}`);
-  return parts.length > 0 ? parts.join(", ") : raw;
+  if (entries.length === 0) return raw;
+
+  // Filenames are the payload: keep them verbatim when they fit.
+  if (entries.length <= keepNames) return raw;
+
+  const result = [
+    ...entries.slice(0, keepNames),
+    `… +${entries.length - keepNames} more (${dirs} dirs, ${files} files)`,
+  ];
+  return result.join("\n");
 }

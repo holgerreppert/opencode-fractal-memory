@@ -36,6 +36,14 @@ export interface MemConfig {
     deltaCompressionEnabled: boolean;
     deltaMaxCacheSize: number;
     deltaMinSimilarity: number;
+    netWinMinTokens: number;
+    verbatimBelowLines: number;
+    benignThreshold: number;
+    errorThreshold: number;
+    keepMatches: number;
+    keepNames: number;
+    keepRows: number;
+    essentialColumns: Record<string, string[]>;
     ollamaExtraction?: {
       enabled: boolean;
       baseUrl: string;
@@ -252,6 +260,14 @@ const CommandCompressionSchema = z.object({
   deltaCompressionEnabled: z.boolean().default(true),
   deltaMaxCacheSize: z.number().positive().int().default(50),
   deltaMinSimilarity: z.number().min(0).max(1).default(0.5),
+  netWinMinTokens: z.number().int().min(0).default(24),
+  verbatimBelowLines: z.number().positive().int().default(40),
+  benignThreshold: z.number().positive().int().default(1000),
+  errorThreshold: z.number().positive().int().default(500),
+  keepMatches: z.number().positive().int().default(15),
+  keepNames: z.number().positive().int().default(50),
+  keepRows: z.number().positive().int().default(20),
+  essentialColumns: z.record(z.string(), z.array(z.string())).default({}),
   ollamaExtraction: OllamaExtractionSchema.optional(),
 });
 
@@ -419,6 +435,14 @@ const DEFAULT_CONFIG: MemConfig = {
     deltaCompressionEnabled: true,
     deltaMaxCacheSize: 50,
     deltaMinSimilarity: 0.5,
+    netWinMinTokens: 24,
+    verbatimBelowLines: 40,
+    benignThreshold: 1000,
+    errorThreshold: 500,
+    keepMatches: 15,
+    keepNames: 50,
+    keepRows: 20,
+    essentialColumns: {},
   },
   toolDedup: {
     enabled: false,
