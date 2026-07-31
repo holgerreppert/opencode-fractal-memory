@@ -225,6 +225,14 @@ describe("compressCommandOutput", () => {
     expect(result!.output).toContain("… ");
   });
 
+  test("grep with error-bearing matches still compresses (payload preserved)", () => {
+    const output = Array.from({ length: 45 }, (_, i) => `src/file${i}.ts:${i + 1}:memLog("error", "something failed at runtime")`).join("\n");
+    const result = compressCommandOutput("rg memLog", output, false, defaultConfig);
+    expect(result).not.toBeNull();
+    expect(result!.strategy).toBe("grep");
+    expect(result!.output).toContain("memLog");
+  });
+
   test("git status strategy keeps changed-file list", () => {
     const lines = ["On branch main", "Changes not staged:"];
     for (let i = 0; i < 55; i++) lines.push(`  modified: src/file${i}.ts`);

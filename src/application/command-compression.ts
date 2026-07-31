@@ -37,10 +37,19 @@ export function compressCommandOutput(
   if (!out) return null;
   if (out.length < 80) return null;
 
-  if (isSignalOutput(out)) return null;
-
   const prefix = getCommandPrefix(cmd);
   if (prefix.length === 0) return null;
+
+  // Payload-preserving commands keep their answer lines even when the output
+  // mentions errors (grep keeps matched lines, ls keeps names, git keeps the
+  // file list, tests keep failures), so they are exempt from the signal gate.
+  // Only lossy strategies (generic/truncate/shape) risk dropping an error.
+  const isPayloadPreserving =
+    /^(?:rg|grep)\s/.test(prefix) ||
+    prefix.startsWith("ls") || prefix.startsWith("tree ") ||
+    prefix.startsWith("git ") ||
+    /^(npm test|bun test|pnpm test|yarn test|vitest|jest|pytest|go test|cargo test)/.test(prefix);
+  if (!isPayloadPreserving && isSignalOutput(out)) return null;
 
   // ── Tier 0: verbatim pass-through ────────────────────────────────────────
   // Small outputs stay intact: the payload IS the answer. Only genuinely large
