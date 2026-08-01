@@ -232,7 +232,12 @@ function astSkeleton(source: string, lang: string): string | null {
 
     function walk(items: WasmStructureItem[], depth: number): void {
       for (const item of items) {
-        if (item.name && depth > 0) {
+        // Only top-level symbols (depth 0) are collected. Nested arrow
+        // functions / callbacks are reported by tree-sitter with their
+        // parameter name (e.g. `.some(p => …)` → name "p"), which pollutes
+        // the skeleton with single-letter noise. Depth 0 items are the real
+        // module-level declarations.
+        if (item.name && depth === 0) {
           defs.push({ depth, name: item.name, line: item.span.startLine + 1 });
         }
         if (item.children && item.children.length > 0) {

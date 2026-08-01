@@ -251,6 +251,25 @@ describe("compressCommandOutput", () => {
     expect(result).toBeNull();
   });
 
+  test("git status porcelain format keeps file list with status markers", () => {
+    const lines: string[] = [];
+    for (let i = 0; i < 55; i++) lines.push(i % 3 === 0 ? ` M src/file${i}.ts` : i % 3 === 1 ? `?? src/new${i}.ts` : `A  src/add${i}.ts`);
+    const result = compressCommandOutput("git status --porcelain", lines.join("\n"), false, defaultConfig);
+    expect(result).not.toBeNull();
+    expect(result!.strategy).toBe("git-status");
+    expect(result!.output).toContain("M src/file0.ts");
+    expect(result!.output).toContain("? src/new1.ts");
+    expect(result!.output).toContain("A src/add2.ts");
+    expect(result!.output).toContain("… +");
+  });
+
+  test("never returns empty output (accepts rejects empty candidates)", () => {
+    const lines = Array.from({ length: 55 }, (_, i) => ` M src/file${i}.ts`);
+    const result = compressCommandOutput("git status --porcelain", lines.join("\n"), false, defaultConfig);
+    expect(result).not.toBeNull();
+    expect(result!.output.length).toBeGreaterThan(0);
+  });
+
   test("generic fallback only for output beyond benign threshold", () => {
     const lines: string[] = [];
     for (let i = 0; i < 100; i++) lines.push(`line ${i}`);
@@ -370,17 +389,17 @@ describe("tryDeltaCompression", () => {
 
 describe("addContentDedup", () => {
   test("returns null for short output", () => {
-    expect(addContentDedup(new Map(), "echo", "short", null)).toBeNull();
+    expect(addContentDedup(new Map(), "short", null)).toBeNull();
   });
 
   test("detects exact duplicate by hash", () => {
     const cache = new Map();
     const long = "x".repeat(100);
-    const first = addContentDedup(cache, "cmd", long, { output: "compressed", strategy: "generic" });
+    const first = addContentDedup(cache, long, { output: "compressed", strategy: "generic" });
     expect(first).not.toBeNull();
     expect(first!.dedup).toBe(false);
 
-    const second = addContentDedup(cache, "cmd", long, null);
+    const second = addContentDedup(cache, long, null);
     expect(second).not.toBeNull();
     expect(second!.dedup).toBe(true);
     expect(second!.strategy).toBe("dedup");

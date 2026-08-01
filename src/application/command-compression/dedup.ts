@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { writeCompressLog } from "../../logging";
-import { contentPreview } from "./utils";
 import type { FuzzyDedupConfig } from "./config";
 
 export function trigramJaccard(a: string, b: string): number {
@@ -20,7 +18,6 @@ export function trigramJaccard(a: string, b: string): number {
 
 export function addContentDedup(
   store: Map<string, { output: string; strategy: string }>,
-  command: string,
   rawOutput: string,
   result: { output: string; strategy: string } | null,
   fuzzyConfig?: FuzzyDedupConfig,
@@ -49,16 +46,6 @@ export function addContentDedup(
     }
     if (bestSim >= fuzzy.similarityThreshold && bestKey) {
       const existingEntry = store.get(bestKey)!;
-      writeCompressLog({
-        action: "fuzzy-dedup", strategy: "fuzzy-dedup",
-        cmd_preview: command.replace(/\s+/g, " ").trim().slice(0, 60),
-        original_chars: rawOutput.length, compressed_chars: existingEntry.output.length,
-        original_lines: rawOutput.split("\n").length,
-        compressed_lines: existingEntry.output.split("\n").length,
-        reduction_pct: Math.round((1 - existingEntry.output.length / rawOutput.length) * 100),
-        duration_ms: 0, failed: 0, similarity: Math.round(bestSim * 100) / 100,
-        before_snippet: contentPreview(rawOutput), after_snippet: contentPreview(existingEntry.output),
-      });
       return { output: `§fuzzy:${bestKey.slice(0, 8)}§ (${existingEntry.output.split("\n")[0]})`, strategy: "fuzzy-dedup", dedup: true };
     }
   }
