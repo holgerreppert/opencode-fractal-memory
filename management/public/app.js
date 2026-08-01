@@ -2183,8 +2183,9 @@ function animate() {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-config').addEventListener('click', saveSettings);
 
-  // Collapsible settings categories
+  // Collapsible settings categories (skip Alpine-managed panels — they handle their own toggling)
   document.querySelectorAll('.config-category .category-header').forEach(header => {
+    if (header.closest('[x-data]')) return;
     header.addEventListener('click', () => {
       header.parentElement.classList.toggle('collapsed');
     });
@@ -3909,7 +3910,22 @@ function renderLiveFeed(data) {
     const nodes = inj.injected_node_count ?? "?";
     const toks = (inj.injected_tokens || 0).toLocaleString();
     const text = `[inj] ${mode} / ${strategy} / ${nodes}n / ${toks}t`;
-    entries.push({ ts, text, html: `<div class="live-assistant"><span class="live-ts">[${new Date(ts).toLocaleTimeString()}]</span> <span style="color:#d946ef;">INJECT</span> ${escHtml(mode)} / ${escHtml(strategy)} / ${nodes}n / ${toks}t</div>` });
+    let contentHtml = "";
+    let rawContent = inj.injected_content;
+    if (typeof rawContent === "string") {
+      try { rawContent = JSON.parse(rawContent); } catch { rawContent = null; }
+    }
+    if (Array.isArray(rawContent) && rawContent.length > 0) {
+      contentHtml = rawContent.map(entry => {
+        const label = entry.label || "unknown";
+        const snippet = (entry.snippet || "").slice(0, 400);
+        return `<div style="margin-top:4px;padding:4px 6px;background:rgba(217,70,239,0.08);border-left:2px solid rgba(217,70,239,0.5);border-radius:3px;">
+          <div style="color:#e9a8ff;font-weight:600;font-size:11px;">${escHtml(label)} <span style="color:#888;font-weight:400;">[${escHtml(entry.type || "")}]</span></div>
+          <div style="color:#bbb;font-size:11px;white-space:pre-wrap;word-break:break-word;">${escHtml(snippet)}${entry.snippet && entry.snippet.length > 300 ? "…" : ""}</div>
+        </div>`;
+      }).join("");
+    }
+    entries.push({ ts, text, html: `<div class="live-assistant"><span class="live-ts">[${new Date(ts).toLocaleTimeString()}]</span> <span style="color:#d946ef;">INJECT</span> ${escHtml(mode)} / ${escHtml(strategy)} / ${nodes}n / ${toks}t${contentHtml}</div>` });
   }
 
   for (const comp of compressions) {

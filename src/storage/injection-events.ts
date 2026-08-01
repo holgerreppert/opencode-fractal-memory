@@ -17,6 +17,7 @@ export async function insertInjectionMetrics(
     rerankDurationMs?: number;
     injectedNodeTypes?: Record<string, number>;
     activeTypeBoosts?: Record<string, number>;
+    injectedContent?: Array<{ label: string; type: string; snippet: string }>;
   }
 ): Promise<void> {
   const id = randomUUID();
@@ -26,9 +27,9 @@ export async function insertInjectionMetrics(
     db.run(
       `INSERT INTO injection_metrics 
        (id, session_id, timestamp, injected_node_count, injected_tokens, injection_mode, query_text, tool_calls, memory_tools_used, referenced_nodes,
-        pre_rerank_ids, post_rerank_ids, rerank_scores, rerank_strategy, rerank_duration_ms, injected_node_types, active_type_boosts)
+        pre_rerank_ids, post_rerank_ids, rerank_scores, rerank_strategy, rerank_duration_ms, injected_node_types, active_type_boosts, injected_content)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0, '[]', '[]',
-        ?, ?, ?, ?, ?, ?, ?)`,
+        ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id, sessionId, timestamp, data.injectedNodeCount, data.injectedTokens, data.injectionMode, data.queryText ?? null,
         data.preRerankIds ? JSON.stringify(data.preRerankIds) : null,
@@ -38,6 +39,7 @@ export async function insertInjectionMetrics(
         data.rerankDurationMs ?? null,
         data.injectedNodeTypes ? JSON.stringify(data.injectedNodeTypes) : null,
         data.activeTypeBoosts ? JSON.stringify(data.activeTypeBoosts) : null,
+        data.injectedContent ? JSON.stringify(data.injectedContent) : null,
       ]
     );
   });
@@ -133,6 +135,7 @@ export interface InjectionQualityRow {
   rerankDurationMs: number | null;
   injectedNodeTypes: Record<string, number> | null;
   activeTypeBoosts: Record<string, number> | null;
+  injectedContent: Array<{ label: string; type: string; snippet: string }> | null;
   toolCalls: number;
   effectivenessScore: number | null;
   injectionUpvotes: number;
@@ -149,7 +152,8 @@ export function queryInjectionMetrics(
             query_text, tool_calls, effectiveness_score,
             injection_upvotes, injection_downvotes, task_outcome,
             pre_rerank_ids, post_rerank_ids, rerank_scores,
-            rerank_strategy, rerank_duration_ms, injected_node_types, active_type_boosts
+            rerank_strategy, rerank_duration_ms, injected_node_types, active_type_boosts,
+            injected_content
      FROM injection_metrics 
      ORDER BY timestamp DESC 
      LIMIT ?`
@@ -172,6 +176,7 @@ export function queryInjectionMetrics(
     rerank_duration_ms: number | null;
     injected_node_types: string | null;
     active_type_boosts: string | null;
+    injected_content: string | null;
   }>;
 
   return raw.map(row => {
@@ -193,6 +198,7 @@ export function queryInjectionMetrics(
       rerankDurationMs: row.rerank_duration_ms,
       injectedNodeTypes: parseJson<Record<string, number>>(row.injected_node_types),
       activeTypeBoosts: parseJson<Record<string, number>>(row.active_type_boosts),
+      injectedContent: parseJson<Array<{ label: string; type: string; snippet: string }>>(row.injected_content),
       toolCalls: row.tool_calls,
       effectivenessScore: row.effectiveness_score,
       injectionUpvotes: row.injection_upvotes ?? 0,

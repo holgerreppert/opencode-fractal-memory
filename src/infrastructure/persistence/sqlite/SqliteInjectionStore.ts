@@ -25,6 +25,7 @@ export class SqliteInjectionStore implements InjectionStore {
       rerankDurationMs?: number;
       injectedNodeTypes?: Record<string, number>;
       activeTypeBoosts?: Record<string, number>;
+      injectedContent?: Array<{ label: string; type: string; snippet: string }>;
     }
   ): Promise<void> {
     const db = await this.getGlobalDb();
@@ -70,6 +71,7 @@ export class SqliteInjectionStore implements InjectionStore {
     rerankDurationMs: number | null;
     injectedNodeTypes: Record<string, number> | null;
     activeTypeBoosts: Record<string, number> | null;
+    injectedContent: Array<{ label: string; type: string; snippet: string }> | null;
     toolCalls: number; effectivenessScore: number | null;
     injectionUpvotes: number; injectionDownvotes: number;
     taskOutcome: string | null;

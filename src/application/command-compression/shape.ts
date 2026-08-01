@@ -1,5 +1,3 @@
-import { writeCompressLog } from "../../logging";
-import { contentPreview } from "./utils";
 import { compressGeneric } from "./strategies/generic";
 
 type OutputShape = "json" | "csv" | "stack-trace" | "tree" | "table" | "unknown";
@@ -62,14 +60,6 @@ function compressJson(raw: string, maxLines: number): string {
       return String(obj);
     };
     const result = summary(parsed);
-    const size = raw.length;
-    writeCompressLog({
-      action: "shape-json", strategy: "shape-json",
-      cmd_preview: "", original_chars: size, compressed_chars: result.length,
-      original_lines: raw.split("\n").length, compressed_lines: result.split("\n").length,
-      reduction_pct: Math.round((1 - result.length / size) * 100), duration_ms: 0, failed: 0,
-      before_snippet: contentPreview(raw), after_snippet: result.slice(0, 80),
-    });
     return `[JSON: ${result}]`;
   } catch {
     return compressGeneric(raw, maxLines);
@@ -84,13 +74,6 @@ function compressCsv(raw: string, _maxLines: number): string {
   const dataLines = lines.slice(1).filter(l => l.trim());
   const sample = dataLines.slice(0, 3).map(l => l.slice(0, 80)).join("\n");
   const result = `${lines.length} rows, ${colCount} columns\nHeader: ${header.slice(0, 120)}\n${dataLines.length > 0 ? `First:\n${sample}` : ""}`;
-  writeCompressLog({
-    action: "shape-csv", strategy: "shape-csv",
-    cmd_preview: "", original_chars: raw.length, compressed_chars: result.length,
-    original_lines: lines.length, compressed_lines: result.split("\n").length,
-    reduction_pct: Math.round((1 - result.length / raw.length) * 100), duration_ms: 0, failed: 0,
-    before_snippet: contentPreview(raw), after_snippet: contentPreview(result),
-  });
   return result;
 }
 
@@ -115,13 +98,6 @@ function compressStackTrace(raw: string, _maxLines: number): string {
     ...Array.from(uniqueFrames).slice(0, 15).map(f => `  at ${f}`),
     uniqueFrames.size > 15 ? `  ... +${uniqueFrames.size - 15} more` : "",
   ].filter(Boolean).join("\n");
-  writeCompressLog({
-    action: "shape-stack", strategy: "shape-stack",
-    cmd_preview: "", original_chars: raw.length, compressed_chars: result.length,
-    original_lines: lines.length, compressed_lines: result.split("\n").length,
-    reduction_pct: Math.round((1 - result.length / raw.length) * 100), duration_ms: 0, failed: 0,
-    before_snippet: contentPreview(raw), after_snippet: contentPreview(result),
-  });
   return result;
 }
 
@@ -141,13 +117,6 @@ function compressTree(raw: string, _maxLines: number): string {
     }
   }
   const result = `depth ${depth}: ${dirs.length} dirs, ${files.length} files`;
-  writeCompressLog({
-    action: "shape-tree", strategy: "shape-tree",
-    cmd_preview: "", original_chars: raw.length, compressed_chars: result.length,
-    original_lines: lines.length, compressed_lines: 1,
-    reduction_pct: Math.round((1 - result.length / raw.length) * 100), duration_ms: 0, failed: 0,
-    before_snippet: contentPreview(raw), after_snippet: result,
-  });
   return result;
 }
 
@@ -181,13 +150,6 @@ function compressTable(raw: string, keepRows = 20, essentialColumns?: string[]):
   if (dataLines.length <= keepRows) return raw;
 
   const result = [...display.slice(0, keepRows + 1), `… +${dataLines.length - keepRows} more rows`].join("\n");
-  writeCompressLog({
-    action: "shape-table", strategy: "shape-table",
-    cmd_preview: "", original_chars: raw.length, compressed_chars: result.length,
-    original_lines: lines.length, compressed_lines: result.split("\n").length,
-    reduction_pct: Math.round((1 - result.length / raw.length) * 100), duration_ms: 0, failed: 0,
-    before_snippet: contentPreview(raw), after_snippet: contentPreview(result),
-  });
   return result;
 }
 

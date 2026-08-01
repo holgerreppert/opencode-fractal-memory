@@ -125,18 +125,34 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       const input = _input as { tool?: string; args?: { command?: string }; sessionID?: string };
       const out = output as { output?: string; metadata?: Record<string, unknown> };
       const compressConfig = config.commandCompression;
-      if (!compressConfig?.enabled || input.tool !== "bash") return;
+      if (!compressConfig?.enabled) {
+        memLog("info", "compress", "hook-skip reason=compression-disabled", { tool: input.tool ?? "?" });
+        return;
+      }
+      if (input.tool !== "bash") return;
 
       const success = !(out.metadata?.error);
       const cmd = input.args?.command ?? "";
       const raw = (out.output ?? "") as string;
       const failed = !success || !!out.metadata?.error;
       const t0 = performance.now();
+      const cmdPreview = cmd.replace(/\s+/g, " ").trim().slice(0, 60);
+      const trace = (msg: string, extra?: Record<string, unknown>): void => {
+        memLog("info", "compress", msg, {
+          cmd: cmdPreview,
+          chars: raw.length,
+          failed: failed ? 1 : 0,
+          ...(extra ?? {}),
+        });
+      };
+
+      trace("hook-enter");
 
       const deltaResult = tryDeltaCompression(DELTA_CACHE, cmd, raw, compressConfig);
       if (deltaResult) {
         updateDeltaCache(DELTA_CACHE, cmd, raw, deltaResult.strategy, compressConfig?.deltaMaxCacheSize ?? 50);
         const durationMs = performance.now() - t0;
+        trace("delta-compressed", { strategy: deltaResult.strategy, compressed_chars: deltaResult.output.length, duration_ms: Math.round(durationMs) });
         out.output = `[${raw.length}→${deltaResult.output.length} chars — delta from previous run]\n${deltaResult.output}`;
         out.metadata = {
           ...((out.metadata as Record<string, unknown>) ?? {}),
@@ -178,6 +194,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       const cached = trySessionCache(sessionCache, raw);
       if (cached) {
         const cacheDurationMs = performance.now() - t0;
+        trace("session-cache-hit", { strategy: cached.strategy + "-cached", compressed_chars: cached.output.length, duration_ms: Math.round(cacheDurationMs) });
         out.output = `[Cached — ${raw.length}→${cached.output.length} chars (via session cache)]\n${cached.output}`;
         out.metadata = {
           ...((out.metadata as Record<string, unknown>) ?? {}),
@@ -222,8 +239,10 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
       if (compressed) {
         updateDeltaCache(DELTA_CACHE, cmd, raw, compressed.strategy, compressConfig?.deltaMaxCacheSize ?? 50);
         recordSessionCache(sessionCache, raw, compressed.output, compressed.strategy);
+        trace("compressed", { strategy: compressed.strategy, compressed_chars: compressed.output.length });
       } else {
         // Cache that this output is not compressible (empty marker)
+        trace("not-compressible", { strategy: "none" });
         if (raw.length >= 80) {
           recordSessionCache(sessionCache, raw, raw, "no-compression");
         }
@@ -235,7 +254,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
           similarityThreshold: compressConfig?.fuzzyDedupThreshold ?? 0.85,
           maxComparisons: compressConfig?.fuzzyDedupMax ?? 50,
         };
-        const deduped = addContentDedup(DEDUP_CACHE, cmd, raw, compressed, fuzzyConfig);
+        const deduped = addContentDedup(DEDUP_CACHE, raw, compressed, fuzzyConfig);
 
         if (deduped) {
           const strategyLabel = deduped.dedup
@@ -326,6 +345,14 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             compressStrategy: strategyLabel,
             deduped: deduped.dedup,
           };
+          trace(deduped.dedup ? "dedup-applied" : "compression-applied", {
+            strategy: strategyLabel,
+            compressed_chars: deduped.output.length,
+            reduction_pct: raw.length > 0 ? Math.round((1 - deduped.output.length / raw.length) * 100) : 0,
+            duration_ms: Math.round(durationMs),
+            stashed: stashPath ? 1 : 0,
+            offloaded: offloadConfig?.enabled && !deduped.dedup && finalOutput.length > (offloadConfig.thresholdChars ?? 8000) ? 1 : 0,
+          });
           writeCompressLog({
             action: deduped.dedup ? "dedup" : "applied",
             strategy: strategyLabel,
@@ -354,16 +381,19 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             durationMs,
           }).catch((err) => memLog("error", "compress", "Failed to record compression stat", { error: String(err) }));
         } else {
+          const skipReason = compressed === null ? "no-strategy-matched" : "classification-skipped-signal";
+          trace("skip", { reason: skipReason, duration_ms: Math.round(durationMs) });
           writeCompressLog({
             action: "skipped",
             cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),
             original_chars: raw.length,
             failed: failed ? 1 : 0,
             duration_ms: Math.round(durationMs),
-            reason: compressed === null ? "no-strategy-matched" : "classification-skipped-signal",
+            reason: skipReason,
           });
         }
       } catch (err) {
+        trace("error", { error: String(err).slice(0, 100) });
         writeCompressLog({
           action: "error",
           cmd_preview: cmd.replace(/\s+/g, " ").trim().slice(0, 60),

@@ -1,5 +1,4 @@
-import { writeCompressLog } from "../../logging";
-import { contentPreview, scoreLine, extractQueryTerms } from "./utils";
+import { scoreLine, extractQueryTerms } from "./utils";
 import type { CompressConfig } from "./config";
 
 export function trimByRelevance(raw: string, command: string, config: CompressConfig, intentTerms?: string[]): string {
@@ -44,24 +43,6 @@ export function trimByRelevance(raw: string, command: string, config: CompressCo
 
   const result = resultLines.join("\n");
   if (result.length > raw.length * 0.9) return raw;
-
-  const dropped = lines.length - resultLines.length;
-  writeCompressLog({
-    action: "relevance-trim",
-    strategy: "relevance-trim",
-    cmd_preview: command.replace(/\s+/g, " ").trim().slice(0, 60),
-    original_chars: raw.length,
-    compressed_chars: result.length,
-    original_lines: lines.length,
-    compressed_lines: resultLines.length,
-    dropped_lines: dropped,
-    query_terms: terms.length,
-    reduction_pct: Math.round((1 - result.length / Math.max(raw.length, 1)) * 100),
-    duration_ms: 0,
-    failed: 0,
-    before_snippet: contentPreview(raw),
-    after_snippet: contentPreview(result),
-  });
 
   return result;
 }

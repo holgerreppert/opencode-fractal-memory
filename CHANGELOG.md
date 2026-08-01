@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.12
+- **Compression module refactor** (`src/application/command-compression/`): The monolithic `command-compression.ts` is now a thin re-export barrel; orchestration moved to `pipeline.ts`, strategy dispatch to a registry (`strategy.ts`, 12 entries: ls, test, grep, git-status, git-log, git-diff, 4× git-quick, truncate), `git pull` extracted to `strategies/git.ts`, output-type detection/compression split into `output-types/{detect,compress,types,index}.ts`, and `utils.ts` split into `utils/{text,signal,scoring,abbreviate}.ts`. No behavior change — verified by unchanged 89-test baseline.
+- **Skeletonize fix** (`src/application/skeletonize.ts`): skeleton walk now collects top-level symbols only (`depth === 0`). Previously arrow-function parameters (`p`, `l`, `d`, …) from tree-sitter nested function nodes polluted the skeleton output.
+- **git status porcelain support** (`strategies/git.ts`): `compressGitStatus` now parses porcelain v1 output (` M file`, `?? file`, `A  file`) keeping file paths + status markers. Previously porcelain output produced an empty compressed result.
+- **Empty-output guard** (`pipeline.ts`): the `accepts()` net-win gate now rejects empty/whitespace candidates — a strategy returning `""` can no longer be accepted as a "compressed" result (would destroy the payload).
+- **Comprehensive compression tracing** (`pipeline.ts`, `src/plugin/hooks/compression.ts`): info-level `compress` logs for every gate bail (`skip reason=…`), `strategy-ran`, `strategy-rejected-net-win`, `shape-ran`, `relevance-ran`, `generic-ran`, `compressed`, `hook-enter`, `hook-skip`, `session-cache-hit`. Replaces the old debug-level logs that were invisible at the default `info` log level.
+- Tests: 91 pass (was 89) — new regression tests for porcelain git-status and the empty-output guard.
+
 ## v0.7.11
 - **Payload-preserving strategies exempt from `isSignalOutput` gate** (`src/application/command-compression.ts`): grep/rg, ls, tree, git, and test-runner output containing error words (e.g. matched lines like `memLog("error", …)`) was never compressed because the signal gate ran before strategy dispatch. The command prefix is now computed first; payload-preserving commands bypass the gate since they keep answer lines by design (matched lines / filenames / file lists / failures). Lossy strategies (generic/truncate/shape) remain gated so real errors still pass through verbatim.
 - Tests: 89 pass (was 88) — new regression test "grep with error-bearing matches still compresses".

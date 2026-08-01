@@ -139,6 +139,7 @@ export function queryRecentInjections(
   rerank_scores: string | null;
   rerank_duration_ms: number | null;
   injected_node_types: string | null;
+  injected_content: string | null;
 }> {
   return db
     .query(

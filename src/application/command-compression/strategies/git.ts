@@ -1,5 +1,8 @@
 const GIT_STATUS_KEEP_FILES = 50;
 
+// Porcelain v1: "XY path" where X=staged, Y=unstaged (space=unmodified), "?? " untracked.
+const PORCELAIN_RE = /^([ MARC?D]{1,2})\s+(.*)$/;
+
 export function compressGitStatus(raw: string): string {
   const lines = raw.split("\n").filter(Boolean);
   if (lines.length === 0) return raw;
@@ -27,11 +30,24 @@ export function compressGitStatus(raw: string): string {
         total++;
         if (changed.length < GIT_STATUS_KEEP_FILES) changed.push(`? ${name}`);
       }
+    } else {
+      const pm = s.match(PORCELAIN_RE);
+      if (pm) {
+        const status = pm[1]!;
+        const name = pm[2]!.trim();
+        if (name && !name.startsWith("(")) {
+          total++;
+          if (changed.length < GIT_STATUS_KEEP_FILES) {
+            const marker = status.includes("?") ? "?" : status.includes("U") ? "!" : status.trim();
+            changed.push(`${marker} ${name}`);
+          }
+        }
+      }
     }
   }
 
   if (changed.length === 0 && total === 0) {
-    const m = lines.find(l => /nothing to commit|up to date/i.test(l));
+    const m = lines.find(l => /nothing to commit|up to date|no changes added/i.test(l));
     if (m) return "clean";
   }
 
@@ -104,6 +120,19 @@ export function compressGitAdd(raw: string): string {
     return `${fileCount} files staged`;
   }
   return lines.slice(0, 3).join("\n");
+}
+
+export function compressGitPull(raw: string): string {
+  const lines = raw.split("\n").filter(Boolean);
+  if (/Already up to date|Already up-to-date/i.test(raw)) {
+    return "up to date";
+  }
+  if (/Fast-forward/i.test(raw)) {
+    const summary = lines.filter(l => /^\s+\d+\s+files?\s+changed/i.test(l) || /Fast-forward/i.test(l));
+    return summary.join(" | ") || lines.slice(0, 3).join("\n");
+  }
+  const clean = raw.trim();
+  return clean ? clean.split("\n").slice(0, 3).join("\n") : raw;
 }
 
 export function compressGitDiff(raw: string): string {
