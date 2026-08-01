@@ -55,7 +55,7 @@ if you find bugs or if you just want to suggest improvements
 - **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
 - **Cache system** — in-memory LRU cache for frequently accessed nodes with configurable TTL
 - **Consolidation** — extracts semantic facts from episodic node clusters on session idle
-- **Command compression** — zero-dependency compression of bash tool output (7 strategies: ls, test, grep, git-status, git-log, git-diff, git-quick, truncate + generic fallback). Optional Ollama extraction via small local model as last-resort. Stats tracked in `compression_stats` table. View via management app Compress tab
+- **Command compression** — zero-dependency compression of bash tool output via a registry-driven pipeline (`pipeline.ts` + 12-entry strategy registry: ls, test, grep, git-status, git-log, git-diff, git-quick, git pull, truncate + generic fallback). Tiered gates (verbatim pass-through, net-win, benign-aware threshold). Optional Ollama extraction via small local model as last-resort. Stats tracked in `compression_stats` table. View via management app Compress tab
 - **Context dashboard** — new management app tab showing memory node count/tokens by level, active rules, compression stats, recent injection history, and estimated total context usage with overhead breakdown
 - **Structural shape detection** — automatically detects output shape (JSON, CSV, stack-trace, tree, table, compiler-diagnostics, test-output, npm-install, coverage-log) and applies tailored compressors (e.g., JSON → `Object(12 keys)`, stack-trace → error + unique frame count, compiler-diagnostics → errors grouped by file with codes). Falls through to generic if shape is unknown
 - **SmartFilter** — noise-stripping preprocessor in shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines before shape classification. Logged as `shape-json`, `shape-csv`, etc. with noise counts
@@ -455,19 +455,21 @@ Automatically adjusts node usefulness scores over time. Frequently accessed node
 
 ### Command Compression
 
-Built-in, zero-dependency compression for bash tool output. 7 strategies automatically detect the command type:
+Built-in, zero-dependency compression for bash tool output. A tiered pipeline (`pipeline.ts`) gates eligibility (verbatim pass-through below `verbatimBelowLines`=40 lines / <80 chars, net-win token gate, benign-aware threshold), then dispatches to a 12-entry strategy registry (`strategy.ts`):
 
 | Strategy | Matches | Output |
 |---|---|---|
-| `ls` | `ls`, `tree` | Tree with dir/file counts |
+| `ls` | `ls`, `tree` | Filenames kept up to `keepNames` (never bare counts) |
 | `test` | `npm test`, `bun test`, `pytest`, etc. | Pass/fail summary + failure details |
-| `grep` | `grep`, `rg` | Grouped by file with match counts |
-| `git-status` | `git status` | Branch + staged/unstaged counts |
+| `grep` | `grep`, `rg` | Matched lines kept up to `keepMatches`, grouped by file with counts |
+| `git-status` | `git status` | Changed-file list (long format + porcelain ` M`/`?? `/`A `) |
 | `git-log` | `git log` | One-line per commit |
 | `git-diff` | `git diff` | N files changed, +M -L |
-| `git-quick` | `git push/pull/commit/add` | First 3 lines only |
+| `git-quick` | `git push/pull/commit/add` | One-line summary each |
 | `truncate` | `cat`, `head`, `build`, `docker`, `find`, `tail` | Dedup + maxLines (default 50) |
-| `generic` | (fallback) | Dedup + truncate at maxLines |
+| `generic` | (fallback) | Shape detection → relevance trim → truncate at maxLines |
+
+Error-bearing output always passes through verbatim (`isSignalOutput`); payload-preserving commands (grep/ls/git/test) keep their answer lines. Original output is stashed on every compression with a `[Original stashed — cat <path>]` recovery marker. Every gate decision and strategy run is logged to `logs/memory-plugin.log` (`skip reason=…`, `strategy-ran`, `compressed`).
 
 Stats tracked in the `compression_stats` table. View at management app → **Compress** tab. Full output preserved on non-zero exit (tee mode).
 
@@ -770,7 +772,7 @@ The plugin hooks into the OpenCode agent via the Plugin SDK. Here's the exact pe
 │    adaptive-           Records output size → prepends pressure     │
 │    pressure            warning if nearing context limit            │
 │    compression         Compresses output via delta / fuzzy-dedup / │
-│                        7 strategies (ls/test/grep/git-*),          │
+│                        12-entry strategy registry (git-*),         │
 │                        code-aware shape detection (source-code /   │
 │                        compiler-diagnostics / test-output /        │
 │                        npm-install / coverage-log),                │
@@ -939,226 +941,3 @@ Unified SQLite database with `project_name` discriminator:
 ## License
 
 MIT
-
-## Changelog
-
-### v0.7.0 (2026-07-17)
-- **Agent tool proactivity** — 3-prong approach to make the agent proactively use graph/memory/context/learn tools instead of defaulting to read/grep/glob/bash:
-  - **Directive tool descriptions** — rewritten graph, memory, context, learn, journal, and skeletonize tool descriptions to say "USE INSTEAD OF read/grep" with explicit triggers and token-cost comparisons
-  - **Pre-execution guard hook** — new `src/plugin/hooks/tool-before-guard.ts` intercepts `tool.before` for read/grep/glob/bash, checks the code graph for cheaper alternatives, and injects a `[cost-saver]` hint before the tool executes
-  - **Never-strip decision tree** — `rule:mandatory:tools` seed node promoted to `never_strip: true` + 7-step ordered decision tree (`graph > context > memory(mode="search") > graph(callees) > memory(mode="set") > learn`) always injected at the front of the system prompt, never pressure-filtered
-
-### v0.6.49 (2026-07-10)
-- **Hierarchical Type System (supertypes)** — All nodes auto-derived to a supertype (declarative/procedural/experiential/meta) from their type. Migration v29 adds `supertype` column. Search scoring uses supertype for smarter intent-aware weighting.
-- **Intent-Aware Retrieval Biasing** — `searchByEmbedding` accepts `intent` option (`read`/`edit`/`debug`/`discovery`). Each intent biases retrieval weights differently: read/edit boost procedural+declarative (1.3×), debug boosts experiential (1.3×), discovery uses uniform weights.
-- **Temporal Stratification** — Search results now stratified by recency: hot (<1d, 1.0×), warm (<7d, 0.85×), cold (≥7d, 0.5×). Each node gets a stratum weight applied in scoring.
-- **Tag System** — `memory(mode="set")` accepts `tags` parameter (string array). Stored as JSON in new `tags` column. Displayed in management UI detail panel. Searchable via SQL.
-- **Confidence Tracking** — `verification_count` column tracks how many times a node has been verified. `learn(mode="verify")` increments both confidence (by +0.2) and verification count (by +1). Management UI shows verification count and Verify button.
-- **Provenance Tracking** — `source` column records how a node was created (manual/tool_result/auto_extract/web_search/reflection/llm_compress). Displayed in management UI.
-- **Management UI updates** — Detail panel now shows supertype, tags (as chips), source, verification count. POST `/api/nodes/:id/verify` endpoint added with Verify button.
-- **Migration v29** — `ALTER TABLE memory_nodes ADD COLUMN supertype TEXT` with index.
-- **Migration v30** — Batch: `tags TEXT`, `source TEXT`, `verification_count INTEGER DEFAULT 0`.
-
-### v0.6.48
-- **Ollama output extraction** — when heuristic compression strategies don't match, fires a small Ollama model (default `qwen3.5:3b`) to extract only the relevant lines from tool output. Zero-shot extraction with ~0.55 recall at 50-90% compression. Configurable via `commandCompression.ollamaExtraction` in `opencode-mem.json`. Last-resort fallback, enabled by default with `enabled: false` (opt-in)
-- New file: `src/application/command-compression/ollama-extract.ts`
-- Added `OllamaExtractionConfig` to CompressConfig, MemConfig, Zod schema with defaults
-
-### v0.6.47
-- **Tool output compression** — read/glob/edit tool output compression (structural summarization, grouping, trimming), improved git-quick strategies (push/commit/add/pull), word abbreviations (45 long→short forms), grouped grep output by extension, context-aware relevance trimming with intent terms from command args, reversible compression with stash to scratch + `cat <path>` marker
-- See `src/application/tool-compression.ts`, `src/application/command-compression/strategies/git.ts` and `src/application/command-compression/utils.ts` for details
-
-### v0.6.46
-- **Dual retrieval** — BM25 now runs independently across ALL scope nodes (not just HNSW candidates). Top BM25-only candidates (keyword matches outside the vector neighborhood) are fetched and merged with HNSW results. Catches nodes without embeddings that match via keywords. Changes in `src/storage/search.ts:181-228`. 60 tests pass (22 search, 38 search-helpers)
-- **Usefulness scoring fix** — `context(mode="inject")` boosts `usefulnessScore` + `timesHelpful` for each injected node; `memory(mode="search")` boosts `usefulnessScore` for each retrieved node; recording hook rates follow-up tools (edit/bash/write) on success, no longer skipping `memory`/`context`/`learn`/`journal` tool results
-- **Storedcontext default scores lowered** — defaults reduced from `usefulnessScore: 0.5` + `importance: 3.0` to `0.1` + `0.5`, matching normal note baselines so search-driven scoring determines actual usefulness
-- **Backfill script** — new `scripts/backfill-embeddings.ts` backfilled 382 missing embeddings across all nodes, reset 615 stuck-at-0.0 nodes to 0.1 baseline
-- **Search pipeline graphviz** — `docs/search-pipeline.gv` updated with dual retrieval flow (all_nodes → bm25_score → bm25_only → merge → final)
-
-### v0.6.43
-- **Fix: run management server in-process when bun not in PATH** — Instead of giving up or spawning with the wrong binary, `startInProcess()` dynamically creates the Router, registers routes, and calls `Bun.serve()` directly in the plugin process. Both subprocess (bun in PATH) and in-process (embedded bun) paths are supported. Falls through to in-process if subprocess spawn throws
-
-### v0.6.42
-- **Fix: management server uses `Bun.which("bun")` instead of `process.execPath`** — `process.execPath` in OpenCode's embedded bun returns the OpenCode binary path (not bare bun). Spawning `opencode script.js` doesn't run the script. Changed to `Bun.which("bun")` — if bun is in PATH, spawn with it
-- **Fix: management server spawn on bun-less systems** — `src/management-server.ts` was hardcoding `["bun", standalonePath]` in `Bun.spawn()`. On fresh machines where bun is embedded in OpenCode's runtime but not in `$PATH`, this failed with `"Executable not found in $PATH: \"bun\""`. Changed to `process.execPath` which resolves to the current bun binary regardless of PATH
-
-### v0.6.40
-- **ONNX runtime fallback** — new `src/infrastructure/llm/onnx-runtime.ts` adapter tries `onnxruntime-node` first, falls back to `onnxruntime-web` (WASM) when native bindings aren't available. Covers Alpine Linux, older glibc, and unsupported architectures. `onnxruntime-web` added to `package.json` dependencies. `getRuntimeInfo()` exported for management UI
-- **Graceful degradation** — `embeddings.ts` and `cross-encoder.ts` now call `ensureOnnxRuntime()` before first use instead of importing the onnxruntime package directly. If both runtimes fail, a descriptive error is thrown
-- **Management UI runtime indicator** — `GET /api/embeddings-status` now reports the actual runtime name (`"node"` or `"web"`) instead of a hardcoded string
-- **Plugin hook timeline docs** — comprehensive per-turn lifecycle documentation in README.md covering all 8 phases (system.transform → messages.transform → chat.params → LLM → tool.before → tool.execute → tool.after → loop), compaction flow, design principles table, and source map linking each SDK hook point to its orchestrator and handlers
-
-### v0.6.39
-- **Native ONNX runtime** — switched from `onnxruntime-web` (WASM, single-threaded) to `onnxruntime-node` (native, multi-threaded). Session config: `executionProviders: ["cpu"]`, `graphOptimizationLevel: "all"`, `intraOpNumThreads: 0`, `enableCpuMemArena: true`, `extra: { session: { set_denormal_as_zero: "1" }, optimization: { enable_gelu_approximation: "1" } }`. Benchmarked 5 docs in 27ms (embed) and 3 pairs in 334ms (cross-encoder) after warmup
-- **`generateEmbeddings()` bulk path** — new exported function in `embeddings.ts` supporting batch embedding of multiple texts using a shared session instance; uses parallel execution for small batches (≤4) and sequential for larger sets
-- **Management app Embedding Engine status** — new `GET /api/embeddings-status` endpoint and context dashboard card showing runtime, backend, optimization level, threading, and model info
-- **AGENTS.md update** — quick iteration script now copies `onnxruntime-node` (with native binary) to cache `node_modules/`
-
-### v0.6.38
-- **Code knowledge graph** — new `src/application/graph/` module with `CodeGraph` class (graphology), tree-sitter WASM AST extraction via `process()` API (32 languages), Louvain community detection, god-node analysis, surprising-connections detection, shortest-path query. Edges: `calls`, `imports`, `defined_in`, `references`, `extends` with `EXTRACTED | INFERRED | AMBIGUOUS` confidence
-- **Always-on graph hooks** — `plugin/hooks/graph-tools.ts`: `ensureBackgroundGraph()` on plugin init and `tool.before` for read/grep/glob; graph stats rule injected via `system.transform` hook. Config via `graph.enabled`, `graph.maxFiles`, `graph.ruleEnabled`
-- **MCP graph tools** — `graph_build`, `graph_search`, `graph_path`, `graph_explain`, `graph_usage`. Each process (plugin, MCP, management server) builds its own graph independently — no inter-process dependency on the management server
-- **Management API + UI** — `POST /api/graph/build`, `GET /api/graph`, `GET /api/graph/search`, `POST /api/graph/path`, `POST /api/graph/explain`, `GET /api/graph/usage`, `GET /api/graph/export`. D3.js force-directed graph visualization tab with community colors, degree-sized nodes, tooltip, search highlight, focus animation
-- **Incremental builds** — file SHA-256 hashing tracks changes; subsequent builds only re-extract modified files. Community detection runs once (lazy). Background build uses config maxFiles (default 5000)
-- **Graph usage tracking** — every `track*()` call logs to `graph-usage.log` with source identifier (`mcp`, `management`, `plugin-hook`, `buildGraph`, etc.) and session ID. View via `graph_usage` MCP tool or `GET /api/graph/usage`
-
-### v0.6.37
-- **LLM judge scoring** — new `llmJudgeScore()` in auto-retrieve pipeline: calls `client.session.prompt({noReply:true})` to score memory candidates when Ollama is off. Falls back to heuristic `fallbackScore()` on error or when no session is available. Configurable via `autoRetrieve.llmJudgeEnabled` (default `true`). Tracks current session ID via `chat.message` hook.
-- **`context(mode="llm_compress")` session ID fix** — `generateLLMSummary` was hardcoding session ID as `'compression'` (which doesn't exist), causing `session.prompt()` to silently fail and fall back to regex every time. Fixed by threading the real `toolCtx.sessionID` through `runCompression` → `generateLLMSummary`. Interface updated: `IMaintenanceStore.runCompression`, `SqliteMemoryStore.runCompression`, `runCompressionFn`, `generateLLMSummary` all accept optional `sessionId` param.
-
-### v0.6.36
-- **`chat.params` SDK hook** — adaptive pressure-based temperature/maxTokens clamping in the `chat.params` pipeline. Gated by `adaptivePressure.enabled`. Logged to compress.log when clamping is applied.
-- **`messages.transform` SDK hook** — alternative memory injection path via `experimental.chat.messages.transform`. Performs a drilldown query against top auto-retrieve candidates, injecting relevant context as additional messages. Falls through on empty results.
-- **`compaction.autocontinue` pipeline wiring** — `experimental.compaction.autocontinue` now calls through the handler chain (was a bare `{ enabled: true }`) so compaction hook logic integrates with the autocontinue flow.
-- **Config merge fix (`writeProjectConfig`)** — `writeProjectConfig` now deep-merges with existing config instead of overwriting it. Prevents silent data loss when management app saves partial config updates. Uses recursive `deepMerge()` for nested objects.
-- **Filter engine refactor** — `hideAll` flag (`matches()` returns `false` when no filters are active), consistent `matches()` semantics (empty filter sets are now pass-through, not reject-all), `toggleAll(category)` per-category toggle method, `selectAll()` bulk-select. Fixes invisible-scene-on-load bug.
-- **3D graph layout improvements**:
-  - Grid-accelerated repulsion force (3×3×3 cell neighborhood reduces O(n²) to O(kn) for nearby pairs)
-  - Sim bounds debug logging removed
-  - Connectivity-aware initial placement (`_nudgeConnectedNodes`) pulls connected components toward centroids pre-simulation
-  - Post-simulation overlap prevention pass (3 iterations, pushes overlapping nodes apart)
-  - Center pull reduced (0.008 vs 0.02) and cooling-modulated for gentler shell convergence
-  - Spring rest length now based on node sizes (sprite radius) instead of fixed per-level
-  - Velocity damping increased (0.82 vs 0.85), maxStep reduced
-  - Simulation iterations increased (300 vs 150)
-- **Select All / Clear All buttons** — new `#select-all-filters` button alongside `#clear-filters` in the visualize panel. Select All resets filters and activates all available categories. Clear All now sets `hideAll=true` (hides all nodes) consistent with clearing all selections.
-- **Per-category "All" toggle** — `toggleAll(category)` on the `NodeFilterEngine` class, wired to existing `data-select-all` buttons. Clicking "All" for a category adds all values; clicking again removes them all.
-
-### v0.6.35
-- **SmartFilter** — noise-stripping preprocessor for shape detection: removes separator lines, progress bars, repeated punctuation, and leading/trailing blank lines. Logged with noise counts per shape event
-- **Signal-word relevance scoring** — replaces legacy TF-IDF with error-term boosted (+5 for fail/error/fatal/exception) and keyword-density-weighted per-line scoring for relevance trimming
-- **Relevant generic truncation** — relevance-weighted line selection replaces blind top-N in generic fallback. Scores lines by signal-word density, keeps highest-scoring up to maxLines
-
-### v0.6.34
-- **Relevance trimming** — TF-IDF scores each output line against command query terms; drops sub-threshold lines (threshold 0.15, minKeep 5, alwaysKeepTop 3). Config via `commandCompression.relevanceTrimming*` fields. Opt-in (default false). Logged to compress.log.
-- **Delta compression** — per-command output cache (max 50). When new output is ≥50% similar (Jaccard) to cached output, emits a diff (prefix/suffix) instead of re-compressing. Config via `commandCompression.deltaCompression*` fields. Enabled by default.
-- **Context dashboard** — new management app tab (`/api/context-dashboard`) showing memory tokens by level/type, active rules, compression savings, recent injection history, and estimated total context. Summary cards, by-level/by-type tables, injection history table.
-- **Before/after compression stats** — migration v26 adds `original_lines`, `compressed_lines`, `cmd_preview`, `original_preview`, `compressed_preview` to `compression_stats` table. Compress tab now shows rich per-event table (before K, after K, Δlines, savings, duration). Click-to-expand modal with side-by-side raw vs compressed content preview. Strategy breakdown with raw/compressed/saved columns. `contentSnippet()` in log output for all compression events.
-- **Output token control** — injects concise-output `<system_reminder type="suggestion">` rules into the system prompt. Three modes: adaptive (tightens at 70/85/95% context), always-on, or off. Five strategies: concise, sentence_limit, char_limit, bullet_only, custom. Per-level overrides for sentences, strategy, and custom prompt. Exclusion patterns (regex). 24 config fields with Zod schema + management UI. Logged to compress.log as `output-token-control`.
-- **386 tests, 0 fail** (20 new tests — 16 unit + 4 integration).
-
-### v0.6.32 (2026-06-19)
-- **Cross-encoder reranker** — in-process ONNX cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) replaces the unavailable Ollama `/api/rerank` endpoint. Configurable via `ollama.strategy: "cross-encoder"` (vs `"llm"` default). Management app UI dropdown to switch strategies. Model auto-downloads with `ensureModels()`.
-- **Rerank intent system** — agents set `pref:rerank-intent` preference node with `boost: type=weight` directives. `resolveRerankIntent()` in auto-retrieve hook reads the node and applies type multipliers to scoring before the reranker runs. Instructions added to `rule:mandatory:tools` seed node so agents know the pattern.
-- **Bug fixes:**
-  - **HNSW `removeNode`** — `globalDeletedIds`/`projectDeletedIds` Sets filter deleted IDs from search results; previously was a no-op (only removed label-map entry). Rebuild clears deleted sets.
-  - **MemoryRate** — removed `updates.timesHelpful = 1` pre-set that caused double-counting (set to 1 then immediately incremented to 2).
-  - **MemoryReplace off-by-one** — `<=` → `<` in loop bound caused spurious match when content length equaled old text length.
-  - **MemorySet parent_ids** — now splits by comma/trims `args.parent_ids` instead of wrapping single string in array, fixing multi-parent input.
-  - **Sync I/O** — `fs.statSync`/`fs.readFileSync` replaced with `await fs.promises.stat`/`await fs.promises.readFile` in async hooks.
-  - **Score normalization** — min-max normalization of semantic scores before convex combination with BM25 in `computeFinalScores`, preventing BM25 from dominating on non-uniform score distributions.
-- **Memory leak fixes** — SESSION_LAST_NODE capped at 500 entries; workingMemoryCache prunes stale sessions at 100+; idScopeCache clears at 5000+ entries.
-- **Skills injection redesign** — replaced proactive XML block injection with `<!-- Relevant skills: ... -->` HTML comment; agent now calls `learn(mode="skill_load")` reactively when needed.
-- **Graphviz diagram** — `docs/agent-communication-pipeline.{dot,svg,png}` documenting plugin ↔ agent communication channels.
-- **366 tests, 0 fail** (unchanged).
-
-### v0.6.31 (2026-06-18)
-- **Temporal edges in management UI** — new `GET /api/temporal-edges` endpoint with optional `?node_id=` and `?project_name=` filters. Three.js 3D viewer renders 5 edge types with distinct colors and styles (NEXT=green solid, DURING_SESSION=blue dashed, CAUSAL=red solid, REFERENCES=yellow dotted, RELATED_TO=magenta solid). Spring forces applied during simulation pull temporally connected nodes closer. Detail panel shows per-node temporal connections with direction, type badge, and confidence score. Legend updated with temporal edge color swatches.
-- **366 tests, 0 fail** (was 363).
-
-### v0.6.30 (2026-06-16)
-- **Working cache population** — `addToWorkingCache`/`clearWorkingCache` added to `src/cache.ts`; previously the working cache was declared but never written to (always returned `[]`).
-- **Memory tool tracking** — `tool.execute.after` handler now populates the working cache from `memory(mode="fetch")`, `memory(mode="get")`, `memory(mode="drilldown")`, `memory(mode="set")`, `memory(mode="replace")`, and `memory(mode="search")` results. Each cache population logs the full content via `memLog("debug", "working-cache", ...)`.
-- **Middle-term capture now includes full content** — capture nodes store the complete `content` per working cache entry (previously truncated at 500 chars). Full capture JSON logged via `memLog("info", "compaction", ...)`.
-- **Store fallback** — `experimental.session.compacting` handler falls back to the 8 most recently created nodes from the database when the in-memory working cache is empty, ensuring middle-term captures always have data. Fallback content logged via `memLog("debug", "compaction", ...)`.
-- **339 tests, 0 fail** (unchanged).
-
-### v0.6.29 (2026-06-16)
-- **Compaction hooks integration** — three new handler registrations:
-  - `experimental.session.compacting`: captures middle-term context (working cache snapshot) as a sticky metadata node before compaction runs. Gated by `enableMiddleTermCapture` config (default: true).
-  - `session.compacted` event: runs cleanup for old middle-term captures, score decay, and consolidation after compaction completes.
-  - `experimental.compaction.autocontinue`: defaults to `enabled: true` (pass-through).
-- **6 new tests** for `cleanupMiddleTermCaptures` in `src/plugin/hooks.test.ts`.
-- **339 tests, 0 fail** (was 333).
-
-### v0.6.28 (2026-06-16)
-- **HNSW combined-search bug fix** — when searching both global and project scopes simultaneously, overlapping internal HNSW integer IDs caused project results to be mapped through the global label map. Fixes `searchByEmbedding` returning wrong/missing nodes when both scopes are populated.
-- **searchByEmbedding sort fix** — `computeFinalScores` doesn't sort, and SQL `WHERE id IN (...)` returns rows in arbitrary order, so top HNSW results could fall outside the `slice(0, limit)` window. Added sort by importance before slicing.
-- **333 tests, 0 fail** — 58 new tests added:
-  - `search-helpers.test.ts` (34 tests) — `calculateDynamicBm25Weight`, `detectCodeQuery`, `computeRecencyScore`, `computeBM25TermScore`, `computeBM25Scores`, `computeBM25ScoresSQL`, `updateBM25Index`/`removeBM25Index`, `computeFinalScores`, `rerankResults`
-  - `search.test.ts` (20 tests) — `searchByEmbedding` with HNSW, level/category/usefulness filters, fallback cosine path, expired exclusion, multi-scope; temporal expansion with 1-2 hops, DURING_SESSION edges; BM25 integration with rerank
-
-### v0.6.27 (2026-06-16)
-- **Session logging** — opt-in session log via `sessionLog.enabled` config field. Writes to `~/.config/opencode/logs/sessionlog.log` with 1MB rotation. Log calls in session lifecycle hooks and auto-retrieve. Toggle in management app settings panel.
-- **Management server caching fix** — `Cache-Control: no-cache` headers on all served files so browser always fetches latest management app HTML/JS.
-- **Orphaned management server fix** — PID file at `~/.config/opencode/management-server.pid`, kill orphaned servers on restart, `GET /api/shutdown` endpoint.
-- **Model-router: toolStreaming fix** — `toolStreaming: false` added to mittwald provider-level options in `opencode.json`; model-router config hook now forwards model-level options into subagent agent definitions.
-- **Hybrid retrieval ported to core** — default `bm25Weight` changed from 0 to 0.4 in `searchByEmbedding`. Multi-hop temporal expansion (`temporalHops` option, up to 3 hops, 0.7^depth score decay) ported from benchmark to `src/storage/search.ts`. `temporal_hops` arg added to `memory(mode="search")` tool and MCP server.
-- **Published to npm** as `opencode-fractal-memory@0.6.27`.
-
-### v0.6.25 (2026-06-15)
-- **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls, and injection-event calls now properly awaited.
-- **Bug fix: HNSW ghost entries** — `.filter(r => r.id !== "")` strips ghost results from deleted nodes.
-- **Bug fix: pruneNodes HNSW cleanup** — `pruneNodes` now calls `hnsw.removeNode()` for each pruned node.
-- **Benchmark improvement** — hybrid BM25+vector search at 0.5× weight, multi-hop temporal expansion up to 3 hops, score decay 0.7^depth. Overall F1: 14.33% → 16.10%.
-- **Model-router configured** — "local" preset with budget mode: @fast=gemma4:latest, @medium=gemma4:latest, @heavy=deepseek-v4-flash-free.
-- **Translate subagent** — read-only agent for natural language translation (mittwald/gpt-oss-120b).
-- **12 maintenance tests** added in `src/storage/maintenance.test.ts`.
-- **Published to npm** as `opencode-fractal-memory@0.6.25`.
-
-### v0.6.24 (2026-06-15)
-- **Episodic / Semantic memory categories** — all nodes auto-categorized on creation. Episodic types (event, session, task, etc.) decay with 7-day half-life and 0.5× search weight. Semantic types (concept, fact, lesson, rule, etc.) decay with 365-day half-life and 1.0× search weight. Dashboard shows category distribution; search/drilldown show `[episodic]`/`[semantic]` tags; `category_filter` arg on `memory(mode="search")`.
-- **Consolidation bridge** — `autoConsolidate` extracts semantic facts from episodic clusters on `session.idle` and stores them as persistent `type: "fact"` nodes with `parentIds` back to source nodes. New `"fact"` node type added.
-- **Auto-retrieve relevance filters** — `maxLevel: 0` blocks L1+ compression summaries from injection; `categoryFilter: "semantic"` blocks episodic session traces. Config gains `minQueryLength` and `injectionCooldownMs`.
-- **Auto-retrieve dedup + rate limit** — session-level injection cache (prevents re-injecting same node IDs), query similarity skip (cosine > 0.95 skips re-injection), 30s cooldown, short message bypass (`minQueryLength=10`), skills cache with 5-minute TTL.
-- **Migration v23** — adds `category` column to `memory_nodes` with index.
-- **`learn(mode="temporal_edges")` tool** — inspect temporal edges (conversation flow) between nodes.
-- **`category_filter` arg** added to `memory(mode="search")` and `category_filter` option to `memory(mode="drilldown")`.
-- **Cross-project auto-retrieve pollution fix** — added `(scope === "global" || projectName === currentProject)` post-search filter in auto-retrieve hook. Prevents nodes from other projects being injected into the current session.
-- **`memory(mode="list") scope=project` auto-scopes to current project** — `memory(mode="list") scope=project` now defaults `project_name` to the current project, avoiding confusing cross-project node listings. To see all projects, pass `project_name=""` explicitly.
-- **Management UI project dropdown** — replaced button-based project filter with a `<select>` dropdown for cleaner project selection.
-- **Management API `?project_name=` support** — `/api/nodes`, `/api/links`, `/api/stats` accept optional `project_name` query param for server-side filtering.
-- **Bug fix: 10 unawaited async calls in sqlite.ts** — `queryDeleteNode` inside `withRetryableTransaction`, session-tracking calls (`insertAgentToolCall`, `createSessionMetricsRow`, `updateSessionMetrics`, `incrementSessionToolCall`), and injection-event calls (`insertInjectionMetrics`, `updateMemoryToolCall`, `finalizeInjection`, `insertInjectionFeedback`, `insertToolUsageLog`) now properly awaited. Critical: `queryDeleteNode` inside a transaction callback could commit before the DELETE completed.
-- **Bug fix: HNSW search returning ghost entries** — `HNSW.removeNode` only removed the label-map entry (the HNSW library doesn't support point deletion), causing `search()` to return `{ id: "", score }` for deleted nodes. Added `.filter(r => r.id !== "")` to strip ghost results.
-- **Bug fix: pruneNodes not cleaning up HNSW index** — `pruneNodes` deleted nodes from the database but didn't call `hnsw.removeNode()`, leaving ghost points in the HNSW graph. Added cleanup loop for each pruned node.
-
-### v0.6.23 (2026-06-08)
-- **Backup/Restore** — new Backup tab in the management UI. Create timestamped snapshots of config, global DB, and project DB. Restore with per-source selection; pre-restore safety backup auto-created. Backups stored as flat directories at `~/.config/opencode/backups/` — zero external deps.
-- **`projectName` cross-project filtering** — Added `project_name` arg to all CLI tools, MCP tools, and storage layer
-- **Bug fix: global scope always skipped** — Removed `?? store.projectName` default that caused `projectName` to always be set, preventing global memory from being searched. Now `project_name` is only passed when explicitly provided; when omitted, searches both global and project scopes
-- **Config unification** — `management.enabled/port` and `journal.*` moved from separate `agent-memory.json` into the main `opencode-mem.json` config file. Single config source of truth
-- **Arg description updates** — All tool arg descriptions and command files updated to reflect the new behavior
-
-### v0.6.21 (2026-06-07)
-- **Command file audit** — consistent `name=value` named arg format across all command files
-- `learn(mode="rate")` — command file added frontmatter so it registers as a valid command
-- `memory(mode="set")` — command file replaced fictional Supabase example with generic JWT example
-- `memory(mode="list")`, `context(mode="compress")` — command files added proper Usage/Arguments sections
-- `agent/memory-hints.md` — all examples converted to named arg syntax, types fixed
-
-### v0.6.20 (2026-06-07)
-- README update — cache staleness workaround, plugin version endpoint docs
-
-### v0.6.19 (2026-06-07)
-- **Metadata support** — `memory(mode="set")` and MCP `memory(mode="set")` now accept `metadata` JSON string arg
-- `memory(mode="get")` now displays metadata section when present
-- `skill:opencode-plugin-installation` created with auto-detection triggers
-- Docs: `memory(mode="set")`, `memory(mode="get")`, agent/memory-hints.md updated
-
-### v0.6.18 (2026-06-07)
-- README cache staleness workaround added
-
-### v0.6.17 (2026-06-07)
-- **Duplicate file node fix** — replaced `listNodes("project")` with `getNodeByLabel()` in hooks.ts
-- File nodes now update on re-read instead of being skipped
-- DB cleanup: removed 552 duplicate file nodes (reduced 1375→825 nodes)
-
-### v0.6.16 (2026-06-07)
-- Plugin version displayed in management app sidebar
-- `GET /api/version` endpoint added
-
-### v0.6.15 (2026-06-06)
-- **Project switcher** — filter memory nodes by project name in management UI
-- **Clear all filters** — one-click reset of all active filters
-- **Playbook nodes** — now render as orange torus with step details in management UI
-- **TYPE_COLORS** — playbooks (orange) and skills (gold) have dedicated colors in 3D scene
-- Backend: `project_name` in API responses, `GET /api/projects` endpoint
-
-### v0.6.14 (2026-06-06)
-- Session reference counter fix — management server only stops when all sessions end
-
-### v0.6.13 (2026-06-06)
-- Event hook refactor — management server lifecycle tied to real `session.created`/`session.deleted` events
-
-### v0.6.12 (2026-06-06)
-- Fixed management server lifecycle — SIGKILL instead of SIGTERM, proper event hooks

@@ -12,7 +12,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 ## Core Features
 
-**Command Output Compression** (`tool.after` for `bash`): Tiered pipeline — Tier 0 verbatim pass-through (outputs < `verbatimBelowLines`=40 lines or <80 chars never compressed), net-win gate (skip unless BPE-estimated savings ≥ `netWinMinTokens`=24 tokens), benign-aware threshold (clean output compresses only beyond `benignThreshold`=1000 lines; error-bearing beyond `errorThreshold`=500, error output always verbatim). Payload-preserving strategies: grep keeps matched lines up to `keepMatches`=15 (strict `path:line:content` detection rejects ps/table garble), ls keeps filenames up to `keepNames`=50 (never bare counts), git status keeps the changed-file list, tables keep header+rows up to `keepRows`=20 (token-count detection). Structural shape detection (JSON/CSV/stack/tree/table), fuzzy dedup (trigram Jaccard), relevance trimming, delta compression, output offloading. **Always-reversible**: original stashed on every compression with `[Original stashed — cat <path>]` marker + `[ids_preserved: …]` factsheet. `applyWordAbbreviations` never rewrites tokens containing `/`, `.`, `:` (path safety). Impl at `src/application/command-compression.ts` + `src/application/command-compression/`, hook at `src/plugin/hooks/compression.ts`.
+**Command Output Compression** (`tool.after` for `bash`): Tiered pipeline — Tier 0 verbatim pass-through (outputs < `verbatimBelowLines`=40 lines or <80 chars never compressed), net-win gate (skip unless BPE-estimated savings ≥ `netWinMinTokens`=24 tokens; empty/whitespace candidates always rejected), benign-aware threshold (clean output compresses only beyond `benignThreshold`=1000 lines; error-bearing beyond `errorThreshold`=500, error output always verbatim). Payload-preserving strategies: grep keeps matched lines up to `keepMatches`=15 (strict `path:line:content` detection rejects ps/table garble), ls keeps filenames up to `keepNames`=50 (never bare counts), git status keeps the changed-file list (long format + porcelain ` M`/`?? `/`A `), tables keep header+rows up to `keepRows`=20 (token-count detection). Structural shape detection (JSON/CSV/stack/tree/table), fuzzy dedup (trigram Jaccard), relevance trimming, delta compression, output offloading. **Always-reversible**: original stashed on every compression with `[Original stashed — cat <path>]` marker + `[ids_preserved: …]` factsheet. `applyWordAbbreviations` never rewrites tokens containing `/`, `.`, `:` (path safety). Impl: orchestration at `src/application/command-compression/pipeline.ts`, strategy registry at `src/application/command-compression/strategy.ts` (12 entries), per-command strategies in `strategies/`, type detect/compress in `output-types/`, helpers in `utils/`; `src/application/command-compression.ts` is a re-export barrel. Hook at `src/plugin/hooks/compression.ts`.
 
 **Output Token Control** (`experimental.chat.system.transform`): Injects concise-output rule into system prompt based on context pressure. Modes: adaptive/always-on/off. Strategies: concise/sentence_limit/char_limit/bullet_only/custom. Impl at `src/hooks/output-token-control.ts`.
 
@@ -96,6 +96,11 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 | `src/config.ts` | MemConfig interface + Zod schema + defaults |
 | `src/plugin/hooks.ts` | Thin orchestration — calls 11 extracted handlers |
 | `src/plugin/hooks/compression.ts` | Compression handler + feature banner |
+| `src/application/command-compression/pipeline.ts` | Tiered compression orchestration (gates, registry dispatch, shape/relevance/generic fallbacks) |
+| `src/application/command-compression/strategy.ts` | `CompressStrategy` interface + 12-entry registry (`createStrategyRegistry`) |
+| `src/application/command-compression/strategies/` | Per-command strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, git pull, generic) |
+| `src/application/command-compression/output-types/` | Shape detection + per-type compressors (detect.ts / compress.ts / types.ts) |
+| `src/application/command-compression/utils/` | Helpers: text, signal, scoring, abbreviate (barrels) |
 | `src/plugin/hooks/graph-context.ts` | Read-time graph preamble injection + auto-skeletonize |
 | `src/plugin/hooks/graph-edit-check.ts` | Edit-time dependency warning |
 | `src/plugin/hooks/graph-search-hint.ts` | Auto graph hints on grep/glob/search |
@@ -145,7 +150,7 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 - Migration version in `definitions.ts` must increment; never modify existing migrations
 - After adding migrations, bump `CURRENT_VERSION` in `src/storage/migrations/index.ts` to match the last migration version in `definitions.ts`
 - Management app config fields: `id` = kebab-case in HTML, load/save in app.js with same pattern
-- Strategy name in compress-output.ts must be a short string (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic)
+- Strategy names in `strategy.ts` registry entries must be short strings (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic); `output-types` compressors are reached via the generic fallback
 - When graph build has silent failures (file nodes << expected), check the `@kreuzberg/tree-sitter-language-pack-wasm` type definitions (`*.d.ts`) and docs first — `getParser(name)` **throws** on unknown language, returns parser pre-configured (no `setLanguage` needed), module uses `FinalizationRegistry` for auto-cleanup
 - When adding new log files: add write function to `src/logging.ts`, register in section map, create file path constant
 - When adding columns to `memory_nodes`, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) or rowToNode will break
