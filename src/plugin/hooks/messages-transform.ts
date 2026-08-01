@@ -95,12 +95,19 @@ export function createMessagesTransformHandler(
           nodeTypes[t] = (nodeTypes[t] ?? 0) + 1;
         }
 
+        const injectedContent = injectedNodes.map(r => ({
+          label: r.node?.label ?? r.node?.id ?? "unknown",
+          type: r.node?.type ?? "unknown",
+          snippet: (r.node?.content ?? "").slice(0, 300),
+        }));
+
         store.logInjectionMetrics(currentSessionId.value, {
           injectedNodeCount: injectedNodes.length,
           injectedTokens: injectedNodes.reduce((s, r) => s + ((r.node?.content?.length ?? 0) / 4), 0),
           injectionMode: "messages_transform",
           queryText: userText.slice(0, 200),
           injectedNodeTypes: nodeTypes,
+          injectedContent,
         }).catch((err: unknown) => memLog("warn", "messages-transform", `injection metric error: ${String(err)}`));
 
         memLog("debug", "messages-transform", "Injected structured memory context", {

@@ -639,4 +639,17 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* table may not exist yet */ }
     },
   },
+  {
+    version: 32,
+    name: "add-injected-content",
+    up: (db) => {
+      try {
+        const tableInfo = db.query("PRAGMA table_info(injection_metrics)").all() as { name: string }[];
+        const existing = new Set(tableInfo.map(c => c.name));
+        if (!existing.has("injected_content")) {
+          db.run("ALTER TABLE injection_metrics ADD COLUMN injected_content TEXT");
+        }
+      } catch { /* table may not exist yet */ }
+    },
+  },
 ];

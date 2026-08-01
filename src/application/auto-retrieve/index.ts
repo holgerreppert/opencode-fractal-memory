@@ -297,6 +297,11 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
             rerankStrategy: strategy,
             rerankDurationMs: Date.now() - pipelineStart,
             injectedNodeTypes: nodeTypes,
+            injectedContent: mmrItems.slice(0, 10).map(i => ({
+              label: i.label,
+              type: i.type ?? "unknown",
+              snippet: i.content.slice(0, 300),
+            })),
           });
         } catch {
           // best-effort

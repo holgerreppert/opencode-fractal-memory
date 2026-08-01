@@ -658,6 +658,7 @@ class SqliteMemoryStore implements MemoryStore {
     rerankDurationMs: number | null;
     injectedNodeTypes: Record<string, number> | null;
     activeTypeBoosts: Record<string, number> | null;
+    injectedContent: Array<{ label: string; type: string; snippet: string }> | null;
     toolCalls: number; effectivenessScore: number | null;
     injectionUpvotes: number; injectionDownvotes: number;
     taskOutcome: string | null;
