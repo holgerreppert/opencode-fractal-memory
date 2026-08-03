@@ -61,18 +61,24 @@ export function createMessagesTransformHandler(
       if (!userText || userText.length < 10) return;
 
       try {
-        const results = (await store.drilldownQuery(userText, 5)) as QueryResult[];
+        const results = (await store.drilldownQuery(userText, 5, store.projectName)) as QueryResult[];
 
         const apConfig = config.adaptivePressure;
         const phase = apConfig?.enabled ? getPressurePhase(apConfig) : "normal";
 
+        // Importance gate: autoInjection.minScore applies in ALL phases.
+        // Stale group summaries (level >= 1) decay via the multiplicative
+        // recency penalty in computeRRFScores, landing well below this gate,
+        // so they no longer get injected every turn. Pressure-aware phases
+        // raise the bar further (0.6 aggressive / 0.8 critical).
+        const baseMinImp = config.autoInjection?.minScore ?? config.autoRetrieve?.minInjectionScore ?? 0.05;
+        const minImp = phase === "critical" ? 0.8 : phase === "aggressive" ? Math.max(0.6, baseMinImp) : baseMinImp;
+
         let filtered = results.filter(r => r.node?.content);
-        if (phase === "aggressive" || phase === "critical") {
-          const minImp = phase === "critical" ? 0.8 : 0.6;
-          filtered = filtered.filter(r => (r.node?.importance ?? 0) >= minImp);
-          if (results.length - filtered.length > 0) {
-            memLog("debug", "messages-transform", `Pressure-aware filter: skipped ${results.length - filtered.length}/${results.length} low-importance nodes (phase=${phase})`);
-          }
+        const preGateCount = filtered.length;
+        filtered = filtered.filter(r => (r.node?.importance ?? 0) >= minImp);
+        if (preGateCount - filtered.length > 0) {
+          memLog("debug", "messages-transform", `Importance gate: skipped ${preGateCount - filtered.length}/${preGateCount} low-importance nodes (min=${minImp}, phase=${phase})`);
         }
 
         if (filtered.length === 0) return;

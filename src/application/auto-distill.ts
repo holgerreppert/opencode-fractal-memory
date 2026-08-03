@@ -39,11 +39,11 @@ export async function distillRules(
     const match = fix.match(/^- (.+)$/);
     const action = match?.[1];
     if (action) {
-      if (action.includes("memory_drilldown")) {
+      if (action.includes("memory_drilldown") || action.includes("drilldown")) {
         distilledRules.push("- Avoid memory(mode=\"drilldown\") with vague queries - use memory(mode=\"search\", ...) first");
-      } else if (action.includes("memory_get")) {
+      } else if (action.includes("memory_get") || action.includes('memory(mode="get")') || action.includes('memory("get")')) {
         distilledRules.push("- Always verify label exists before memory(mode=\"get\")");
-      } else if (action.includes("memory_replace")) {
+      } else if (action.includes("memory_replace") || action.includes("replace")) {
         distilledRules.push("- Re-read file before replace to ensure content is current");
       } else if (action.includes("read") || action.includes("glob")) {
         distilledRules.push("- Check if file exists before read/glob");

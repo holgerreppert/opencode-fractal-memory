@@ -61,7 +61,7 @@ export function MemorySearch(store: MemoryStore) {
       min_level: tool.schema.number().int().nonnegative().optional().describe("Minimum compression level (0=raw, 5=highest)"),
       max_level: tool.schema.number().int().nonnegative().optional().describe("Maximum compression level"),
       min_usefulness: tool.schema.number().min(0).max(5).optional().describe("Minimum usefulness score filter"),
-      bm25_weight: tool.schema.number().min(0).max(1).optional().describe("BM25 vs semantic weight (0=full semantic, 1=full BM25)"),
+      rrf_k: tool.schema.number().int().min(1).max(1000).optional().describe("RRF k parameter (default 60) — higher = flatter rank weighting"),
       temporal_hops: tool.schema.number().int().min(0).max(5).optional().describe("Multi-hop temporal expansion depth (0=off, 1-5 for depth)"),
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
       expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
@@ -69,13 +69,12 @@ export function MemorySearch(store: MemoryStore) {
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
       domain_filter: tool.schema.enum(["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"]).optional().describe("Filter to specific memory domain"),
       type: tool.schema.enum(["storedcontext"]).optional().describe("Filter by memory node type (e.g. storedcontext)"),
-      project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
+      project_name: tool.schema.string().optional().describe("Project to search (defaults to the current project)"),
     },
     async execute(args) {
       const queryEmbedding = await generateEmbedding(args.query);
       
-      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; bm25Weight?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string; categoryFilter?: "episodic" | "semantic"; domainFilter?: string; typeFilter?: MemoryNodeType } = {
-        bm25Weight: args.bm25_weight ?? 0.4,
+      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; rrfK?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string; categoryFilter?: "episodic" | "semantic"; domainFilter?: string; typeFilter?: MemoryNodeType } = {
         queryText: args.query,
         rerank: args.rerank ?? true,
       };
@@ -83,10 +82,12 @@ export function MemorySearch(store: MemoryStore) {
       if (args.max_level !== undefined) options.maxLevel = args.max_level as 0 | 1 | 2 | 3 | 4 | 5;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;
       if (args.project_name !== undefined) options.projectName = args.project_name;
+      options.projectName = options.projectName ?? store.projectName;
 if (args.category_filter !== undefined) options.categoryFilter = args.category_filter;
 if (args.domain_filter !== undefined) options.domainFilter = args.domain_filter;
 if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
       if (args.temporal_hops !== undefined && args.temporal_hops > 0) (options as { temporalHops?: number }).temporalHops = args.temporal_hops;
+      if (args.rrf_k !== undefined) options.rrfK = args.rrf_k;
 
       let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
 

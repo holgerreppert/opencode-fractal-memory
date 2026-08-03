@@ -24,11 +24,14 @@ describe("nodeToPlain", () => {
     supertype: "declarative" as const,
     domain: null,
     metadata: { key: "val" },
+    tags: null,
+    source: null,
     sticky: true,
     ttlDays: null,
     expiresAt: null,
     confidence: 0.9,
     lastVerified: null,
+    verificationCount: 0,
     usefulnessScore: 4,
     timesUsed: 3,
     timesHelpful: 2,
@@ -65,7 +68,7 @@ describe("nodeToPlain", () => {
       metadata: null,
       label: undefined,
     };
-    const plain = nodeToPlain(nullNode);
+    const plain = nodeToPlain(nullNode as unknown as MemoryNode);
     expect(plain.summary).toBeNull();
     expect(plain.parentIds).toBeNull();
     expect(plain.type).toBeNull();
@@ -104,7 +107,7 @@ describe("sanitizeArgs", () => {
     const args = { content: "x".repeat(200) };
     const sanitized = sanitizeArgs(args);
     expect(sanitized.content).toContain("... [200 chars]");
-    expect(sanitized.content!.length).toBeLessThan(200);
+    expect((sanitized.content as string).length).toBeLessThan(200);
   });
 
   test("truncates long query fields", () => {

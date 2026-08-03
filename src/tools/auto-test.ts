@@ -12,7 +12,7 @@ export function createMemoryAutoTest(store: MemoryStore) {
     async execute() {
       try {
         const queryEmbedding = await generateEmbedding(testQuery);
-        const candidates = await store.searchByEmbedding(queryEmbedding, 10, { bm25Weight: 0.4 });
+        const candidates = await store.searchByEmbedding(queryEmbedding, 10);
         
         if (candidates.length === 0) return "No candidates found";
         

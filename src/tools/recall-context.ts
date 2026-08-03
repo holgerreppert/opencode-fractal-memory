@@ -36,8 +36,7 @@ export function MemoryRecallContext(store: MemoryStore) {
         nodes = await store.searchByEmbedding(queryEmbedding, limit, {
           typeFilter: "storedcontext" as MemoryNodeType,
           queryText: args.query,
-          bm25Weight: 0.3,
-          projectName,
+          ...(projectName !== undefined ? { projectName } : {}),
         });
       } else {
         const allNodes = await store.listNodes("all");

@@ -131,4 +131,6 @@ export interface MemoryStore extends
   MaintenanceStore,
   ConfigStore,
   LiveFeedStore
-{}
+{
+  readonly projectName: string;
+}

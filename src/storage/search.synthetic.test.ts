@@ -101,7 +101,6 @@ describe("Synthetic retrieval quality", () => {
         if (evidenceLabels.size === 0 && entry.category !== 6) continue;
         if (evidenceLabels.size === 0) {
           const retrieved = await store.searchByEmbedding(entry.embedding, 10, {
-            bm25Weight: 0.4,
             queryText: entry.question,
             rerank: true,
             temporalHops: 2,
@@ -119,7 +118,6 @@ describe("Synthetic retrieval quality", () => {
         }
 
         const retrieved = await store.searchByEmbedding(entry.embedding, 10, {
-          bm25Weight: 0.4,
           queryText: entry.question,
           rerank: true,
           temporalHops: 2,

@@ -31,24 +31,9 @@ export function removeBM25Index(db: Database, nodeId: string): void {
   db.run("DELETE FROM bm25_doc_stats WHERE node_id = ?", [nodeId]);
 }
 
-export function calculateDynamicBm25Weight(queryLength: number, baseWeight: number): number {
-  if (queryLength === 0) return baseWeight;
-  const lengthDecay = Math.max(0.3, 0.6 - 0.002 * queryLength);
-  return Math.min(baseWeight, lengthDecay);
-}
-
-export function detectCodeQuery(text: string): boolean {
-  // Detect code-heavy queries: backtick code blocks, file paths, function calls, file extensions
-  if (/`[^`]+`/.test(text)) return true;
-  if (/\.\w{2,4}\b/.test(text)) return true;
-  if (/\b\w+\(\)/.test(text)) return true;
-  if (/(?:[/\\])[\w.-]+\.[\w]+/.test(text)) return true;
-  if (/\b(function|class|import|export|const|let|var|def|fn)\b/.test(text)) return true;
-  return false;
-}
-
 export function computeRecencyScore(lastAccessed: Date | null): number {
-  if (!lastAccessed) return 0;
+  // Unknown access history → neutral recency (no penalty, no boost)
+  if (!lastAccessed) return 1.0;
   const hoursSinceAccess = (Date.now() - lastAccessed.getTime()) / (1000 * 60 * 60);
   return Math.exp(-hoursSinceAccess / 24);
 }
@@ -113,7 +98,7 @@ export function computeBM25TermScore(params: BM25Params): number {
   
   if (documentFrequency === 0 || totalDocuments === 0) return 0;
   
-  const idf = Math.log(totalDocuments / documentFrequency);
+  const idf = Math.log(1 + (totalDocuments - documentFrequency + 0.5) / (documentFrequency + 0.5));
   const tf = termFrequency;
   const dl = documentLength;
   const avgdl = averageDocumentLength;
@@ -254,59 +239,77 @@ export function computeBM25ScoresSQL(
 export type SearchOptions = {
   minLevel?: MemoryNodeLevel | undefined;
   maxLevel?: MemoryNodeLevel | undefined;
-  bm25Weight?: number | undefined;
+  rrfK?: number | undefined;
   queryText?: string | undefined;
   minUsefulness?: number | undefined;
   rerank?: boolean | undefined;
   bm25Scores?: Map<string, number> | undefined;
 };
 
-export function computeFinalScores(
+export function computeRRFScores(
   scoredNodes: MemoryNode[],
   options?: SearchOptions
 ): MemoryNode[] {
-  const bm25Weight = options?.bm25Weight ?? 0.4;
-  const queryText = options?.queryText ?? "";
-  const queryLength = queryText ? tokenize(queryText).length : 0;
-  let dynamicBm25Weight = calculateDynamicBm25Weight(queryLength, bm25Weight);
+  // Guard against degenerate/negative k: RRF's 1/(k+rank) must keep a positive
+  // denominator and a sane score spread. Config drift (k=0 or negative) would
+  // otherwise produce garbage ranks or NaN normalization.
+  const k = Math.max(1, options?.rrfK ?? 60);
 
-  // Code-heavy queries get higher BM25 weight (exact keyword matching preferred)
-  if (queryText && detectCodeQuery(queryText)) {
-    dynamicBm25Weight = Math.max(dynamicBm25Weight, 0.7);
+  let bm25Rank = new Map<string, number>();
+  if (options?.bm25Scores && options.bm25Scores.size > 0) {
+    const ranked = Array.from(options.bm25Scores.entries()).sort((a, b) => b[1] - a[1]);
+    ranked.forEach(([id], idx) => bm25Rank.set(id, idx + 1));
   }
-  
-  const bm25Scores = options?.bm25Scores ?? (bm25Weight > 0 && queryText
-    ? computeBM25Scores({ queryTerms: tokenize(queryText), nodes: scoredNodes })
-    : new Map<string, number>());
-  
-  // Normalize semantic scores to [0,1] for fair convex combination
-  const semanticScores = scoredNodes.map(n => n.importance ?? 0);
-  const minSem = Math.min(...semanticScores);
-  const maxSem = Math.max(...semanticScores);
-  const semRange = maxSem - minSem;
 
-  const finalNodes: MemoryNode[] = [];
-  for (let i = 0; i < scoredNodes.length; i++) {
-    const node = scoredNodes[i]!;
-    const bm25Score = bm25Scores.get(node.id) ?? 0;
-    const recencyScore = computeRecencyScore(node.lastAccessed);
-    const semanticScore = semRange > 0 ? (semanticScores[i]! - minSem) / semRange : 1.0;
-    
-    let finalScore: number;
-    if (bm25Weight > 0 && queryText) {
-      const semanticWeight = 1 - dynamicBm25Weight;
-      finalScore = (semanticScore * semanticWeight + bm25Score * dynamicBm25Weight);
-    } else {
-      finalScore = semanticScore;
+  const bySemantic = scoredNodes
+    .map((n, i) => ({ node: n, idx: i }))
+    .sort((a, b) => (b.node.importance ?? 0) - (a.node.importance ?? 0));
+  const semanticRank = new Map<string, number>();
+  bySemantic.forEach(({ node }, i) => semanticRank.set(node.id, i + 1));
+
+  const rrfScores: Array<{ node: MemoryNode; rrfScore: number }> = [];
+  for (const { node } of bySemantic) {
+    const rankSem = semanticRank.get(node.id)!;
+    const rankBm25 = bm25Rank.get(node.id);
+
+    let rrfScore = 1 / (k + rankSem);
+    if (rankBm25 !== undefined) {
+      rrfScore += 1 / (k + rankBm25);
     }
-    
-    finalScore = finalScore * (1 + recencyScore * 0.2);
-    
-    finalNodes.push({
-      ...node,
-      importance: finalScore,
-    } as MemoryNode);
+    rrfScores.push({ node, rrfScore });
   }
-  
-  return finalNodes;
+
+  // RRF raw scores (~1/(k+rank), ≈0.02 for k=60) are not on the [0,1]
+  // importance scale downstream consumers expect (pressure-aware injection
+  // filter ≥0.6/0.8, drilldown leg weights ×1.0/0.8/0.6, management UI).
+  // Min-max normalize to [0,1] (top-ranked candidate → 1.0), then apply the
+  // recency penalty — mirroring the old computeFinalScores ordering.
+  //
+  // Recency source: level ≥ 1 nodes (compressed summaries/intermediates) decay
+  // from createdAt, NOT lastAccessed — searchByEmbedding re-stamps
+  // last_accessed on every returned node, which would let stale group
+  // summaries self-renew their recency boost forever. Level 0 details keep
+  // lastAccessed (they represent working context).
+  //
+  // Recency is a MULTIPLICATIVE penalty (range [0.3, 1.0]), not an additive
+  // boost: fresh nodes keep ~full score, stale nodes get demoted to 0.3×.
+  // The old `1 + recency*0.2` formula had range [1.0, 1.2] — it only boosted
+  // fresh nodes and NEVER demoted stale ones, letting 5-month-old group
+  // summaries win injection every turn.
+  const rawScores = rrfScores.map(s => s.rrfScore);
+  const minScore = Math.min(...rawScores);
+  const maxScore = Math.max(...rawScores);
+  const range = maxScore - minScore;
+
+  return rrfScores
+    .map(({ node, rrfScore }) => {
+      const normalized = range > 0 ? (rrfScore - minScore) / range : 1.0;
+      const recencyAnchor = (node.level ?? 0) >= 1 ? node.createdAt : node.lastAccessed;
+      const recencyScore = computeRecencyScore(recencyAnchor);
+      return {
+        ...node,
+        importance: normalized * (0.3 + 0.7 * recencyScore),
+      } as MemoryNode;
+    })
+    .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
 }

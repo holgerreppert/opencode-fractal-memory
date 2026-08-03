@@ -6,7 +6,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 function makeConfig(overrides?: Record<string, unknown>): MemConfig {
   return {
     enabled: true,
-    autoRetrieve: { enabled: true, topK: 3, minScore: 0.5, ollamaUrl: "", useOllama: false, useOnnx: false, bm25Weight: 0.5 },
+    autoRetrieve: { enabled: true, topK: 3, minScore: 0.5, ollamaUrl: "", useOllama: false, useOnnx: false },
     memoryCompression: { enabled: false, minLevel: 1, targetLevel: 3, maintenanceInterval: 3600000, llmCompressOnAccess: false, llmCompressOnSet: false },
     outputCompression: { enabled: false, maxLines: 50, excludeCommands: [], alwaysFullOnFailure: false, relevanceTrimmingEnabled: false },
     sessionManagement: { enabled: false },
@@ -122,5 +122,30 @@ describe("createMessagesTransformHandler", () => {
     }
 
     expect(output.messages.length).toBe(2);
+  });
+
+  test("filters low-importance nodes in normal phase via autoInjection.minScore", async () => {
+    const store = makeMockStore();
+    const config = makeConfig({ autoInjection: { enabled: true, injectOn: "always", maxResults: 3, maxTokens: 2000, minScore: 0.7 } });
+    const handler = createMessagesTransformHandler(store, config);
+
+    const output = {
+      messages: [
+        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
+        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
+        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory" }] },
+      ],
+    };
+
+    const transform = handler["chat.messages.transform"];
+    if (transform) {
+      await transform({} as any, output);
+    }
+
+    // Only the 0.8 node passes the 0.7 gate; the 0.6 node is dropped
+    const injected = output.messages.find(m => m.parts[0]?.text?.includes("<memory_context>"));
+    expect(injected).toBeDefined();
+    expect(injected!.parts[0]!.text).toContain("test:memory-1");
+    expect(injected!.parts[0]!.text).not.toContain("test:memory-2");
   });
 });

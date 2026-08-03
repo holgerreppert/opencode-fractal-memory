@@ -301,7 +301,7 @@ Golden rule: Use the \`memory\` tool for ALL node CRUD (search/get/set/delete/li
 
 Tool selection order: search (ALWAYS first, 100x cheaper than reading files) → drilldown/get (after search) → set (store discoveries) → replace (fix outdated) → delete (cleanup).
 
-Search params: \`bm25_weight\` 0.6-0.8 for exact, 0.2-0.4 for semantic; \`tagsFilter\` for intersection filtering; \`rerank\` for LLM judge scoring on ambiguous queries.
+Search params: \`rrf_k\` 30-100 tunes rank fusion sharpness (default 60); \`tagsFilter\` for intersection filtering; \`rerank\` for LLM judge scoring on ambiguous queries.
 
 Source-of-truth linking: encode verification pointers as tags — \`file:src/foo.ts\`, \`fn:calculateTotal\`, \`commit:abc123\`, \`line:42\`, \`test:testCalculateTotal\`, \`cmd:make migrate\`. Searchable via \`tagsFilter\`. Every node should answer "where in the repo can this be checked?"
 

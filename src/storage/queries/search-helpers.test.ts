@@ -3,13 +3,11 @@ import { Database } from "bun:sqlite";
 import { runMigrations } from "../migrations";
 import type { MemoryNode } from "../types";
 import {
-  calculateDynamicBm25Weight,
-  detectCodeQuery,
   computeRecencyScore,
   computeBM25TermScore,
   computeBM25Scores,
   computeBM25ScoresSQL,
-  computeFinalScores,
+  computeRRFScores,
   rerankResults,
   updateBM25Index,
   removeBM25Index,
@@ -56,66 +54,9 @@ function setupSqlite(scope: string = "project") {
   return { db, insertDoc };
 }
 
-describe("calculateDynamicBm25Weight", () => {
-  test("returns base weight for empty query", () => {
-    expect(calculateDynamicBm25Weight(0, 0.4)).toBe(0.4);
-  });
-
-  test("returns base weight for short query when base is lower", () => {
-    const result = calculateDynamicBm25Weight(2, 0.4);
-    const decay = Math.max(0.3, 0.6 - 0.002 * 2);
-    expect(result).toBe(Math.min(0.4, decay));
-    expect(result).toBeGreaterThan(0);
-  });
-
-  test("decays weight for long queries", () => {
-    const result = calculateDynamicBm25Weight(200, 0.4);
-    expect(result).toBeLessThan(0.4);
-  });
-
-  test("floors at 0.3", () => {
-    const result = calculateDynamicBm25Weight(500, 0.4);
-    expect(result).toBe(0.3);
-  });
-
-  test("caps at base weight", () => {
-    const result = calculateDynamicBm25Weight(1, 0.2);
-    expect(result).toBe(0.2);
-  });
-});
-
-describe("detectCodeQuery", () => {
-  test("detects backtick code blocks", () => {
-    expect(detectCodeQuery("use `const x = 1`")).toBe(true);
-  });
-
-  test("detects file extensions", () => {
-    expect(detectCodeQuery("open main.ts")).toBe(true);
-  });
-
-  test("detects function calls", () => {
-    expect(detectCodeQuery("call foo()")).toBe(true);
-  });
-
-  test("detects file paths", () => {
-    expect(detectCodeQuery("check src/foo/bar.ts")).toBe(true);
-  });
-
-  test("detects code keywords", () => {
-    expect(detectCodeQuery("the function returns")).toBe(true);
-    expect(detectCodeQuery("import lodash")).toBe(true);
-    expect(detectCodeQuery("def foo")).toBe(true);
-  });
-
-  test("returns false for plain text", () => {
-    expect(detectCodeQuery("what is the weather today?")).toBe(false);
-    expect(detectCodeQuery("how does memory work")).toBe(false);
-  });
-});
-
 describe("computeRecencyScore", () => {
-  test("returns 0 for null lastAccessed", () => {
-    expect(computeRecencyScore(null)).toBe(0);
+  test("returns neutral 1.0 for null lastAccessed (unknown recency)", () => {
+    expect(computeRecencyScore(null)).toBe(1.0);
   });
 
   test("returns ~1 for now", () => {
@@ -306,39 +247,140 @@ describe("updateBM25Index and removeBM25Index", () => {
   });
 });
 
-describe("computeFinalScores", () => {
-  test("returns nodes with importance from semantic score when no BM25", () => {
-    const nodes = [makeNode({ id: "a", importance: 0.8 })];
-    const result = computeFinalScores(nodes, { bm25Weight: 0, queryText: "" });
+describe("computeRRFScores", () => {
+  test("normalizes single candidate to 1.0", () => {
+    const nodes = [makeNode({ id: "a", importance: 0.8, lastAccessed: null })];
+    const result = computeRRFScores(nodes, { queryText: "" });
     expect(result).toHaveLength(1);
-    expect(result[0]!.importance).toBeGreaterThan(0);
+    expect(result[0]!.importance).toBeCloseTo(1.0, 6);
   });
 
-  test("blends BM25 and semantic scores", () => {
-    const nodes = [makeNode({ id: "a", importance: 0.8, content: "hello world hello", lastAccessed: new Date() })];
-    const options = { bm25Weight: 0.4, queryText: "hello world", bm25Scores: new Map([["a", 0.9]]) };
-    const result = computeFinalScores(nodes, options);
-    expect(result[0]!.importance).toBeGreaterThan(0);
-    // Single node: semantic normalized to 1.0 (min=max). 1.0 * 0.6 + BM25 0.9 * 0.4 = 0.96, then * recency boost
-    expect(result[0]!.importance).toBeCloseTo(0.96 * (1 + computeRecencyScore(nodes[0]!.lastAccessed) * 0.2), 5);
+  test("top-ranked candidate normalizes to 1.0, bottom to 0", () => {
+    const nodes = [
+      makeNode({ id: "a", importance: 0.9, lastAccessed: null }),
+      makeNode({ id: "b", importance: 0.8, lastAccessed: null }),
+    ];
+    const result = computeRRFScores(nodes, { queryText: "hello", bm25Scores: new Map([["b", 1.0]]) });
+    expect(result.find(n => n.id === "b")!.importance).toBeCloseTo(1.0, 6);
+    expect(result.find(n => n.id === "a")!.importance).toBeCloseTo(0.0, 6);
+    expect(result.find(n => n.id === "b")!.importance).toBeGreaterThan(result.find(n => n.id === "a")!.importance);
   });
 
-  test("boosts BM25 weight for code queries", () => {
-    const nodes = [makeNode({ id: "a", importance: 0.5, content: "function foo() { return bar; }", lastAccessed: new Date() })];
-    const options = { bm25Weight: 0.3, queryText: "function foo()", bm25Scores: new Map([["a", 1.0]]) };
-    const result = computeFinalScores(nodes, options);
-    // Code queries get min(0.3, 0.7) = 0.3 (since detectCodeQuery overrides to >= 0.7)
-    // Actually: code query -> dynamicBm25Weight = max(0.3, 0.7) = 0.7
-    // So semantic = 0.5 * 0.3 + 1.0 * 0.7 = 0.85, then * recency boost
-    expect(result[0]!.importance).toBeGreaterThan(0.5);
+  test("both-legs node beats rank-1-in-one-leg node", () => {
+    const nodes = [
+      makeNode({ id: "a", importance: 0.9, lastAccessed: null }),
+      makeNode({ id: "b", importance: 0.8, lastAccessed: null }),
+      makeNode({ id: "c", importance: 0.7, lastAccessed: null }),
+    ];
+    // b and c each in both legs; a only in semantic leg (no BM25 score)
+    const result = computeRRFScores(nodes, {
+      queryText: "hello",
+      bm25Scores: new Map([["b", 1.0], ["c", 0.9]]),
+    });
+    const a = result.find(n => n.id === "a")!.importance;
+    const b = result.find(n => n.id === "b")!.importance;
+    const c = result.find(n => n.id === "c")!.importance;
+    expect(b).toBeGreaterThan(a);
+    expect(c).toBeGreaterThan(a);
+    expect(b).toBeGreaterThan(c);
+    expect(b).toBeCloseTo(1.0, 6);
   });
 
-  test("applies recency boost", () => {
+  test("applies multiplicative recency penalty", () => {
     const fresh = makeNode({ id: "fresh", importance: 0.5, lastAccessed: new Date(), content: "same" });
     const old = makeNode({ id: "old", importance: 0.5, lastAccessed: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), content: "same" });
-    const freshResult = computeFinalScores([fresh], { bm25Weight: 0, queryText: "" });
-    const oldResult = computeFinalScores([old], { bm25Weight: 0, queryText: "" });
+    const freshResult = computeRRFScores([fresh], { queryText: "" });
+    const oldResult = computeRRFScores([old], { queryText: "" });
+    // Fresh node keeps ~full normalized score (recencyScore=1 → 0.3+0.7=1.0);
+    // stale node is demoted to the 0.3 floor — NOT merely left at 1.0.
     expect(freshResult[0]!.importance).toBeGreaterThan(oldResult[0]!.importance);
+    expect(freshResult[0]!.importance).toBeCloseTo(1.0, 6);
+    expect(oldResult[0]!.importance).toBeCloseTo(0.3, 6);
+  });
+
+  test("level>=1 nodes decay from createdAt, not lastAccessed", () => {
+    // Stale summary: created 30 days ago, but lastAccessed refreshed to now
+    // (simulating the searchByEmbedding re-stamp loop). With createdAt decay
+    // the recency penalty collapses to the 0.3 floor despite the fresh
+    // lastAccessed.
+    const staleSummary = makeNode({
+      id: "stale-summary",
+      importance: 0.5,
+      level: 1,
+      createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      lastAccessed: new Date(),
+      content: "same",
+    });
+    const freshSummary = makeNode({
+      id: "fresh-summary",
+      importance: 0.5,
+      level: 1,
+      createdAt: new Date(),
+      lastAccessed: new Date(),
+      content: "same",
+    });
+    const staleResult = computeRRFScores([staleSummary], { queryText: "" });
+    const freshResult = computeRRFScores([freshSummary], { queryText: "" });
+    // Single-candidate sets normalize to 1.0; recency penalty is the separator
+    expect(staleResult[0]!.importance).toBeCloseTo(0.3, 6);
+    expect(freshResult[0]!.importance).toBeCloseTo(1.0, 6);
+    expect(freshResult[0]!.importance).toBeGreaterThan(staleResult[0]!.importance);
+  });
+
+  test("higher k flattens score spread between ranks", () => {
+    const mk = (id: string, imp: number) => makeNode({ id, importance: imp, lastAccessed: null });
+    const nodes = [mk("r1", 0.9), mk("r2", 0.8), mk("r3", 0.7)];
+    const scores60 = computeRRFScores(nodes, {
+      queryText: "hello",
+      rrfK: 60,
+      bm25Scores: new Map([["r1", 1.0], ["r2", 0.9], ["r3", 0.8]]),
+    });
+    const scores10 = computeRRFScores(nodes, {
+      queryText: "hello",
+      rrfK: 10,
+      bm25Scores: new Map([["r1", 1.0], ["r2", 0.9], ["r3", 0.8]]),
+    });
+    // Higher k gives the middle rank a higher normalized share
+    const mid60 = scores60.find(n => n.id === "r2")!.importance;
+    const mid10 = scores10.find(n => n.id === "r2")!.importance;
+    expect(mid60).toBeGreaterThan(mid10);
+    // Top rank always normalizes to 1.0 regardless of k
+    expect(scores60.find(n => n.id === "r1")!.importance).toBeCloseTo(1.0, 6);
+    expect(scores10.find(n => n.id === "r1")!.importance).toBeCloseTo(1.0, 6);
+  });
+
+  test("empty input returns empty array", () => {
+    const result = computeRRFScores([], { queryText: "" });
+    expect(result).toEqual([]);
+  });
+
+  test("null/undefined importance does not crash and ranks bottom", () => {
+    const nodes = [
+      makeNode({ id: "high", importance: 0.9, lastAccessed: null }),
+      makeNode({ id: "null-imp", importance: null as unknown as number, lastAccessed: null }),
+      makeNode({ id: "undef-imp", importance: undefined as unknown as number, lastAccessed: null }),
+    ];
+    const result = computeRRFScores(nodes, { queryText: "" });
+    expect(result).toHaveLength(3);
+    // Ties in importance sort stably; both bottom nodes get distinct ranks
+    expect(result[0]!.id).toBe("high");
+    expect(Number.isFinite(result[1]!.importance)).toBe(true);
+    expect(Number.isFinite(result[2]!.importance)).toBe(true);
+  });
+
+  test("k=0 and negative k are clamped to 1, no NaN", () => {
+    const nodes = [
+      makeNode({ id: "a", importance: 0.9, lastAccessed: null }),
+      makeNode({ id: "b", importance: 0.8, lastAccessed: null }),
+    ];
+    const bm25 = new Map([["a", 1.0], ["b", 0.5]]);
+    for (const badK of [0, -5, -60]) {
+      const result = computeRRFScores(nodes, { queryText: "hello", rrfK: badK, bm25Scores: bm25 });
+      expect(result).toHaveLength(2);
+      expect(result.every(n => Number.isFinite(n.importance))).toBe(true);
+      expect(result[0]!.id).toBe("a");
+      expect(result[0]!.importance).toBeCloseTo(1.0, 6);
+    }
   });
 });
 

@@ -81,7 +81,7 @@ function setup() {
         overrides.usefulnessScore ?? 0,
         overrides.category ?? null,
         overrides.expiresAt ?? null,
-        overrides.projectName ?? null,
+        overrides.projectName ?? (overrides.scope === "project" ? "test-project" : null),
         overrides.tags ? JSON.stringify(overrides.tags) : null,
       ],
     );
@@ -114,7 +114,7 @@ describe("searchByEmbedding", () => {
       { id: "n2", embedding: makeEmbedding(-0.5, -0.3), scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, query, 5);
+    const results = await searchByEmbedding(getDb, query, 5, { projectName: "test-project" });
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results[0]!.id).toBe("n1");
   });
@@ -130,7 +130,7 @@ describe("searchByEmbedding", () => {
 
     await getHNSWIndex().rebuild(nodes);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.1), 3);
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.1), 3, { projectName: "test-project" });
     expect(results.length).toBeLessThanOrEqual(3);
   });
 
@@ -148,7 +148,7 @@ describe("searchByEmbedding", () => {
       { id: "high", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { minLevel: 2, maxLevel: 3 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", minLevel: 2, maxLevel: 3 });
     expect(results.find(n => n.id === "low")).toBeUndefined();
     expect(results.find(n => n.id === "mid")).toBeDefined();
     expect(results.find(n => n.id === "high")).toBeUndefined();
@@ -166,7 +166,7 @@ describe("searchByEmbedding", () => {
       { id: "sem", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { categoryFilter: "semantic" });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", categoryFilter: "semantic" });
     expect(results.find(n => n.id === "ep")).toBeUndefined();
     expect(results.find(n => n.id === "sem")).toBeDefined();
   });
@@ -183,7 +183,7 @@ describe("searchByEmbedding", () => {
       { id: "storedctx", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { typeFilter: "storedcontext" });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", typeFilter: "storedcontext" });
     expect(results.find(n => n.id === "note")).toBeUndefined();
     expect(results.find(n => n.id === "storedctx")).toBeDefined();
   });
@@ -200,7 +200,7 @@ describe("searchByEmbedding", () => {
       { id: "b", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10);
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
     expect(results.find(n => n.id === "a")).toBeDefined();
     expect(results.find(n => n.id === "b")).toBeDefined();
   });
@@ -217,7 +217,7 @@ describe("searchByEmbedding", () => {
       { id: "useless", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { minUsefulness: 3 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", minUsefulness: 3 });
     expect(results.find(n => n.id === "useful")).toBeDefined();
     expect(results.find(n => n.id === "useless")).toBeUndefined();
   });
@@ -235,6 +235,7 @@ describe("searchByEmbedding", () => {
     ]);
 
     const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, {
+      projectName: "test-project",
       levelWeights: { 0: 2.0, 4: 0.1 },
     });
     const l0 = results.find(n => n.id === "l0");
@@ -270,7 +271,7 @@ describe("searchByEmbedding", () => {
       { id: "usage-test", embedding: emb, scope: "project" },
     ]);
 
-    await searchByEmbedding(getDb, makeEmbedding(0.5), 10);
+    await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
 
     const row = projectDb.query("SELECT times_used FROM memory_nodes WHERE id = ?").get("usage-test") as { times_used: number } | null;
     expect(row!.times_used).toBe(1);
@@ -284,7 +285,7 @@ describe("searchByEmbedding", () => {
     // Don't rebuild HNSW — HNSW will return no results
     // searchByEmbedding should fall back to cosine similarity
     const query = makeEmbedding(0.5, 0.3, 0.1);
-    const results = await searchByEmbedding(getDb, query, 10);
+    const results = await searchByEmbedding(getDb, query, 10, { projectName: "test-project" });
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results.some(n => n.id === "fallback-node")).toBe(true);
   });
@@ -301,7 +302,7 @@ describe("searchByEmbedding", () => {
       { id: "expired", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10);
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
     expect(results.find(n => n.id === "alive")).toBeDefined();
     expect(results.find(n => n.id === "expired")).toBeUndefined();
   });
@@ -324,9 +325,15 @@ describe("searchByEmbedding", () => {
     const query = Array.from({length: 384}).fill(0);
     query[0] = 1.0;
     query[1] = 1.0;
-    const results = await searchByEmbedding(getDb, query, 10);
-    expect(results.find(n => n.id === "g-node")).toBeDefined();
-    expect(results.find(n => n.id === "p-node")).toBeDefined();
+    // Without projectName only global nodes are returned
+    const globalResults = await searchByEmbedding(getDb, query, 10);
+    expect(globalResults.find(n => n.id === "g-node")).toBeDefined();
+    expect(globalResults.find(n => n.id === "p-node")).toBeUndefined();
+
+    // With projectName only the matching project node is returned
+    const projectResults = await searchByEmbedding(getDb, query, 10, { projectName: "test-project" });
+    expect(projectResults.find(n => n.id === "g-node")).toBeUndefined();
+    expect(projectResults.find(n => n.id === "p-node")).toBeDefined();
   });
 });
 
@@ -362,7 +369,7 @@ describe("searchByEmbedding temporal expansion", () => {
 
     insertTemporalEdge("seed", "related");
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { temporalHops: 0 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", temporalHops: 0 });
     expect(results.find(n => n.id === "seed")).toBeDefined();
     expect(results.find(n => n.id === "related")).toBeDefined();
     // Both should be found via HNSW, not temporal expansion
@@ -384,7 +391,7 @@ describe("searchByEmbedding temporal expansion", () => {
 
     insertTemporalEdge("seed", "temp-adjacent", "NEXT");
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { temporalHops: 1 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", temporalHops: 1 });
     const tempNode = results.find(n => n.id === "temp-adjacent");
     expect(tempNode).toBeDefined();
     expect(tempNode!.importance).toBeGreaterThan(0);
@@ -408,7 +415,7 @@ describe("searchByEmbedding temporal expansion", () => {
     insertTemporalEdge("seed", "hop1", "NEXT");
     insertTemporalEdge("hop1", "hop2", "NEXT");
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { temporalHops: 2 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", temporalHops: 2 });
     const hop1 = results.find(n => n.id === "hop1");
     const hop2 = results.find(n => n.id === "hop2");
     expect(hop1).toBeDefined();
@@ -432,7 +439,7 @@ describe("searchByEmbedding temporal expansion", () => {
 
     insertTemporalEdge("seed", "session-mate", "DURING_SESSION");
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { temporalHops: 1 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", temporalHops: 1 });
     expect(results.find(n => n.id === "session-mate")).toBeDefined();
   });
 
@@ -451,7 +458,7 @@ describe("searchByEmbedding temporal expansion", () => {
 
     insertTemporalEdge("seed", "temp-node", "NEXT");
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { queryText: "", temporalHops: 1 });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", queryText: "", temporalHops: 1 });
     expect(results.find(n => n.id === "temp-node")).toBeDefined();
   });
 });
@@ -475,8 +482,8 @@ describe("searchByEmbedding BM25 integration", () => {
 
     // With queryText, BM25 boosts the matching node
     const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, {
+      projectName: "test-project",
       queryText: "hello world",
-      bm25Weight: 0.5,
     });
 
     const matchIdx = results.findIndex(n => n.id === "match");
@@ -494,7 +501,7 @@ describe("searchByEmbedding BM25 integration", () => {
       { id: "n1", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10);
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -517,6 +524,7 @@ describe("searchByEmbedding BM25 integration", () => {
     const queryEmb = Array.from({length: 384}).fill(0);
     queryEmb[5] = 1.0;
     const results = await searchByEmbedding(getDb, queryEmb, 10, {
+      projectName: "test-project",
       queryText: "item 5",
       rerank: true,
     });
@@ -539,7 +547,7 @@ describe("searchByEmbedding BM25 integration", () => {
         { id: "tag-d", embedding: commonEmb },
       ]);
 
-      const results = await searchByEmbedding(getDb, commonEmb, 10, { tagsFilter: ["alpha"] });
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { projectName: "test-project", tagsFilter: ["alpha"] });
       const ids = results.map(n => n.id);
       expect(ids).toContain("tag-a");
       expect(ids).toContain("tag-b");
@@ -557,7 +565,7 @@ describe("searchByEmbedding BM25 integration", () => {
         { id: "all-b", embedding: commonEmb },
       ]);
 
-      const results = await searchByEmbedding(getDb, commonEmb, 10, { tagsFilter: [] });
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { projectName: "test-project", tagsFilter: [] });
       expect(results.length).toBe(2);
     });
   });
@@ -570,7 +578,7 @@ describe("searchByEmbedding BM25 integration", () => {
       insertNode(projectDb, { id: "epi-node", embedding: commonEmb, category: "episodic", scope: "project" });
       await getHNSWIndex().rebuild([{ id: "sem-node", embedding: commonEmb }, { id: "epi-node", embedding: commonEmb }]);
 
-      const results = await searchByEmbedding(getDb, commonEmb, 10, { intent: "read" });
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { projectName: "test-project", intent: "read" });
       const semIdx = results.findIndex(n => n.id === "sem-node");
       const epiIdx = results.findIndex(n => n.id === "epi-node");
       expect(semIdx).toBeLessThan(epiIdx);
@@ -583,7 +591,7 @@ describe("searchByEmbedding BM25 integration", () => {
       insertNode(projectDb, { id: "epi-node", embedding: commonEmb, category: "episodic", scope: "project" });
       await getHNSWIndex().rebuild([{ id: "sem-node", embedding: commonEmb }, { id: "epi-node", embedding: commonEmb }]);
 
-      const results = await searchByEmbedding(getDb, commonEmb, 10, { intent: "debug" });
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { projectName: "test-project", intent: "debug" });
       const epiIdx = results.findIndex(n => n.id === "epi-node");
       const semIdx = results.findIndex(n => n.id === "sem-node");
       expect(epiIdx).toBeLessThan(semIdx);
@@ -596,7 +604,7 @@ describe("searchByEmbedding BM25 integration", () => {
       insertNode(projectDb, { id: "epi-node", embedding: commonEmb, category: "episodic", scope: "project" });
       await getHNSWIndex().rebuild([{ id: "sem-node", embedding: commonEmb }, { id: "epi-node", embedding: commonEmb }]);
 
-      const results = await searchByEmbedding(getDb, commonEmb, 10, { intent: "discovery" });
+      const results = await searchByEmbedding(getDb, commonEmb, 10, { projectName: "test-project", intent: "discovery" });
       const seen = new Map(results.map((n, i) => [n.id, i]));
       // Both nodes should appear (discovery doesn't penalize either)
       expect(seen.has("sem-node")).toBe(true);

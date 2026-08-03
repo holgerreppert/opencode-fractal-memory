@@ -566,7 +566,7 @@ describe("sqlite store", () => {
       metadata: null,
     });
 
-    const results = await store.drilldownQuery("authentication", 10);
+    const results = await store.drilldownQuery("authentication", 10, store.projectName);
 
     expect(results.length).toBeGreaterThan(0);
     expect(results[0]).toHaveProperty("node");
@@ -587,6 +587,35 @@ describe("sqlite store", () => {
     const results = await store.drilldownQuery("auth module", 10, "project-a");
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results.every(r => r.node.projectName === "project-a")).toBe(true);
+  });
+
+  test("drilldownQuery text fallback respects projectName filter (embedding IS NULL)", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "SQLite WAL mode legacy note for A", level: 0, parentIds: null, embedding: null, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "SQLite WAL mode legacy note for B", level: 0, parentIds: null, embedding: null, projectName: "project-b" });
+
+    const results = await store.drilldownQuery("SQLite WAL mode", 5, "project-a");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every(r => r.node.projectName === "project-a")).toBe(true);
+  });
+
+  test("BM25-only leg excludes other project nodes", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    await store.createNode({ scope: "project", content: "SQLite WAL mode explained in detail here", level: 0, parentIds: null, embedding: null, projectName: "project-a" });
+    await store.createNode({ scope: "project", content: "SQLite WAL mode explained in detail here", level: 0, parentIds: null, embedding: null, projectName: "project-b" });
+
+    const results = await store.searchByEmbedding(Array.from({ length: 384 }).fill(0.1) as number[], 10, {
+      queryText: "SQLite WAL mode",
+      projectName: "project-a",
+    });
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every(n => n.projectName === "project-a")).toBe(true);
   });
 
   test("runPatternExtraction creates pattern summary", async () => {
@@ -783,7 +812,7 @@ describe("sqlite store", () => {
     const hybridResults = await store.searchByEmbedding(
       [0.1, 0.2, 0.3, 0.4],
       5,
-      { bm25Weight: 0.5, queryText: "SQLite WAL mode" }
+      { queryText: "SQLite WAL mode", projectName: store.projectName }
     );
 
     expect(hybridResults.length).toBeGreaterThan(0);
@@ -1163,7 +1192,7 @@ describe("sqlite store", () => {
       importance: 0.8,
     });
 
-    const result = await store.drilldownQuery("test node", 3);
+    const result = await store.drilldownQuery("test node", 3, store.projectName);
     expect(result.length).toBeGreaterThan(0);
   });
 
@@ -1375,7 +1404,7 @@ describe("sqlite store", () => {
     expect(before.timesUsed).toBe(0);
 
     // Search should increment timesUsed
-    await store.searchByEmbedding(Array.from({length: 384}).fill(0.1), 10);
+    await store.searchByEmbedding(Array.from({length: 384}).fill(0.1), 10, { projectName: store.projectName });
 
     const after = await store.getNode(node.id);
     expect(after.timesUsed).toBeGreaterThanOrEqual(1);
@@ -1406,7 +1435,7 @@ describe("sqlite store", () => {
     });
 
     // Search with minUsefulness = 3 should only return high usefulness node
-    const results = await store.searchByEmbedding(embedding, 10, { minUsefulness: 3 });
+    const results = await store.searchByEmbedding(embedding, 10, { minUsefulness: 3, projectName: store.projectName });
 
     const foundIds = results.map(r => r.id);
     expect(foundIds).toContain(highUsefulness.id);
@@ -1440,7 +1469,7 @@ describe("sqlite store", () => {
       usefulnessScore: 5,
     });
 
-    const results = await store.searchByEmbedding(baseEmbedding, 10);
+    const results = await store.searchByEmbedding(baseEmbedding, 10, { projectName: store.projectName });
 
     // The higher usefulness node should have higher importance score
     const result1 = results.find(r => r.id === node1.id);

@@ -17,7 +17,7 @@ export interface NodeRepository {
   searchByEmbedding(query: number[], limit?: number | undefined, options?: {
     minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined;
     levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
-    bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined;
+    rrfK?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined;
     bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined;
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
     temporalHops?: number | undefined;

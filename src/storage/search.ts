@@ -5,7 +5,7 @@ import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
-import { computeBM25ScoresSQL, computeFinalScores, rerankResults } from "./queries/search-helpers";
+import { computeBM25ScoresSQL, computeRRFScores, rerankResults } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding } from "./utils";
 
 type Stratum = "hot" | "warm" | "cold";
@@ -122,7 +122,7 @@ export async function searchByEmbedding(
     minLevel?: MemoryNodeLevel | undefined;
     maxLevel?: MemoryNodeLevel | undefined;
     levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
-    bm25Weight?: number | undefined;
+    rrfK?: number | undefined;
     queryText?: string | undefined;
     minUsefulness?: number | undefined;
     rerank?: boolean | undefined;
@@ -157,8 +157,8 @@ export async function searchByEmbedding(
       const projectFilter = options?.projectName !== undefined && scope === "project";
 
       const placeholders = Array.from(candidateIds).map(() => "?").join(",");
-      const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?)${projectFilter ? " AND project_name = ?" : ""}`;
-      const params: (string | number)[] = [...Array.from(candidateIds), Date.now()];
+      const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""}`;
+      const params: (string | number)[] = [...Array.from(candidateIds), Date.now(), scope];
       if (projectFilter) params.push(options!.projectName!);
       const rows = db.query(sql).all(...params) as SqliteNode[];
 
@@ -206,8 +206,8 @@ export async function searchByEmbedding(
     for (const scope of scopes) {
       const db = await getDb(scope);
       const projectFilter = options?.projectName !== undefined && scope === "project";
-      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?)${projectFilter ? " AND project_name = ?" : ""} LIMIT ?`;
-      const params: (number | string)[] = [minLevel, maxLevel, minUsefulness, Date.now()];
+      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} LIMIT ?`;
+      const params: (number | string)[] = [minLevel, maxLevel, minUsefulness, Date.now(), scope];
       if (projectFilter) params.push(options!.projectName!);
       params.push(limit * 5);
       const rows = db.query(sql).all(...params) as SqliteNode[];
@@ -257,9 +257,9 @@ export async function searchByEmbedding(
 
       // Get all non-expired node IDs for this scope
       const projectFilter = options?.projectName !== undefined && scope === "project";
-      let idSql = "SELECT id FROM memory_nodes WHERE (expires_at IS NULL OR expires_at > ?)";
+      let idSql = "SELECT id FROM memory_nodes WHERE (expires_at IS NULL OR expires_at > ?) AND scope = ?";
       if (projectFilter) idSql += " AND project_name = ?";
-      const idParams: (string | number)[] = [Date.now()];
+      const idParams: (string | number)[] = [Date.now(), scope];
       if (projectFilter) idParams.push(options!.projectName!);
       const allRows = db.query(idSql).all(...idParams) as { id: string }[];
       const allNodeIds = allRows.map(r => r.id);
@@ -280,8 +280,8 @@ export async function searchByEmbedding(
 
       if (bm25OnlyIds.length > 0) {
         const placeholders = bm25OnlyIds.map(() => "?").join(",");
-        const bm25Sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (expires_at IS NULL OR expires_at > ?)`;
-        const bm25Rows = db.query(bm25Sql).all(...bm25OnlyIds, Date.now()) as SqliteNode[];
+        const bm25Sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?`;
+        const bm25Rows = db.query(bm25Sql).all(...bm25OnlyIds, Date.now(), scope) as SqliteNode[];
 
         for (const row of bm25Rows) {
           const node = rowToNode(row);
@@ -311,7 +311,7 @@ export async function searchByEmbedding(
     options = { ...options, bm25Scores };
   }
 
-  const finalNodes = computeFinalScores(scoredNodes, options);
+  const finalNodes = computeRRFScores(scoredNodes, options);
 
   // Multi-hop temporal expansion: expand top candidates along temporal edges with score decay
   const temporalHops = options?.temporalBoost?.boostFactor !== undefined ? 1 : (options?.temporalHops ?? 0);
@@ -335,13 +335,13 @@ export async function searchByEmbedding(
 
     // Add expanded nodes not already in finalNodes
     const existingIds = new Set(finalNodes.map(n => n.id));
-    const allScope: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global", "project"];
+    const allScope: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
     for (const scope of allScope) {
       const db = await getDb(scope);
       const toFetch = [...expandedIds].filter(id => !existingIds.has(id));
       if (toFetch.length === 0) continue;
       const placeholders = toFetch.map(() => "?").join(",");
-      const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders})`).all(...toFetch) as SqliteNode[];
+      const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND scope = ?`).all(...toFetch, scope) as SqliteNode[];
       for (const row of rows) {
         const node = rowToNode(row);
         const hopScore = hopScores.get(node.id) ?? 0;
@@ -477,12 +477,12 @@ export async function drilldownQuery(
   }
 
   if (results.length < maxResults) {
-    const textScopes: MemoryScope[] = projectName !== undefined ? ["project"] : ["global", "project"];
+    const textScopes: MemoryScope[] = projectName !== undefined ? ["project"] : ["global"];
     for (const scope of textScopes) {
       const db = await deps.getDb(scope);
       const projectFilter = projectName !== undefined && scope === "project";
-      const sql = `SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL)${projectFilter ? " AND project_name = ?" : ""}`;
-      const params: (string | number)[] = [`%${query}%`, `%${query}%`];
+      const sql = `SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL) AND scope = ?${projectFilter ? " AND project_name = ?" : ""}`;
+      const params: (string | number)[] = [`%${query}%`, `%${query}%`, scope];
       if (projectFilter) params.push(projectName);
       const rows = db.query(sql).all(...params) as SqliteNode[];
       for (const row of rows) {

@@ -354,7 +354,7 @@ class SqliteMemoryStore implements MemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; bm25Weight?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined }
+    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; rrfK?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
   }

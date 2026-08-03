@@ -102,7 +102,6 @@ describe("LoCoMo retrieval quality", () => {
         if (evidenceLabels.size === 0) continue;
 
         const retrieved = await store.searchByEmbedding(entry.embedding, 10, {
-          bm25Weight: 0.4,
           queryText: entry.question,
           rerank: true,
           temporalHops: 2,

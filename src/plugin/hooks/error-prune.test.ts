@@ -5,7 +5,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 function makeConfig(overrides?: Record<string, unknown>): MemConfig {
   return {
     enabled: true,
-    autoRetrieve: { enabled: false, topK: 3, minScore: 0.5, ollamaUrl: "", useOllama: false, useOnnx: false, bm25Weight: 0.5 },
+    autoRetrieve: { enabled: false, topK: 3, minScore: 0.5, ollamaUrl: "", useOllama: false, useOnnx: false },
     memoryCompression: { enabled: false, minLevel: 1, targetLevel: 3, maintenanceInterval: 3600000, llmCompressOnAccess: false, llmCompressOnSet: false },
     outputCompression: { enabled: false, maxLines: 50, excludeCommands: [], alwaysFullOnFailure: false, relevanceTrimmingEnabled: false },
     sessionManagement: { enabled: false },
