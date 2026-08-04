@@ -2,6 +2,8 @@ export { createAutoRetrieveHook } from "./auto-retrieve";
 export type { AutoRetrieveDeps } from "./auto-retrieve";
 export { distillRules } from "./auto-distill";
 export type { AutoDistillConfig } from "./auto-distill";
+export { extractSessionLessons } from "./lesson-extraction";
+export type { AutoLessonsConfig } from "./lesson-extraction";
 export { predictiveRateToolCall, applyScoreDecay } from "./predictive-rating";
 export type { PredictiveRatingConfig } from "./predictive-rating";
 export { runConsolidation } from "./consolidation";

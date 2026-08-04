@@ -1,7 +1,7 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
-import { distillRules, runConsolidation, applyScoreDecay } from "../../application";
+import { distillRules, runConsolidation, applyScoreDecay, extractSessionLessons } from "../../application";
 import { cleanupMiddleTermCaptures } from "../state";
 import { ensureBackgroundGraph } from "../../application/graph/build";
 import type { HookHandler } from "./types";
@@ -35,6 +35,12 @@ export function createEventHandler(
         await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
 
         const tasks: string[] = [];
+        if (config?.autoLessons?.enabled) {
+          extractSessionLessons(store, config.autoLessons, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
+            memLog("info", "auto-lessons", msg)
+          ).catch(err => memLog("error", "auto-lessons", "Failed", { error: String(err) }));
+          tasks.push("lessons");
+        }
         if (config?.autoDistill?.enabled) {
           distillRules(store, config.autoDistill, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
             memLog("info", "auto-distill", msg)

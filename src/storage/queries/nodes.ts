@@ -82,6 +82,7 @@ const TYPE_CATEGORY: Record<string, MemoryCategory> = {
   "debug-investigation": "episodic",
   improvement: "episodic",
   review: "episodic",
+  lesson: "semantic",
 };
 
 const TYPE_SUPERTYPE: Record<string, MemorySupertype> = {

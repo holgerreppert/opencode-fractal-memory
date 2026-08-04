@@ -50,6 +50,10 @@ export function computeQualityMultiplier(node: MemoryNode): number {
   if (t === "storedcontext") return 0.5;
   const label = (node.label ?? "").toLowerCase();
   if (label.startsWith("middle-term:") || label.startsWith("[history]")) return 0.6;
+  // Purpose-centric labels — the highest-value content for a coding agent
+  // (ArcticMem Tier-2, Metis, LME-V2): distilled lessons, decisions with
+  // rationale, confirmed conventions, and stable codebase facts.
+  if (label.startsWith("lesson:") || label.startsWith("decision:") || label.startsWith("convention:") || label.startsWith("fact:")) return 1.3;
   if (label.startsWith("knowledge:") || label.startsWith("rule:") || label.startsWith("skill:")) return 1.25;
   if (label.startsWith("plan:") || label.startsWith("task:")) return 1.1;
   if (t === "skill" || t === "playbook" || t === "core") return 1.15;
