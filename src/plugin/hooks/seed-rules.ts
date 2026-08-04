@@ -20,6 +20,7 @@ const RULE_LABELS = [
   { label: "rule:feature:tag-intersection-search", type: "info" },
   { label: "rule:feature:source-propagation", type: "info" },
   { label: "rule:feature:confidence-diminishing-returns", type: "info" },
+  { label: "rule:feature:auto-lessons", type: "info" },
 ];
 
 function extractKeywords(text: string): Set<string> {

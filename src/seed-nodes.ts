@@ -284,6 +284,14 @@ tag: rule:feature
 memory(mode="verify") uses a diminishing-returns formula: confidence increases by \`0.2/(1+verificationCount)\`. First verify: +0.20, second: +0.10, third: +0.067. Each verification also increments verification_count. This prevents rapid confidence saturation.`,
   },
   {
+    label: "rule:feature:auto-lessons",
+    tag: "rule:feature",
+    content: `Purpose-Centric Lessons Feature
+tag: rule:feature
+
+At session idle, the plugin auto-extracts a distilled \`lesson\` node (label \`lesson:<ts>\`, type \`lesson\`, tag \`sig:<failed-tools>\`) from the session's failed tool calls — what failed, on which files, and how to avoid it next time. Dedup: a lesson whose failure signature already exists in the store is skipped. Query them like any memory: searching with intent \`debug\` prioritizes \`lesson:\`/\`bug:\`/\`fix:\` nodes, and \`lesson:\`/\`decision:\`/\`convention:\`/\`fact:\` labels are ranked highest. use_llm (learn(mode="reflect")) and autoLessons.useLlm generate concrete prevention rules.`,
+  },
+  {
     label: "rule:feature:domain-classification",
     tag: "rule:feature",
     content: `Domain Classification Feature
