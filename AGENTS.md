@@ -4,31 +4,38 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 ## Architecture
 
+- **Layers**: domain ports (`src/domain/ports/` — interfaces only) ← infrastructure (`src/storage/`, `src/infrastructure/`) ← application logic (`src/application/`) ← plugin adapters (`src/plugin/hooks/`). Composition root at `src/infrastructure/composition-root.ts` wires everything.
 - **Storage**: SQLite (`~/.config/opencode/memory.db`), sqlite-vec (cosine sim), FTS5 (BM25)
-- **Hooks**: `tool.execute.before` (re-read elimination), `tool.execute.after` (memory + compression + graph-context + graph-edit-check + graph-search-hint), `experimental.chat.system.transform` (rule injection), `experimental.chat.messages.transform` (auto-retrieve reranking + memory injection), `chat.message` (session ID tracking), `event` (lifecycle)
-- **Management app**: Served on `http://localhost:8787`, spawned as subprocess. API at `src/management/routes.ts`, UI at `management/public/`
-- **Config**: `~/.config/opencode/opencode-mem.json`, Zod schema at `src/config.ts`
-- **Logging**: Per-feature logs at `~/.config/opencode/logs/` — `memory-plugin.log`, `compress.log`, `sessionlog.log`, `graph-usage.log` (`src/logging.ts`)
+- **Hooks** (`tool.execute.before`/`after`, `experimental.chat.system.transform`, `experimental.chat.messages.transform`, `chat.message`, `event`): ~20 extracted handlers in `src/plugin/hooks/`, orchestrated by `src/plugin/hooks.ts`
+- **Management app**: served on `http://localhost:8787`, spawned as subprocess. API at `src/management/routes.ts`, UI at `management/public/`
+- **Config**: `~/.config/opencode/opencode-mem.json`, Zod schema at `src/infrastructure/config/config.ts`
+- **Logging**: per-feature logs at `~/.config/opencode/logs/` — `memory-plugin.log`, `compress.log`, `sessionlog.log`, `graph-usage.log` (`src/logging.ts`)
 
-## Core Features
+## Features
 
-**Command Output Compression** (`tool.after` for `bash`): Tiered pipeline — Tier 0 verbatim pass-through (outputs < `verbatimBelowLines`=40 lines or <80 chars never compressed), net-win gate (skip unless BPE-estimated savings ≥ `netWinMinTokens`=24 tokens; empty/whitespace candidates always rejected), benign-aware threshold (clean output compresses only beyond `benignThreshold`=1000 lines; error-bearing beyond `errorThreshold`=500, error output always verbatim). Payload-preserving strategies: grep keeps matched lines up to `keepMatches`=15 (strict `path:line:content` detection rejects ps/table garble), ls keeps filenames up to `keepNames`=50 (never bare counts), git status keeps the changed-file list (long format + porcelain ` M`/`?? `/`A `), tables keep header+rows up to `keepRows`=20 (token-count detection). Structural shape detection (JSON/CSV/stack/tree/table), fuzzy dedup (trigram Jaccard), relevance trimming, delta compression, output offloading. **Always-reversible**: original stashed on every compression with `[Original stashed — cat <path>]` marker + `[ids_preserved: …]` factsheet. `applyWordAbbreviations` never rewrites tokens containing `/`, `.`, `:` (path safety). Impl: orchestration at `src/application/command-compression/pipeline.ts`, strategy registry at `src/application/command-compression/strategy.ts` (12 entries), per-command strategies in `strategies/`, type detect/compress in `output-types/`, helpers in `utils/`; `src/application/command-compression.ts` is a re-export barrel. Hook at `src/plugin/hooks/compression.ts`.
+- **Command Output Compression** (`tool.execute.after` for `bash`): tiered pipeline (verbatim pass-through below thresholds, net-win gate, benign/error-aware), payload-preserving strategies (grep/ls/git-status/table), structural shape detection, fuzzy dedup, delta compression, output offloading. Always reversible — original stashed with `[Original stashed — cat <path>]` marker. Impl: `src/application/command-compression/pipeline.ts` (orchestration), `strategy.ts` (registry), `strategies/`, `output-types/`; hook at `src/plugin/hooks/compression.ts`.
+- **Output Token Control** (`experimental.chat.system.transform`): injects concise-output rule based on context pressure. Modes: adaptive/always-on/off; strategies: concise/sentence_limit/char_limit/bullet_only/custom. Impl at `src/application/output-token-control.ts`.
+- **Re-Read Elimination** (`tool.execute.before` for `read`): serves cached file content when mtime unchanged. Impl at `src/application/re-read-elimination.ts`.
+- **Auto Graph Hints** (`tool.execute.after` for `grep`/`glob`/`search`): appends up to 3 symbol suggestions as a `[code-graph-search-hint]` block. Impl at `src/plugin/hooks/graph-search-hint.ts`.
+- **Auto-Skeletonize on Large Reads** (`tool.execute.after` for `read`): generates skeleton via `extractSkeleton` for files ≥ `autoSkeletonizeMinLines` (default 300). Impl at `src/plugin/hooks/graph-context.ts`.
+- **Auto-Retrieve** (`experimental.chat.messages.transform`): reranking pipeline (LLM judge via `client.session.prompt({noReply:true})`, Ollama fallback, ONNX cross-encoder). Pressure-aware injection: aggressive phase filters importance ≥ 0.6, critical ≥ 0.8. Impl at `src/application/auto-retrieve/`.
+- **Injection Visibility**: every injection surface emits `[memory-plugin:<feature>]` inline markers + a per-turn digest summary message, and persists to `injection_metrics` (so previously-silent injections — re-read, compression, graph-context — appear in the management live feed). Config: `injectionVisibility {enabled, markers, digest}` (all default true). Impl: `src/application/injection-visibility.ts`, `src/plugin/hooks/injection-digest.ts`.
+- **Memory Categorization**: nodes have `type` → `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (read/edit/debug/discovery) with temporal stratification and entity boosting. Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`.
+- **Code Graph** (pull-based `graph` tool): relations `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. AST knowledge graph via tree-sitter WASM (32 languages), auto-refreshes on edit/write. Plugin + MCP. Impl at `src/tools/graph.ts`, `src/application/graph/`.
+- **Brain Mesh 3D Layout** (management app): Desikan-Killiany atlas brain mesh (70 DK parcels → 5 regions in ~101 KB GLB), vertex-averaged centroids, Fibonacci scattering. Build at `scripts/build-brain-glb.ts`, GLB parser at `management/public/glb-loader.js`. See `docs/threejs/brainregions.md`.
 
-**Output Token Control** (`experimental.chat.system.transform`): Injects concise-output rule into system prompt based on context pressure. Modes: adaptive/always-on/off. Strategies: concise/sentence_limit/char_limit/bullet_only/custom. Impl at `src/hooks/output-token-control.ts`.
+## Codebase Layout
 
-**Re-Read Elimination** (`tool.execute.before` for `read`): Serves cached file content when mtime unchanged. Impl at `src/hooks/re-read-elimination.ts`.
-
-**Auto Graph Hints** (`tool.execute.after` for `grep`/`glob`/`search`): After search tools, searches the code graph for matching symbols (functions/classes/interfaces) and appends up to 3 suggestions as a compact `[code-graph-search-hint]` block. Dedup guard skips if output already has graph context. Impl at `src/plugin/hooks/graph-search-hint.ts`.
-
-**Auto-Skeletonize on Large Reads** (`tool.execute.after` for `read`): When reading files ≥ `autoSkeletonizeMinLines` lines (default 300), generates a skeleton via `extractSkeleton` and prepends it before content. Skipped on offset reads and empty skeletons. Impl at `src/plugin/hooks/graph-context.ts`.
-
-**Auto-Retrieve** (`experimental.chat.messages.transform`): Reranking pipeline with LLM judge scoring (via `client.session.prompt({noReply:true})`), Ollama fallback, ONNX cross-encoder. Pressure-aware injection filtering: at aggressive phase filters by importance ≥ 0.6; at critical phase ≥ 0.8. Impl at `src/hooks/auto-retrieve/`.
-
-**Memory Categorization** (multi-phase): Nodes have `type` → auto-derived `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (`read`/`edit`/`debug`/`discovery`) for intent-aware biasing. Temporal stratification (hot/warm/cold) penalizes stale nodes. Tags (`string[]`), source provenance, and verification count tracked. Management UI shows all fields. Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`, `src/domain/ports/MemoryStore.ts`.
-
-**Code Graph** (pull-based `graph` tool): Navigate code dependencies on demand. Relations: `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. Builds AST knowledge graph via tree-sitter WASM (32 languages). Auto-refreshes on edit/write. Available as both plugin tool and MCP tool. Impl at `src/tools/graph.ts`, `src/application/graph/`.
-
-**Brain Mesh 3D Layout** (management app): Replaced procedural sphere indicators with actual Desikan-Killiany atlas brain mesh (70 DK parcels → 5 regions in ~101 KB GLB). Nodes positioned at vertex-averaged region centroids with Fibonacci sphere scattering + 5-pass overlap resolution. Build pipeline at `scripts/build-brain-glb.ts`, standalone GLB 2.0 parser at `management/public/glb-loader.js`, scene integration at `app.js:_showBrainLayout()` (lines 651+). Impl at `management/public/`. See `docs/threejs/brainregions.md`.
+| Directory | Role |
+|---|---|
+| `src/domain/ports/` | Hexagonal ports — interfaces only (`MemoryStore`, `NodeRepository`, `SessionTracker`, …) |
+| `src/storage/` | Persistence: `sqlite.ts` (store), `queries/` (SQL modules), `migrations/` |
+| `src/application/` | Domain logic: command-compression, auto-retrieve, graph, injection-visibility, … |
+| `src/infrastructure/` | Composition root, config, LLM adapters (ONNX/embeddings/cross-encoder/ollama) |
+| `src/plugin/` | OpenCode adapter: `index.ts` (entry), `hooks.ts` (orchestration), `hooks/` (handlers), `tools/` |
+| `src/tools/` | Agent-facing tools: consolidated memory/context/learn/journal, graph, mcp |
+| `src/management/` | Dashboard server: `routes.ts`, `helpers.ts`, `management-standalone.ts` |
+| `management/public/` | Dashboard UI (vanilla JS, Three.js brain mesh) |
 
 ## Graph Tool Usage
 
@@ -59,7 +66,6 @@ done
 **First-time install (if `@yomguithereal/helpers` or `graphology-indices` errors still occur):**
 ```bash
 CACHE=~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory
-# Install all graphology deps into the cache plugin's node_modules
 cd "$CACHE"
 npm install --no-save graphology graphology-communities-louvain graphology-shortest-path graphology-traversal
 ```
@@ -68,94 +74,35 @@ Then restart OpenCode.
 
 ## Coding Paradigms
 
-- **No `I` prefix on interfaces** — `MemoryStore`, `NodeRepository`, `SessionTracker` (not `IMemoryStore`)
+- **No `I` prefix on interfaces** — `MemoryStore`, `NodeRepository`, `SessionTracker`
 - **`exactOptionalPropertyTypes: true`** — optional params use `param?: Type | undefined`; callers omit, don't pass `undefined`
 - **Zod v4 at external boundaries only** — parse at I/O edges (`CreateNodeInput`), not on internal calls (trusted code)
-- **`Record<string, unknown>` over `any`** — for dynamic objects; `unknown` for catch clauses, callback params. Exceptions: `wrapWithTracking(toolDef: any)` (inherently generic), `Bun.spawn` flags in `management-server.ts` (no viable type)
-- **Hexagonal architecture** — domain ports (`src/domain/ports/`), infrastructure implementations (`src/storage/`, `src/infrastructure/`), application layer (`src/application/`)
+- **`Record<string, unknown>` over `any`** — for dynamic objects; `unknown` for catch clauses, callback params. Exceptions: `wrapWithTracking(toolDef: any)`, `Bun.spawn` flags in `management-server.ts` (no viable type)
+- **Hexagonal architecture** — ports in `src/domain/ports/`, implementations in `src/storage/` + `src/infrastructure/`, logic in `src/application/`, adapters in `src/plugin/hooks/`
 - **Composition-root** — `src/infrastructure/composition-root.ts`: split by concern (`initializeStore`, `ensureAssets`, `initializeConfig`, `maybeStartManagement`)
-- **Interfaces + free functions over abstract classes** — `interface MemoryStore`, not `abstract class MemoryStore`
-- **Test mocks: typed partials, no `as any`** — use `as unknown as Type` or `Record<string, unknown>`; avoid `as any`
-- **`noUncheckedIndexedAccess` skipped** — would require `!` on every `arr[i]` with no real safety gain
+- **Interfaces + free functions over abstract classes**
+- **Test mocks: typed partials, no `as any`** — use `as unknown as Type` or `Record<string, unknown>`
 
-## Linting (oxlint)
-
-Uses [oxlint](https://oxc.rs/docs/guide/usage/linter) instead of ESLint — ~100× faster, native TS support, auto-fixes unused imports + variables.
+## Linting, Tests, Rules
 
 ```bash
-bun run lint              # check all source files
+bun run lint              # oxlint — must stay at 0 errors, 0 warnings
 bun run lint:fix          # auto-fix (--fix-dangerously)
+bun test                  # full suite (35 files, 529 tests) — skip search.loco.test.ts (needs pre-seeded DB)
 ```
 
-Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay at 0 errors, 0 warnings.**
-
-## Key Files
-
-| File | Purpose |
-|---|---|---|
-| `src/config.ts` | MemConfig interface + Zod schema + defaults |
-| `src/plugin/hooks.ts` | Thin orchestration — calls 11 extracted handlers |
-| `src/plugin/hooks/compression.ts` | Compression handler + feature banner |
-| `src/application/command-compression/pipeline.ts` | Tiered compression orchestration (gates, registry dispatch, shape/relevance/generic fallbacks) |
-| `src/application/command-compression/strategy.ts` | `CompressStrategy` interface + 12-entry registry (`createStrategyRegistry`) |
-| `src/application/command-compression/strategies/` | Per-command strategies (ls, test, grep, git-status, git-log, git-diff, git-quick, git pull, generic) |
-| `src/application/command-compression/output-types/` | Shape detection + per-type compressors (detect.ts / compress.ts / types.ts) |
-| `src/application/command-compression/utils/` | Helpers: text, signal, scoring, abbreviate (barrels) |
-| `src/plugin/hooks/graph-context.ts` | Read-time graph preamble injection + auto-skeletonize |
-| `src/plugin/hooks/graph-edit-check.ts` | Edit-time dependency warning |
-| `src/plugin/hooks/graph-search-hint.ts` | Auto graph hints on grep/glob/search |
-| `src/plugin/hooks/seed-rules.ts` | Rule loading + system transform injection |
-| `src/plugin/hooks/working-cache.ts` | Working cache population from tool results |
-| `src/plugin/hooks/recording.ts` | Memory tool call recording + predictive rating |
-| `src/plugin/hooks/compaction.ts` | Middle-term capture + stored context archiving |
-| `src/plugin/hooks/events.ts` | Session lifecycle event handling |
-| `src/hooks/compress-output.ts` | 7 compression strategies + generic fallback |
-| `src/hooks/auto-retrieve/index.ts` | Multi-reasoning reranking pipeline |
-| `src/hooks/auto-retrieve/scoring.ts` | Fallback scoring (metadata + keyword overlap) |
-| `src/hooks/output-token-control.ts` | Output token control — rule generation |
-| `src/hooks/re-read-elimination.ts` | Read cache + mtime check |
-| `src/hooks/adaptive-pressure.ts` | Token estimation + pressure phase tracking |
-| `src/storage/sqlite.ts` | SqliteMemoryStore class |
-| `src/storage/migrations/definitions.ts` | DB migrations (increment version, never modify existing) |
-| `src/storage/search.ts` | searchByEmbedding with intent biasing, temporal stratification, BM25 hybrid, entity boosting |
-| `src/storage/queries/nodes.ts` | Node CRUD — Zod schema, TYPE_CATEGORY, TYPE_SUPERTYPE, TYPE_METADATA maps |
-| `src/storage/queries/search-helpers.ts` | BM25 scoring, entity boosting, recency, final score computation |
-| `src/domain/ports/MemoryStore.ts` | MemoryStore interface (hexagonal domain port) |
-| `src/application/entities.ts` | Entity extraction + overlap scoring for multi-signal retrieval |
-| `src/infrastructure/llm/onnx-runtime.ts` | ONNX runtime adapter — tries onnxruntime-node first, falls back to onnxruntime-web |
-| `src/infrastructure/llm/embeddings.ts` | ONNX embedding model (all-MiniLM-L6-v2, 384d) |
-| `src/infrastructure/llm/cross-encoder.ts` | ONNX cross-encoder reranker (ms-marco-MiniLM-L-6-v2) |
-| `src/infrastructure/composition-root.ts` | Composition root — wires all dependencies by concern |
-| `src/logging.ts` | Per-feature logging functions |
-| `src/tools/consolidated/memory.ts` | Consolidated memory tool (search/get/set/delete/list/drilldown/etc.) |
-| `src/tools/consolidated/context.ts` | Consolidated context tool (check/compress/inject/recall/etc.) |
-| `src/tools/consolidated/learn.ts` | Consolidated learn tool (reflect/distill/verify/rate/stats/etc.) |
-| `src/tools/consolidated/journal.ts` | Consolidated journal tool (write/read/search/migrate) |
-| `src/tools/consolidated/journal-migrate.ts` | One-time migration: file-based journal entries → memory nodes |
-| `src/management/routes.ts` | All API route handlers |
-| `src/management/helpers.ts` | withDb, rowToNode, JSON serialization |
-| `src/management-standalone.ts` | Management server entry point (subprocess) |
-| `management/public/index.html` | Management app HTML |
-| `management/public/app.js` | Management app JS |
-| `management/public/glb-loader.js` | Standalone GLB 2.0 binary parser — no GLTFLoader dep |
-| `management/public/models/brain-atlas.glb` | Generated DK atlas brain mesh (~101 KB) |
-| `scripts/build-brain-glb.ts` | Build pipeline merging 70 DK OBJ files into 5-region GLB |
-| `docs/threejs/brainregions.md` | Brain mesh implementation doc |
-
-## Rules
-
-- Always cp to BOTH node_modules AND cache when installing
-- After `cp -r dist "$CACHE/"`, verify the change landed: `grep -q "pattern" "$CACHE/dist/..."` 
+- Always cp to BOTH node_modules AND cache when installing; verify with `grep -q "<pattern>" "$CACHE/dist/..."`
 - Run `bun run lint` before committing — must be 0 errors, 0 warnings
-- Migration version in `definitions.ts` must increment; never modify existing migrations
-- After adding migrations, bump `CURRENT_VERSION` in `src/storage/migrations/index.ts` to match the last migration version in `definitions.ts`
-- Management app config fields: `id` = kebab-case in HTML, load/save in app.js with same pattern
-- Strategy names in `strategy.ts` registry entries must be short strings (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic); `output-types` compressors are reached via the generic fallback
-- When graph build has silent failures (file nodes << expected), check the `@kreuzberg/tree-sitter-language-pack-wasm` type definitions (`*.d.ts`) and docs first — `getParser(name)` **throws** on unknown language, returns parser pre-configured (no `setLanguage` needed), module uses `FinalizationRegistry` for auto-cleanup
+- Migration version in `definitions.ts` must increment; never modify existing migrations; bump `CURRENT_VERSION` in `src/storage/migrations/index.ts` to match
+- After schema migrations that add columns: update ALL explicit SELECT column lists (querySearchText, querySearchBM25) AND mapNode in routes.ts AND NodeLike in helpers.ts AND computeStats aggregations
 - When adding new log files: add write function to `src/logging.ts`, register in section map, create file path constant
-- When adding columns to `memory_nodes`, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) or rowToNode will break
-- After schema migrations, update mapNode in routes.ts to include new fields for management API
-- `verifyNode` must update both confidence (+0.2) AND verification_count (+1) in the same SQL UPDATE
+- `verifyNode` must update both confidence AND verification_count in the same SQL UPDATE — diminishing returns `+0.2/(1+verificationCount)`
+- `source` set on ALL node creation: `manual`, `tool_result`, `auto_extract`, `web_search`, `reflection`, `llm_compress`
+- Source-of-truth linking: encode verification pointers as tags (`file:`, `fn:`, `commit:`, `line:`, `test:`, `cmd:`) on every node — searchable via `tagsFilter`
+- Use the `memory` tool for ALL node CRUD — never bash+sqlite3 (triggers compression overhead)
+- Management app config fields: `id` = kebab-case in HTML, load/save in app.js with same pattern
+- Strategy names in `strategy.ts` registry entries must be short strings (ls, test, grep, git-status, git-log, git-diff, git-quick, truncate, generic)
+- When graph build has silent failures (file nodes << expected), check the `@kreuzberg/tree-sitter-language-pack-wasm` type definitions first — `getParser(name)` **throws** on unknown language, returns parser pre-configured (no `setLanguage`), uses `FinalizationRegistry` for auto-cleanup
 
 ## Critical Memory Nodes
 
@@ -163,49 +110,20 @@ Config at `oxlintrc.json`. Overrides suppress test/benchmark noise. **Must stay 
 
 | Label | Type | Why |
 |---|---|---|
-| `knowledge:management-app-architecture` | knowledge | Full management app structure, API, tab system |
-| `auto-retrieve-status` | summary | Auto-retrieve pipeline state, scores, config |
-| `implementation-plan` | howto | Full architectural improvement plan (all phases) |
-| `architectural-review-plan` | howto | Architecture scoring, bottlenecks, recommendations |
-| `bug:three-bugs-2026-06-15` | fix | Three bugs fixed + root causes |
 | `rule:mandatory:memory` | rule | Memory tool rules (search→get→set chain) |
-| `rule:mandatory:agent-pull` | rule | No auto-injection |
 | `rule:feature:command-compression` | rule | Compression feature details |
-| `rule:feature:memory-tool-usage` | rule | Memory tool best practices + source-of-truth linking convention |
+| `rule:feature:memory-tool-usage` | rule | Memory tool best practices + source-of-truth linking |
 | `rule:feature:auto-retrieve` | rule | Auto-retrieve reranking details |
-| `rule:feature:tag-intersection-search` | rule | tagsFilter option in searchByEmbedding — intersection semantics |
-| `rule:feature:source-propagation` | rule | Source must be set on ALL node creation — values table |
-| `rule:feature:confidence-diminishing-returns` | rule | verifyNode uses 0.2/(1+vc) formula |
-| `output-token-control` | howto | Output token control — config, strategies, levels |
-| `sdk-llm-judge-auto-retrieve` | note | LLM judge via client.session.prompt({noReply:true}) |
-| `memory-llm-compress-session-fix` | note | sessionId threading fix for context(mode="llm_compress") |
-| `enhancements-llm-compress-auto-distill-predictive-rating` | note | Three enhancements implementation |
-| `ollama-memory-feature` | note | Ollama-based local memory system |
-| `middle_term_context_implementation_complete` | implementation | Middle-term context capture |
-| `injection-scoring-improved` | note | Improved injection scoring with relevance-budget selector |
-| `auto-retrieve-fix-complete` | note | Auto-retrieve fix details |
+| `rule:feature:source-propagation` | rule | Source values on node creation |
+| `rule:feature:tag-intersection-search` | rule | tagsFilter intersection semantics |
+| `rule:feature:confidence-diminishing-returns` | rule | verifyNode 0.2/(1+vc) formula |
+| `feat:injection-visibility-complete` | implementation | Markers + digest across 9 surfaces |
+| `feat:injection-visibility-dashboard-persist` | implementation | Silent injections → injection_metrics |
+| `knowledge:management-app-architecture` | knowledge | Management app structure, API, tabs |
+| `implementation-plan` | howto | Graph tool implementation plan |
+| `plan:memory-categorization-improvements` | plan | Memory categorization improvement plan |
+| `bug:three-bugs-2026-06-15` | fix | Three bugs fixed + root causes |
 | `file:src/plugin/hooks.ts` | file | Hook wiring — all features |
-| `file:src/hooks/compress-output.ts` | file | Compression implementation |
 | `file:src/management/routes.ts` | file | All API routes |
 | `file:src/tools/graph.ts` | file | Shared graph tool (plugin + MCP) |
-| `file:src/plugin/hooks/graph-refresh.ts` | file | Auto-refresh on edit/write |
-| `file:src/application/graph/query.test.ts` | file | Tests for callers/callees/callChain |
-| `plan:memory-categorization-improvements` | plan | Full memory categorization improvement plan (project scope) |
-| `pattern:multi-phase-implementation` | pattern | Batch implementation pattern for multi-file schema changes |
-| `feat:source-propagation` | implementation | Source auto-fill in compaction/compress/lifecycle creation sites |
-| `feat:confidence-diminishing-returns` | implementation | verifyNode uses 0.2/(1+vc) instead of flat +0.2 |
-| `feat:tag-intersection-search` | implementation | tagsFilter option in searchByEmbedding with tag intersection filtering |
-| `feat:management-dashboard-charts` | implementation | Supertype/tag cloud/confidence histogram/stratum breakdown cards |
-| `feat:management-tag-editing` | implementation | Inline tag add/remove and source dropdown in detail panel |
-| `file:management/public/app.js` | file | Full management app frontend (3818+ lines, vanilla JS) — brain mesh layout, 3D scene controller |
-| `file:src/management/helpers.ts` | file | Stats computation, rowToNode, computeStats with new aggregations |
-| `feat:brain-layout-adjustments` | implementation | Brain mesh 2.5× scale, vertex centroids, overlap resolution, sprite-label sync |
-
-## Rules
-
-- `source` should be set on ALL node creation: `manual` for user-initiated, `tool_result` for tool output, `auto_extract` for automatic capture, `web_search` for web results, `reflection` for agent reflection, `llm_compress` for compression summaries
-- After schema migrations that add columns, update ALL explicit SELECT column lists (querySearchText, querySearchBM25) AND mapNode in routes.ts AND NodeLike in helpers.ts AND computeStats aggregations
-- Management UI chart data flows: backend computeStats → StatsResult → /api/stats → app.js buildDashboardCharts() → DOM
-- Tag editing pattern: inline DOM manipulation + PUT /api/nodes/:id with {tags: [...]} + showDetailPanel refresh
-- Source-of-truth linking: encode verification pointers as tags (`file:`, `fn:`, `commit:`, `line:`, `test:`, `cmd:`) on every node. Searchable via `tagsFilter`. Every node should answer "where in the repo can this be checked?"
-- Use the `memory` tool for ALL node CRUD — never bash+sqlite3. Bash triggers output compression overhead (scratch files, pipe tangles). Memory tool is purpose-built and avoids all that.
+| `file:management/public/app.js` | file | Management app frontend (brain mesh, 3D scene controller) |

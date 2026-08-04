@@ -6,6 +6,7 @@ import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
 import { computeGate } from "../gate";
 import { selectMMR } from "../mmr";
 import { rewriteQuery } from "../query-refinement";
+import { injectionMarker, recordInjection } from "../injection-visibility";
 
 interface Part {
   type: string;
@@ -172,8 +173,13 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
           if (rewritten) {
             log("info", "memory-rerank: Rewrote query", { original: originalQuery.slice(0, 80), rewritten });
 
-            // Re-search with rewritten query via text/FTS5 (no embedding needed)
-            const newResults = await store.searchText("all" as MemoryScope, rewritten, 30);
+            // Re-search with rewritten query via BM25 (no embedding needed)
+            const { searchNodes } = await import("../search");
+            const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
+            const newResults = await searchNodes(store, generateEmbedding, rewritten, {
+              mode: "bm25",
+              limit: 30,
+            });
 
             if (newResults.length >= 2) {
               const newCandidates = newResults.map(n => ({
@@ -321,10 +327,17 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         }
 
         const gateNote = gateResult.uncertain ? `\n*Gate: uncertain (score gap < ${(0.15 * 100).toFixed(0)}% between top results), showing top candidates only*\n` : "";
+        const markerLine = injectionMarker(config, "auto-retrieve", `${mmrItems.length} reranked node(s)`);
         const resultLines: string[] = [
+          ...(markerLine ? [markerLine, ""] : []),
           `## Reranked Memory Results (${mmrItems.length} matches)`,
           gateNote,
         ];
+
+        const rerankStrategy = ollamaConfig?.enabled ? (ollamaConfig.strategy ?? "ollama")
+          : config.autoRetrieve?.llmJudgeEnabled !== false && client && currentSessionId?.value ? "llm_judge"
+          : "fallback";
+        recordInjection(config, "auto-retrieve", `${mmrItems.length} node(s): ${mmrItems.map(i => i.label).join(", ")} (strategy=${rerankStrategy})`);
 
         for (const item of mmrItems) {
           const scorePct = (item.score * 100).toFixed(0);

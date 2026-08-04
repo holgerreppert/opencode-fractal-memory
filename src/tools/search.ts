@@ -1,7 +1,8 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import type { MemoryNodeType } from "../storage/types";
+import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType } from "../storage/types";
 import { estimateTokens, generateEmbedding } from "../infrastructure/llm/embeddings";
+import { searchNodes } from "../application/search";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking, lastSearchResults } from "./shared";
 
 export function MemoryDrilldown(store: MemoryStore) {
@@ -72,24 +73,35 @@ export function MemorySearch(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Project to search (defaults to the current project)"),
     },
     async execute(args) {
-      const queryEmbedding = await generateEmbedding(args.query);
-      
-      const options: { minLevel?: 0 | 1 | 2 | 3 | 4 | 5; maxLevel?: 0 | 1 | 2 | 3 | 4 | 5; rrfK?: number; queryText?: string; minUsefulness?: number; rerank?: boolean; projectName?: string; categoryFilter?: "episodic" | "semantic"; domainFilter?: string; typeFilter?: MemoryNodeType } = {
-        queryText: args.query,
+      const options: {
+        minLevel?: MemoryNodeLevel;
+        maxLevel?: MemoryNodeLevel;
+        rrfK?: number;
+        minUsefulness?: number;
+        rerank?: boolean;
+        projectName?: string;
+        categoryFilter?: "episodic" | "semantic";
+        domainFilter?: MemoryDomain;
+        typeFilter?: MemoryNodeType;
+        temporalHops?: number;
+      } = {
         rerank: args.rerank ?? true,
       };
-      if (args.min_level !== undefined) options.minLevel = args.min_level as 0 | 1 | 2 | 3 | 4 | 5;
-      if (args.max_level !== undefined) options.maxLevel = args.max_level as 0 | 1 | 2 | 3 | 4 | 5;
+      if (args.min_level !== undefined) options.minLevel = args.min_level as MemoryNodeLevel;
+      if (args.max_level !== undefined) options.maxLevel = args.max_level as MemoryNodeLevel;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;
       if (args.project_name !== undefined) options.projectName = args.project_name;
       options.projectName = options.projectName ?? store.projectName;
-if (args.category_filter !== undefined) options.categoryFilter = args.category_filter;
-if (args.domain_filter !== undefined) options.domainFilter = args.domain_filter;
-if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
-      if (args.temporal_hops !== undefined && args.temporal_hops > 0) (options as { temporalHops?: number }).temporalHops = args.temporal_hops;
+      if (args.category_filter !== undefined) options.categoryFilter = args.category_filter;
+      if (args.domain_filter !== undefined) options.domainFilter = args.domain_filter;
+      if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
+      if (args.temporal_hops !== undefined && args.temporal_hops > 0) options.temporalHops = args.temporal_hops;
       if (args.rrf_k !== undefined) options.rrfK = args.rrf_k;
 
-      let nodes = await store.searchByEmbedding(queryEmbedding, args.limit ?? 10, options);
+      let nodes = await searchNodes(store, generateEmbedding, args.query, {
+        ...options,
+        limit: args.limit ?? 10,
+      });
 
       // Boost usefulness of retrieved nodes
       for (const node of nodes) {

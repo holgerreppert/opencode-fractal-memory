@@ -1,6 +1,7 @@
 import { ensureBackgroundGraph, getActiveGraph } from "../../application/graph/build";
 import { searchNodes } from "../../application/graph/query";
 import type { MemConfig } from "../../infrastructure/config/config";
+import { recordInjection } from "../../application/injection-visibility";
 import { writeGraphLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -59,6 +60,7 @@ export function createGraphSearchHintHandler(config: MemConfig): HookHandler {
       const hint = `\n\n# Also in code graph: ${suggestions.join(", ")} — use skeletonize(path) or graph(explain, id=...) for details`;
 
       writeGraphLog("info", "Search hint injected", { tool: input.tool, query, matches: matches.length });
+      recordInjection(config, "graph-search-hint", `${suggestions.length} symbol(s) for "${query}" (${input.tool})`);
 
       const out = output as { output?: string };
       if (typeof out.output === "string" && !out.output.includes("code graph")) {

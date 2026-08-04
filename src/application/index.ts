@@ -6,4 +6,4 @@ export { predictiveRateToolCall, applyScoreDecay } from "./predictive-rating";
 export type { PredictiveRatingConfig } from "./predictive-rating";
 export { runConsolidation } from "./consolidation";
 export type { ConsolidationConfig } from "./consolidation";
-// Playbooks are now memory nodes (type: "playbook"). Auto-discover is agent-driven.
+export { searchNodes } from "./search";

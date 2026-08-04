@@ -1,6 +1,7 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { getPressurePhase } from "../../application/adaptive-pressure";
+import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { memLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -86,15 +87,18 @@ export function createMessagesTransformHandler(
         const memoryBlock = formatMemoryBlock(filtered.slice(0, 3));
         if (!memoryBlock) return;
 
+        const injectedNodes = filtered.slice(0, 3);
+        const marker = injectionMarker(config, "memory-context", `${injectedNodes.length} node(s), phase=${phase}`) + "\n";
+        const body = `${marker}[Relevant context from memory]\n${memoryBlock}`;
+        recordInjection(config, "memory-context", `${injectedNodes.length} node(s): ${injectedNodes.map(r => r.node?.label ?? r.node?.id).join(", ")} (phase=${phase})`);
+
         out.messages.splice(out.messages.length - 1, 0, {
           info: { role: "user" },
           parts: [{
             type: "text" as const,
-            text: `[Relevant context from memory]\n${memoryBlock}`,
+            text: body,
           }],
         });
-
-        const injectedNodes = filtered.slice(0, 3);
         const nodeTypes: Record<string, number> = {};
         for (const r of injectedNodes) {
           const t = r.node?.type ?? "unknown";

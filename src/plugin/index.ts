@@ -3,6 +3,7 @@ import { createApplication, createAutoRetrieve, scheduleBackgroundEmbeddings } f
 import { createHookHandlers } from "./hooks";
 import { createToolMap } from "./tools";
 import { memLog, perfNow } from "../logging";
+import { resetInjectionLedger } from "../application/injection-visibility";
 import { stopManagementServer, ensureManagementServer } from "../management-server";
 import { setupJournal } from "./init";
 import { createRegisterAgentsHandler } from "./hooks/register-agents";
@@ -82,6 +83,8 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     const out = output as { messages?: Array<{ info: { role?: string; content?: string }; parts?: Array<{ type?: string; text?: string }> }> };
     const messages = out?.messages;
     const sid = currentSessionId.value;
+
+    resetInjectionLedger();
 
     if (sid && messages && messages.length > 0) {
       const lastCount = capturedMessageCounts.get(sid) ?? 0;

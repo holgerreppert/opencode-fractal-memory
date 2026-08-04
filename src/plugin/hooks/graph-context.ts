@@ -2,6 +2,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { getActiveGraph } from "../../application/graph/build";
 import { getFileContext } from "../../application/graph/query";
 import { extractSkeleton } from "../../application/skeletonize";
+import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { writeGraphLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -57,6 +58,7 @@ export function createGraphContextHandler(config: MemConfig): HookHandler {
           if (graphLines.length > 0) {
             preamble += graphLines.join("\n") + "\n\n";
             writeGraphLog("info", "Graph context injected on read", { file: filePath, lines: graphLines.length });
+            recordInjection(config, "graph-context", `imports/symbols/deps preamble on ${filePath}`);
           }
         }
       }
@@ -69,6 +71,7 @@ export function createGraphContextHandler(config: MemConfig): HookHandler {
             if (skeleton) {
               preamble += skeleton + "\n\n";
               writeGraphLog("info", "Auto-skeleton injected on read", { file: filePath, lines: lineCount });
+              recordInjection(config, "graph-context", `auto-skeleton on ${filePath} (${lineCount} lines)`);
             }
           } catch {
             writeGraphLog("warn", "Auto-skeleton failed", { file: filePath });
@@ -77,7 +80,8 @@ export function createGraphContextHandler(config: MemConfig): HookHandler {
       }
 
       if (preamble) {
-        out.output = preamble + raw;
+        const marker = injectionMarker(config, "graph-context", `preamble on ${filePath}`);
+        out.output = (marker ? marker + "\n\n" : "") + preamble + raw;
       }
     },
   };

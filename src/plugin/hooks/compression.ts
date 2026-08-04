@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
+import { recordInjection } from "../../application/injection-visibility";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, type FuzzyDedupConfig } from "../../application/command-compression";
@@ -345,6 +346,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             compressStrategy: strategyLabel,
             deduped: deduped.dedup,
           };
+          recordInjection(config, "compression", `${raw.length}→${finalOutput.length} chars via ${strategyLabel}${deduped.dedup ? " (dedup)" : ""}${stashPath ? " + stash" : ""}`);
           trace(deduped.dedup ? "dedup-applied" : "compression-applied", {
             strategy: strategyLabel,
             compressed_chars: deduped.output.length,

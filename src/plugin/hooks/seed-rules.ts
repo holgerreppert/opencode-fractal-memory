@@ -1,5 +1,6 @@
 import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
+import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -152,6 +153,12 @@ export function createSeedRulesHandler(
           } else {
             out.system.push([neverStripBlock, normalBlock].filter(Boolean).join("\n\n"));
           }
+
+          const marker = injectionMarker(config, "seed-rules", `${reminders.length} rule(s) injected`);
+          if (marker && out.system.length > 0) {
+            out.system[0] += "\n\n" + marker;
+          }
+          recordInjection(config, "seed-rules", `${reminders.length} rule(s) (mandatory=${neverStrip.length}, adaptive=${scoredRules.length - neverStrip.length})`);
         }
 
         if (reminders.length < ruleCache.size) {
@@ -169,7 +176,12 @@ export function createSeedRulesHandler(
             const now = Date.now();
             if (now - lastCrossSessionFetch > 60000) {
               lastCrossSessionFetch = now;
-              const priors = (await store.searchText("all", userMessage, 10))
+              const { searchNodes } = await import("../../application/search");
+              const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
+              const priors = (await searchNodes(store, generateEmbedding, userMessage, {
+                limit: 10,
+                scope: "all",
+              }))
                 .filter(n => n.type === "storedcontext")
                 .slice(0, 3);
               if (priors.length > 0) {
@@ -197,6 +209,7 @@ export function createSeedRulesHandler(
               } else {
                 out.system.push(crossSessionBlock);
               }
+              recordInjection(config, "cross-session-context", `${cachedSnippets.length} prior session snippet(s)`);
               memLog("debug", "seed-rules", `Injected ${cachedSnippets.length} cross-session context snippets`, {
                 sessionId,
                 snippets: cachedSnippets.length,
