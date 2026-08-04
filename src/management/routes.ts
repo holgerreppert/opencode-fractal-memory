@@ -213,30 +213,23 @@ async function handleInject(req: Request, store: MemoryStore): Promise<Response>
 
 async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const q = ctx.url.searchParams.get("q") || "";
-  const mode = ctx.url.searchParams.get("mode") || "text";
+  const mode = ctx.url.searchParams.get("mode") || "hybrid";
   const scope = ctx.url.searchParams.get("scope") as MemoryScope | "all" | null;
   const queryScope = scope ?? ctx.scope as MemoryScope;
   const projectName = queryScope === "project" ? getProjectName() : undefined;
   if (!q.trim()) return jsonResponse([]);
 
   try {
-    if (mode === "text") {
-      const nodes = await store.searchText(queryScope, q, 100, projectName);
-      return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
-    }
-
-    if (mode === "embedding") {
-      const queryEmbedding = await generateEmbedding(q);
-      const nodes = await store.searchByEmbedding(queryEmbedding, 50, { queryText: q, projectName });
-      return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
-    }
-
-    if (mode === "bm25") {
-      const nodes = await store.searchBM25(queryScope, q, 100, projectName);
-      return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
-    }
-
-    return jsonResponse([]);
+    const { searchNodes } = await import("../application/search");
+    const { generateEmbedding } = await import("../infrastructure/llm/embeddings");
+    const opts: { limit: number; mode: "hybrid" | "bm25" | "text"; scope: MemoryScope | "all"; projectName?: string | undefined } = {
+      limit: 100,
+      mode: (mode === "embedding" ? "hybrid" : mode) as "hybrid" | "bm25" | "text",
+      scope: queryScope,
+    };
+    if (projectName !== undefined) opts.projectName = projectName;
+    const nodes = await searchNodes(store, generateEmbedding, q, opts);
+    return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
   } catch (e) {
     memLog("error", "management", "[api] Search error:", { error: e instanceof Error ? e.message : String(e) });
     return jsonResponse({ error: "Search failed" }, 500);

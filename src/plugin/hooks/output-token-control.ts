@@ -2,6 +2,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import type { HookHandler } from "./types";
 import type { OutputTokenControlConfig } from "../../application/output-token-control";
 import { getInjectionText, estimatePressureLevel, logOutputTokenInjection, getCompactionNudge } from "../../application/output-token-control";
+import { recordInjection } from "../../application/injection-visibility";
 
 export function createOutputTokenControlHandler(config: MemConfig): HookHandler {
   const otcConfig = config.outputTokenControl as OutputTokenControlConfig | undefined;
@@ -30,6 +31,7 @@ export function createOutputTokenControlHandler(config: MemConfig): HookHandler 
           out.system.push(tag);
         }
         logOutputTokenInjection(pressureLevel, ruleText);
+        recordInjection(config, "output-token-control", `rule (level=${pressureLevel})`);
       }
 
       const nudgeText = getCompactionNudge(pressureLevel);
@@ -40,6 +42,7 @@ export function createOutputTokenControlHandler(config: MemConfig): HookHandler 
         } else {
           out.system.push(nudgeTag);
         }
+        recordInjection(config, "output-token-control", `compaction nudge (level=${pressureLevel})`);
       }
     },
   };

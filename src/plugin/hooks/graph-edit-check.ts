@@ -1,6 +1,7 @@
 import type { MemConfig } from "../../infrastructure/config/config";
 import { ensureBackgroundGraph, getActiveGraph, buildGraph } from "../../application/graph/build";
 import { getFileContext } from "../../application/graph/query";
+import { recordInjection } from "../../application/injection-visibility";
 import { writeGraphLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -46,6 +47,7 @@ export function createGraphEditCheckHandler(config: MemConfig): HookHandler {
       const warning = `\n\n⚠️  This file has ${context.dependents.length} dependent(s). Changes may affect:\n${context.dependents.slice(0, 8).map(d => `   - ${d}`).join("\n")}`;
 
       writeGraphLog("info", "Edit dependency warning injected", { file: filePath, dependents: context.dependents.length });
+      recordInjection(config, "graph-edit-check", `${context.dependents.length} dependent(s) on ${filePath}`);
 
       const out = output as { output?: string };
       if (typeof out.output === "string") {

@@ -38,6 +38,24 @@ export function computeRecencyScore(lastAccessed: Date | null): number {
   return Math.exp(-hoursSinceAccess / 24);
 }
 
+// Type/label-based quality multiplier. Storedcontext "session-log" dumps (raw
+// [reasoning] transcripts with key_errors summaries) are low knowledge-density
+// and chronically pollute retrieval with strong cosine matches on generic
+// phrasing, crowding out curated knowledge. Curated nodes (knowledge:/rule:/
+// skill/playbook) carry the durable signal we actually want — they get a modest
+// boost. Applied multiplicatively to the final RRF importance before it flows
+// to pressure-aware injection (≥0.6/≥0.8), drilldown weights, and the UI.
+export function computeQualityMultiplier(node: MemoryNode): number {
+  const t = node.type;
+  if (t === "storedcontext") return 0.5;
+  const label = (node.label ?? "").toLowerCase();
+  if (label.startsWith("middle-term:") || label.startsWith("[history]")) return 0.6;
+  if (label.startsWith("knowledge:") || label.startsWith("rule:") || label.startsWith("skill:")) return 1.25;
+  if (label.startsWith("plan:") || label.startsWith("task:")) return 1.1;
+  if (t === "skill" || t === "playbook" || t === "core") return 1.15;
+  return 1.0;
+}
+
 export interface RerankResult {
   node: MemoryNode;
   originalScore: number;
@@ -308,7 +326,7 @@ export function computeRRFScores(
       const recencyScore = computeRecencyScore(recencyAnchor);
       return {
         ...node,
-        importance: normalized * (0.3 + 0.7 * recencyScore),
+        importance: normalized * (0.3 + 0.7 * recencyScore) * computeQualityMultiplier(node),
       } as MemoryNode;
     })
     .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));

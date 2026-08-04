@@ -14,6 +14,7 @@ import { createOutputTokenControlHandler } from "./hooks/output-token-control";
 import { createChatParamsHandler } from "./hooks/chat-params";
 import { createMessagesTransformHandler } from "./hooks/messages-transform";
 import { createGraphRefreshHandler } from "./hooks/graph-refresh";
+import { createInjectionDigestHandler } from "./hooks/injection-digest";
 import { createGraphContextHandler } from "./hooks/graph-context";
 import { createGraphEditCheckHandler } from "./hooks/graph-edit-check";
 import { createGraphSearchHintHandler } from "./hooks/graph-search-hint";
@@ -65,6 +66,7 @@ export function createHookHandlers(
     createGraphContextHandler(memConfig),
     createGraphEditCheckHandler(memConfig),
     createGraphSearchHintHandler(memConfig),
+    createInjectionDigestHandler(store, memConfig, currentSessionId),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {
@@ -95,6 +97,7 @@ export function createHookHandlers(
         try {
           const argsPreview = JSON.stringify(inp?.args || {}).slice(0, 500);
           const outputPreview = (out?.output ?? "").slice(0, 500);
+          const success = out?.output === undefined ? null : true;
           await store.recordConversationTurn({
             sessionId: sid,
             timestamp: Date.now(),
@@ -106,6 +109,11 @@ export function createHookHandlers(
             toolResult: outputPreview,
             tokenCount: Math.round(outputPreview.length / 4),
           });
+          try {
+            await store.recordAgentToolCall(sid, toolName, inp?.args ?? null, out?.output ?? null, success, null);
+          } catch (recordErr) {
+            memLog("warn", "live-capture", "Failed to record agent tool call", { tool: toolName, error: String(recordErr) });
+          }
           memLog("debug", "live-capture", "Captured tool call", { sessionId: sid, tool: toolName });
         } catch (e) {
           memLog("error", "live-capture", "Failed to capture tool call", { error: String(e) });

@@ -1,4 +1,5 @@
 import type { MemConfig } from "../../infrastructure/config/config";
+import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { writeFileSumLog } from "../../logging";
 import { cacheReadResult, checkUnchangedRead, configureReadCache, getReadCacheSize, getReadCacheMaxSize } from "../../application/re-read-elimination";
 import type { HookHandler } from "./types";
@@ -31,11 +32,13 @@ export function createReReadEliminationHandler(config: MemConfig): HookHandler {
       }
 
       const out = output as { output?: string; metadata?: Record<string, unknown> };
-      out.output = result.content;
+      const marker = injectionMarker(config, "re-read-elimination", `served cached content for ${filePath} (since turn ${result.turn})`);
+      out.output = marker ? marker + "\n" + result.content : result.content;
       out.metadata = {
         ...((out.metadata as Record<string, unknown>) ?? {}),
         reread_eliminated: true,
       };
+      recordInjection(config, "re-read-elimination", `cached read of ${filePath} (${result.content.length} chars)`);
       writeFileSumLog("RE-READ", {
         action: "cache-hit",
         file: filePath,

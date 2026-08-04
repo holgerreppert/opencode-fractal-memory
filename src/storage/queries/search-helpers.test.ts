@@ -298,6 +298,23 @@ describe("computeRRFScores", () => {
     expect(oldResult[0]!.importance).toBeCloseTo(0.3, 6);
   });
 
+  test("applies type/label quality multiplier", () => {
+    const mk = (id: string, type?: string, label?: string) =>
+      makeNode({ id, importance: 0.5, lastAccessed: null, type: type as MemoryNode["type"], label: label ?? id });
+    const generic = computeRRFScores([mk("g")], { queryText: "" })[0]!.importance;
+    const stored = computeRRFScores([mk("s", "storedcontext")], { queryText: "" })[0]!.importance;
+    const knowledge = computeRRFScores([mk("k", "concept", "knowledge:foo")], { queryText: "" })[0]!.importance;
+    const rule = computeRRFScores([mk("r", "concept", "rule:mandatory:x")], { queryText: "" })[0]!.importance;
+    const middleTerm = computeRRFScores([mk("m", "concept", "middle-term:ses-x")], { queryText: "" })[0]!.importance;
+    // storedcontext session dumps are demoted below generic nodes
+    expect(stored).toBeLessThan(generic);
+    // curated knowledge/rule labels are boosted above generic
+    expect(knowledge).toBeGreaterThan(generic);
+    expect(rule).toBeGreaterThan(generic);
+    // middle-term snapshots are demoted like storedcontext
+    expect(middleTerm).toBeLessThan(generic);
+  });
+
   test("level>=1 nodes decay from createdAt, not lastAccessed", () => {
     // Stale summary: created 30 days ago, but lastAccessed refreshed to now
     // (simulating the searchByEmbedding re-stamp loop). With createdAt decay

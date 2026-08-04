@@ -205,6 +205,7 @@ export async function incrementSessionToolCall(
 
 function getToolCategory(toolName: string): string {
   if (toolName.startsWith("memory_") || toolName.startsWith("journal_")) return "memory";
+  if (["memory", "context", "learn", "journal", "graph", "skeletonize"].includes(toolName)) return "memory";
   if (["read", "edit", "write", "glob", "grep", "search"].includes(toolName)) return "file";
   if (["bash", "shell"].includes(toolName)) return "shell";
   return "other";

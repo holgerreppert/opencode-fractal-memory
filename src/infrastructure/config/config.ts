@@ -166,6 +166,11 @@ export interface MemConfig {
     maxTokens: number;
     minScore: number;
   } | undefined;
+  injectionVisibility?: {
+    enabled: boolean;
+    markers: boolean;
+    digest: boolean;
+  } | undefined;
 }
 
 const AutoRetrieveSchema = z.object({
@@ -468,6 +473,11 @@ const DEFAULT_CONFIG: MemConfig = {
     refreshEnabled: true,
     autoSkeletonizeMinLines: 300,
   },
+  injectionVisibility: {
+    enabled: true,
+    markers: true,
+    digest: true,
+  },
   smallModel: {},
 };
 
@@ -497,6 +507,12 @@ const GraphSchema = z.object({
   maxFiles: z.number().positive().int().default(5000),
   refreshEnabled: z.boolean().default(true),
   autoSkeletonizeMinLines: z.number().int().min(0).default(300),
+});
+
+const InjectionVisibilitySchema = z.object({
+  enabled: z.boolean().default(true),
+  markers: z.boolean().default(true),
+  digest: z.boolean().default(true),
 });
 
 const SmallModelSchema = z.record(z.string(), z.string()).default({});
@@ -531,6 +547,7 @@ const MemConfigSchema = z.object({
   toolDedup: ToolDedupSchema.optional(),
   errorPruning: ErrorPruningSchema.optional(),
   autoInjection: AutoInjectionSchema.optional(),
+  injectionVisibility: InjectionVisibilitySchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

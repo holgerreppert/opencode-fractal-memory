@@ -18,47 +18,17 @@ async function handleSearch(args: Record<string, unknown>) {
   const limit = (args.limit as number) ?? 50;
   const projectName = args.project_name as string | undefined;
   try {
-    const mode = (args.search_mode as string) ?? "text";
-    if (mode === "text") {
-      const nodes = await store.listNodes(scope, undefined, undefined, undefined, undefined, projectName);
-      const lower = q.toLowerCase();
-      const results = nodes
-        .filter(n => (n.label?.toLowerCase().includes(lower)) || n.content.toLowerCase().includes(lower))
-        .sort((a, b) => b.importance - a.importance)
-        .slice(0, limit)
-        .map(n => ({ ...nodeToPlain(n), score: n.importance }));
-      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
-    }
-
-    if (mode === "embedding") {
-      const { generateEmbedding } = await import("../infrastructure/llm/embeddings");
-      const queryEmbedding = await generateEmbedding(q);
-      const opts: { queryText: string; projectName?: string } = { queryText: q };
-      if (projectName) opts.projectName = projectName;
-      const nodes = await store.searchByEmbedding(queryEmbedding, limit, opts);
-      return { content: [{ type: "text" as const, text: JSON.stringify(nodes.map(n => nodeToPlain(n)), null, 2) }] };
-    }
-
-    if (mode === "bm25") {
-      const nodes = await store.listNodes(scope, undefined, undefined, undefined, undefined, projectName);
-      const terms = q.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(t => t.length >= 2);
-      if (terms.length === 0) return { content: [{ type: "text" as const, text: "[]" }] };
-
-      const scored = nodes.map(n => {
-        const text = `${n.label ?? ""} ${n.content}`.toLowerCase();
-        let score = 0;
-        for (const term of terms) {
-          const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi");
-          const matches = text.match(regex);
-          score += matches ? matches.length : 0;
-        }
-        return { ...nodeToPlain(n), score };
-      });
-      scored.sort((a, b) => (b.score as number) - (a.score as number));
-      return { content: [{ type: "text" as const, text: JSON.stringify(scored.slice(0, limit), null, 2) }] };
-    }
-
-    return { content: [{ type: "text" as const, text: "[]" }] };
+    const mode = (args.search_mode as "hybrid" | "bm25" | "text") ?? "hybrid";
+    const { generateEmbedding } = await import("../infrastructure/llm/embeddings");
+    const { searchNodes } = await import("../application/search");
+    const opts: { limit: number; mode: "hybrid" | "bm25" | "text"; scope: "global" | "project"; projectName?: string | undefined } = {
+      limit,
+      mode,
+      scope,
+    };
+    if (projectName !== undefined) opts.projectName = projectName;
+    const nodes = await searchNodes(store, generateEmbedding, q, opts);
+    return { content: [{ type: "text" as const, text: JSON.stringify(nodes.map(n => nodeToPlain(n)), null, 2) }] };
   } catch (e) {
     return {
       content: [{ type: "text" as const, text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
@@ -102,7 +72,7 @@ WORKFLOW: search → get/fetch → set/delete`,
 
         // search params
         query: z.string().optional().describe("Search query (required for search mode)"),
-        search_mode: z.enum(["text", "embedding", "bm25"]).optional().default("text").describe("Search mode (search only)"),
+        search_mode: z.enum(["hybrid", "bm25", "text"]).optional().default("hybrid").describe("Search mode (search only): hybrid = semantic+BM25 RRF fusion (default), bm25 = keyword FTS5, text = LIKE match"),
 
         // get/fetch params
         id: z.string().optional().describe("Node ID (required for get, delete)"),
