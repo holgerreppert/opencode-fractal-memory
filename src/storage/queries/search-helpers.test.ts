@@ -315,6 +315,16 @@ describe("computeRRFScores", () => {
     expect(middleTerm).toBeLessThan(generic);
   });
 
+  test("purpose-centric lesson/decision/convention/fact labels are boosted hardest", () => {
+    const base = computeRRFScores([makeNode({ id: "g", importance: 0.5, lastAccessed: null, label: "generic" })], { queryText: "" })[0]!.importance;
+    const lessonScore = computeRRFScores([makeNode({ id: "l", importance: 0.5, lastAccessed: null, label: "lesson:z" })], { queryText: "" })[0]!.importance;
+    const decisionScore = computeRRFScores([makeNode({ id: "d", importance: 0.5, lastAccessed: null, label: "decision:use-bun" })], { queryText: "" })[0]!.importance;
+    // purpose labels (×1.3) strictly beat generic (×1.0)
+    expect(lessonScore).toBeGreaterThan(base);
+    expect(decisionScore).toBeGreaterThan(base);
+    expect(lessonScore).toBeCloseTo(1.3, 6);
+  });
+
   test("level>=1 nodes decay from createdAt, not lastAccessed", () => {
     // Stale summary: created 30 days ago, but lastAccessed refreshed to now
     // (simulating the searchByEmbedding re-stamp loop). With createdAt decay

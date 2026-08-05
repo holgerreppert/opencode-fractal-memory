@@ -1,6 +1,6 @@
 {
   "name": "opencode-fractal-memory",
-  "version": "0.7.12",
+  "version": "0.7.13",
   "description": "Fractal memory system for OpenCode with semantic search and automatic compression.",
   "main": "./dist/plugin.js",
   "exports": {

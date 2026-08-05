@@ -20,9 +20,12 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 - **Auto-Skeletonize on Large Reads** (`tool.execute.after` for `read`): generates skeleton via `extractSkeleton` for files ≥ `autoSkeletonizeMinLines` (default 300). Impl at `src/plugin/hooks/graph-context.ts`.
 - **Auto-Retrieve** (`experimental.chat.messages.transform`): reranking pipeline (LLM judge via `client.session.prompt({noReply:true})`, Ollama fallback, ONNX cross-encoder). Pressure-aware injection: aggressive phase filters importance ≥ 0.6, critical ≥ 0.8. Impl at `src/application/auto-retrieve/`.
 - **Injection Visibility**: every injection surface emits `[memory-plugin:<feature>]` inline markers + a per-turn digest summary message, and persists to `injection_metrics` (so previously-silent injections — re-read, compression, graph-context — appear in the management live feed). Config: `injectionVisibility {enabled, markers, digest}` (all default true). Impl: `src/application/injection-visibility.ts`, `src/plugin/hooks/injection-digest.ts`.
-- **Memory Categorization**: nodes have `type` → `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (read/edit/debug/discovery) with temporal stratification and entity boosting. Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`.
+- **Memory Categorization**: nodes have `type` → `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (read/edit/debug/discovery) with temporal stratification, entity boosting, and purpose-type boosting (`debug`→`lesson`/`bug`/`fix`, `read`→`knowledge`/`concept`/`architecture`, `edit`→`convention`/`decision`/`preference`). Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`.
+- **Purpose-Centric Lessons**: `session.idle` auto-extracts a distilled `lesson` node (type `lesson`, label `lesson:<ts>`, tag `sig:<failed-tools>`) from failed tool calls — ArcticMem-style content (what failed, why, how to avoid). Dedup: skips when a lesson with the same failure signature already exists. Config: `autoLessons {enabled (default true), minFailures (2), useLlm}`. Optional LLM pass generates concrete prevention rules. Impl at `src/application/lesson-extraction.ts`, wired in `src/plugin/hooks/events.ts`. `learn(mode="reflect")` (src/tools/reflect.ts) also creates lessons manually; `distillRules` folds them into `rule:mandatory:memory`.
+- **Purpose-based search ranking**: `computeQualityMultiplier` (src/storage/queries/search-helpers.ts) boosts curated purpose labels (`lesson:`/`decision:`/`convention:`/`fact:` ×1.3, `knowledge:`/`rule:`/`skill:` ×1.25, `plan:`/`task:` ×1.1) and demotes `storedcontext` session dumps (×0.5) and `middle-term:`/`[history]` snapshots (×0.6) in RRF final scoring.
 - **Code Graph** (pull-based `graph` tool): relations `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. AST knowledge graph via tree-sitter WASM (32 languages), auto-refreshes on edit/write. Plugin + MCP. Impl at `src/tools/graph.ts`, `src/application/graph/`.
 - **Brain Mesh 3D Layout** (management app): Desikan-Killiany atlas brain mesh (70 DK parcels → 5 regions in ~101 KB GLB), vertex-averaged centroids, Fibonacci scattering. Build at `scripts/build-brain-glb.ts`, GLB parser at `management/public/glb-loader.js`. See `docs/threejs/brainregions.md`.
+- **Purpose-type migration scripts** (`scripts/reclassify-purpose-nodes.ts` Tier-1 label-prefix → type; `scripts/reclassify-purpose-tier2.ts` Tier-2 id → type for content-classified nodes): reclassify existing nodes to purpose types. Run with `--dry-run` (preview) or `--force` (apply). Pattern source: `scripts/fix-existing-nodes.ts`.
 
 ## Codebase Layout
 
@@ -88,7 +91,7 @@ Then restart OpenCode.
 ```bash
 bun run lint              # oxlint — must stay at 0 errors, 0 warnings
 bun run lint:fix          # auto-fix (--fix-dangerously)
-bun test                  # full suite (35 files, 529 tests) — skip search.loco.test.ts (needs pre-seeded DB)
+bun test                  # full suite (35 files, 529 tests) — search.loco.test.ts self-seeds in ~30s, runs ~5min (1986 LoCoMo QAs), cleans up after
 ```
 
 - Always cp to BOTH node_modules AND cache when installing; verify with `grep -q "<pattern>" "$CACHE/dist/..."`

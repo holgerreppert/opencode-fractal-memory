@@ -79,6 +79,11 @@ export interface MemConfig {
     minLessons: number;
     useLlm: boolean;
   } | undefined;
+  autoLessons?: {
+    enabled: boolean;
+    minFailures: number;
+    useLlm: boolean;
+  } | undefined;
   predictiveRating?: {
     enabled: boolean;
     decayDays: number;
@@ -201,6 +206,12 @@ const LlmCompressionSchema = z.object({
 const AutoDistillSchema = z.object({
   enabled: z.boolean().default(false),
   minLessons: z.number().positive().int().default(3),
+  useLlm: z.boolean().default(false),
+});
+
+const AutoLessonsSchema = z.object({
+  enabled: z.boolean().default(true),
+  minFailures: z.number().positive().int().default(2),
   useLlm: z.boolean().default(false),
 });
 
@@ -356,6 +367,11 @@ const DEFAULT_CONFIG: MemConfig = {
   autoDistill: {
     enabled: false,
     minLessons: 3,
+    useLlm: false,
+  },
+  autoLessons: {
+    enabled: true,
+    minFailures: 2,
     useLlm: false,
   },
   predictiveRating: {
@@ -531,6 +547,7 @@ const MemConfigSchema = z.object({
   ollama: OllamaSchema.optional(),
   llmCompression: LlmCompressionSchema.optional(),
   autoDistill: AutoDistillSchema.optional(),
+  autoLessons: AutoLessonsSchema.optional(),
   predictiveRating: PredictiveRatingSchema.optional(),
   autoDiscover: AutoDiscoverSchema.optional(),
   autoConsolidate: AutoConsolidateSchema.optional(),

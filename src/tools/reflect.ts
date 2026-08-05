@@ -159,7 +159,7 @@ Your rules:`;
         content,
         level: 0,
         importance: 0.8,
-        type: "note",
+        type: "lesson",
         parentIds: null,
       });
 

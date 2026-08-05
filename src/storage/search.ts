@@ -32,7 +32,20 @@ function matchesTagsFilter(nodeTags: string[] | null, tagsFilter: string[] | und
   return tagsFilter.every(t => nodeTags.includes(t));
 }
 
-function computeIntentWeight(intent: SearchIntent | undefined, category: string | null, _type: string | null, supertype: string | null): number {
+function computeIntentWeight(intent: SearchIntent | undefined, category: string | null, type: string | null, supertype: string | null): number {
+  // Purpose-centric types dominate their intent: debugging is served by
+  // distilled lessons/bug records, reading by architectural knowledge, editing
+  // by conventions/decisions. These outrank the generic supertype fallback.
+  const purposeBoost: Record<string, number> = {
+    read: type === "knowledge" || type === "concept" || type === "architecture" ? 1.4 : 1.0,
+    edit: type === "convention" || type === "decision" || type === "preference" ? 1.4 : 1.0,
+    debug: type === "lesson" || type === "bug" || type === "fix" || type === "debug-investigation" ? 1.4 : 1.0,
+  };
+  if (intent) {
+    const boost = purposeBoost[intent];
+    if (boost !== undefined && boost !== 1.0) return boost;
+  }
+
   if (supertype) {
     switch (intent) {
       case "read":
