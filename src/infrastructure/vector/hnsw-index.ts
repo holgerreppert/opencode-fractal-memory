@@ -154,10 +154,34 @@ export class HNSWIndex {
     this.projectIdCounter = 0;
     this.initialized = true;
 
+    const globalNodes = nodes.filter(n => n.scope === "global");
+    const projectNodes = nodes.filter(n => n.scope === "project");
+
+    await this.rebuildScope(this.globalIndex, "global", globalNodes);
+    await this.rebuildScope(this.projectIndex, "project", projectNodes);
+  }
+
+  private async rebuildScope(
+    index: HNSW,
+    scope: "global" | "project",
+    nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }>
+  ): Promise<void> {
+    const labelMap = this.getMaps(scope);
+    const counter = this.getCounter(scope);
+    const valid: Array<{ id: number; vector: number[] }> = [];
+
     for (const node of nodes) {
-      if (node.embedding.length === this.dimension) {
-        await this.addNode(node.scope, node.id, node.embedding);
-      }
+      if (node.embedding.length !== this.dimension) continue;
+      const hnswId = counter.value;
+      labelMap.set(hnswId, node.id);
+      this.embeddingCache.set(`${scope}:${node.id}`, node.embedding);
+      valid.push({ id: hnswId, vector: node.embedding });
+      counter.value = hnswId + 1;
+    }
+    this.setCounter(scope, counter.value);
+
+    if (valid.length > 0) {
+      await index.buildIndex(valid);
     }
   }
 

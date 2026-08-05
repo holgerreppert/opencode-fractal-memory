@@ -25,6 +25,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 - **Purpose-based search ranking**: `computeQualityMultiplier` (src/storage/queries/search-helpers.ts) boosts curated purpose labels (`lesson:`/`decision:`/`convention:`/`fact:` ×1.3, `knowledge:`/`rule:`/`skill:` ×1.25, `plan:`/`task:` ×1.1) and demotes `storedcontext` session dumps (×0.5) and `middle-term:`/`[history]` snapshots (×0.6) in RRF final scoring.
 - **Code Graph** (pull-based `graph` tool): relations `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. AST knowledge graph via tree-sitter WASM (32 languages), auto-refreshes on edit/write. Plugin + MCP. Impl at `src/tools/graph.ts`, `src/application/graph/`.
 - **Brain Mesh 3D Layout** (management app): Desikan-Killiany atlas brain mesh (70 DK parcels → 5 regions in ~101 KB GLB), vertex-averaged centroids, Fibonacci scattering. Build at `scripts/build-brain-glb.ts`, GLB parser at `management/public/glb-loader.js`. See `docs/threejs/brainregions.md`.
+- **Purpose-type migration scripts** (`scripts/reclassify-purpose-nodes.ts` Tier-1 label-prefix → type; `scripts/reclassify-purpose-tier2.ts` Tier-2 id → type for content-classified nodes): reclassify existing nodes to purpose types. Run with `--dry-run` (preview) or `--force` (apply). Pattern source: `scripts/fix-existing-nodes.ts`.
 
 ## Codebase Layout
 
@@ -90,7 +91,7 @@ Then restart OpenCode.
 ```bash
 bun run lint              # oxlint — must stay at 0 errors, 0 warnings
 bun run lint:fix          # auto-fix (--fix-dangerously)
-bun test                  # full suite (35 files, 529 tests) — skip search.loco.test.ts (needs pre-seeded DB)
+bun test                  # full suite (35 files, 529 tests) — search.loco.test.ts self-seeds in ~30s, runs ~5min (1986 LoCoMo QAs), cleans up after
 ```
 
 - Always cp to BOTH node_modules AND cache when installing; verify with `grep -q "<pattern>" "$CACHE/dist/..."`

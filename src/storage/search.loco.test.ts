@@ -1,13 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { createSqliteMemoryStore } from "../storage/sqlite";
 import type { MemoryStore, MemoryNode } from "../storage/types";
 import { CATEGORY_LABELS } from "../../scripts/benchmark/datasets/locomo";
+import { seedLocomoDatabase, LOCOMO_PROJECT_NAME } from "../../scripts/benchmark/seed-locomo";
 
-const DB_DIR = path.resolve(__dirname, "../../tests/dbs/locomo-seeded");
-const DB_PATH = path.join(DB_DIR, "memory.db");
-const QA_PATH = path.join(DB_DIR, "qa-embeddings.json");
 const KS = [3, 5, 10];
 
 type QaEmbeddingEntry = {
@@ -48,30 +47,21 @@ function formatPct(v: number): string {
 }
 
 describe("LoCoMo retrieval quality", () => {
-  const hasDb = fs.existsSync(DB_PATH) && fs.existsSync(QA_PATH);
-
-  test("pre-seeded database exists", () => {
-    if (!hasDb) {
-      console.warn(`\n  Pre-seeded database not found at ${DB_PATH}`);
-      console.warn(`  Run: bun run scripts/seed-loco-db.ts`);
-    }
-    expect(hasDb).toBe(true);
-  });
-
-  if (!hasDb) return;
-
   let store: MemoryStore;
   let qaEntries: QaEmbeddingEntry[];
-  let totalQAs: number;
+  let dbDir: string;
   let byCategory: Map<number, { entries: QaEmbeddingEntry[]; label: string }>;
 
-  test("load pre-seeded database and QA embeddings", async () => {
-    store = createSqliteMemoryStore(DB_DIR, DB_PATH);
-    await store.rebuildHNSWIndex("project");
+  beforeAll(async () => {
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "locomo-seed-"));
+    const start = Date.now();
+    const result = await seedLocomoDatabase(dbDir);
+    console.log(`\n  Seeded LoCoMo DB in ${((Date.now() - start) / 1000).toFixed(1)}s: ${result.turns} turns, ${result.qas} QAs`);
 
-    const raw = JSON.parse(fs.readFileSync(QA_PATH, "utf-8"));
+    store = createSqliteMemoryStore(dbDir, result.dbPath);
+
+    const raw = JSON.parse(fs.readFileSync(result.qaPath, "utf-8"));
     qaEntries = raw as QaEmbeddingEntry[];
-    totalQAs = qaEntries.length;
 
     byCategory = new Map();
     for (const entry of qaEntries) {
@@ -82,9 +72,15 @@ describe("LoCoMo retrieval quality", () => {
       byCategory.get(cat)!.entries.push(entry);
     }
 
-    console.log(`\n  Database: ${DB_PATH}`);
-    console.log(`  Total QA pairs: ${totalQAs}`);
+    console.log(`  Total QA pairs: ${qaEntries.length}`);
     console.log(`  Categories: ${[...byCategory.entries()].map(([k, v]) => `${v.label}=${v.entries.length}`).join(", ")}\n`);
+  });
+
+  afterAll(async () => {
+    await store?.close();
+    if (dbDir) {
+      fs.rmSync(dbDir, { recursive: true, force: true });
+    }
   });
 
   test("run retrieval and compute metrics", async () => {
@@ -105,9 +101,8 @@ describe("LoCoMo retrieval quality", () => {
           queryText: entry.question,
           rerank: true,
           temporalHops: 2,
+          projectName: LOCOMO_PROJECT_NAME,
         });
-
-        
 
         for (const k of KS) {
           const metrics = computeMetrics(evidenceLabels, retrieved, k);
