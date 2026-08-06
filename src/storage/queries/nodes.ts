@@ -83,6 +83,7 @@ const TYPE_CATEGORY: Record<string, MemoryCategory> = {
   improvement: "episodic",
   review: "episodic",
   lesson: "semantic",
+  knowledge: "semantic",
 };
 
 const TYPE_SUPERTYPE: Record<string, MemorySupertype> = {

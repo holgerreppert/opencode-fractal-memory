@@ -55,7 +55,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     { start: ensureManagementServer, stop: stopManagementServer },
     currentSessionId,
   );
-  const toolMap = createToolMap(store, journalTools, client, journalStore, journalCtx);
+  const toolMap = createToolMap(store, journalTools, client, journalStore, journalCtx, memConfig);
 
   memLog("info", "init", "Plugin initialization completed", { totalDurationMs: perfNow() - t0 });
 

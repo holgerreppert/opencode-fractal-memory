@@ -6,6 +6,7 @@ import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
 import { computeBM25ScoresSQL, computeRRFScores, rerankResults } from "./queries/search-helpers";
+import { rerankDocuments } from "../infrastructure/llm/ollama";
 import { tokenize, blobToEmbedding } from "./utils";
 
 type Stratum = "hot" | "warm" | "cold";
@@ -139,6 +140,7 @@ export async function searchByEmbedding(
     queryText?: string | undefined;
     minUsefulness?: number | undefined;
     rerank?: boolean | undefined;
+    rerankMode?: "keyword" | "cross-encoder" | undefined;
     bm25Scores?: Map<string, number> | undefined;
     projectName?: string | undefined;
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
@@ -387,12 +389,22 @@ export async function searchByEmbedding(
   }
 
   let finalResults = dedupedFinalNodes.slice(0, limit);
-  if (doRerank && queryText.length > 0 && finalResults.length > 3) {
-    const reranked = rerankResults(queryText, finalResults, limit);
-    finalResults = reranked.map(r => ({
-      ...r.node,
-      importance: r.finalScore
-    }));
+  if (doRerank && queryText.length > 0 && dedupedFinalNodes.length > 3) {
+    if (options?.rerankMode === "cross-encoder") {
+      const pool = dedupedFinalNodes.slice(0, Math.max(limit, 20));
+      const out = await rerankDocuments(queryText, pool.map(n => ({ id: n.id, label: n.label ?? "", content: n.content })), {
+        strategy: "cross-encoder",
+        topK: limit,
+      });
+      const byId = new Map(out.allScores.map(r => [r.id, r.score]));
+      finalResults = [...pool].sort((a, b) => (byId.get(b.id) ?? 0) - (byId.get(a.id) ?? 0)).slice(0, limit);
+    } else {
+      const reranked = rerankResults(queryText, finalResults, limit);
+      finalResults = reranked.map(r => ({
+        ...r.node,
+        importance: r.finalScore
+      }));
+    }
   }
 
   const now = Date.now();

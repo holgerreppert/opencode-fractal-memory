@@ -53,7 +53,7 @@ export function MemoryDrilldown(store: MemoryStore) {
   return wrapWithTracking(t, store, "memory_drilldown");
 }
 
-export function MemorySearch(store: MemoryStore) {
+export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" | "cross-encoder") {
   const t = tool({
     description: "Search memory for relevant context. Results may be re-ordered by relevance to your current reasoning via auto-retrieve reranking.",
     args: {
@@ -65,6 +65,7 @@ export function MemorySearch(store: MemoryStore) {
       rrf_k: tool.schema.number().int().min(1).max(1000).optional().describe("RRF k parameter (default 60) — higher = flatter rank weighting"),
       temporal_hops: tool.schema.number().int().min(0).max(5).optional().describe("Multi-hop temporal expansion depth (0=off, 1-5 for depth)"),
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
+      rerank_mode: tool.schema.enum(["keyword", "cross-encoder"]).optional().describe("Rerank strategy: keyword (default) or cross-encoder (local ONNX model, better relevance)"),
       expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
       expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
@@ -79,6 +80,7 @@ export function MemorySearch(store: MemoryStore) {
         rrfK?: number;
         minUsefulness?: number;
         rerank?: boolean;
+        rerankMode?: "keyword" | "cross-encoder";
         projectName?: string;
         categoryFilter?: "episodic" | "semantic";
         domainFilter?: MemoryDomain;
@@ -87,6 +89,8 @@ export function MemorySearch(store: MemoryStore) {
       } = {
         rerank: args.rerank ?? true,
       };
+      if (args.rerank_mode !== undefined) options.rerankMode = args.rerank_mode;
+      else if (defaultRerankMode !== undefined) options.rerankMode = defaultRerankMode;
       if (args.min_level !== undefined) options.minLevel = args.min_level as MemoryNodeLevel;
       if (args.max_level !== undefined) options.maxLevel = args.max_level as MemoryNodeLevel;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;

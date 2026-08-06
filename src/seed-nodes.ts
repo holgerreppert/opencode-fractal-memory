@@ -292,6 +292,15 @@ tag: rule:feature
 At session idle, the plugin auto-extracts a distilled \`lesson\` node (label \`lesson:<ts>\`, type \`lesson\`, tag \`sig:<failed-tools>\`) from the session's failed tool calls — what failed, on which files, and how to avoid it next time. Dedup: a lesson whose failure signature already exists in the store is skipped. Query them like any memory: searching with intent \`debug\` prioritizes \`lesson:\`/\`bug:\`/\`fix:\` nodes, and \`lesson:\`/\`decision:\`/\`convention:\`/\`fact:\` labels are ranked highest. use_llm (learn(mode="reflect")) and autoLessons.useLlm generate concrete prevention rules.`,
   },
   {
+    label: "rule:feature:auto-capture",
+    tag: "rule:feature",
+    content: `Auto Work Capture Feature
+tag: rule:feature
+
+At session idle, the plugin distills a \`work:<ts>\` knowledge node (type \`knowledge\`, tag \`sess:<sessionId>\`) from the session's successful edit/write tool calls — what files were touched and which tools were used, optionally summarized by the LLM (autoCapture.useLlm). It is the success-mirror of auto-lessons: failures become \`lesson:\` nodes, completed work becomes \`work:\` nodes, so neither direction of the session history is lost. Config \`autoCapture {enabled: true, minEdits: 1, useLlm: false, maxPerSession: 3}\`. Dedup: a session is skipped once it has reached the per-session cap. This does not replace manual node creation — the agent should still call memory(mode="set") for significant completed work (features, bug fixes, benchmarks) at the time of completion, with learn(mode="verify") after.`,
+
+  },
+  {
     label: "rule:feature:domain-classification",
     tag: "rule:feature",
     content: `Domain Classification Feature

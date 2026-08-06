@@ -45,7 +45,7 @@ export async function extractSessionLessons(
   const signature = [...toolFailureCounts.keys()].sort().join(",");
   if (signature.length === 0) return "Lessons: skipped, no failure signature";
 
-  const lessons = await store.listNodes("global");
+  const lessons = await store.listNodes("global", undefined, 100000);
   const covered = lessons.some(n =>
     (n.label ?? "").startsWith("lesson:")
     && n.tags?.includes(`sig:${signature}`)

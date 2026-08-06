@@ -1,7 +1,7 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
-import { distillRules, runConsolidation, applyScoreDecay, extractSessionLessons } from "../../application";
+import { distillRules, runConsolidation, applyScoreDecay, extractSessionLessons, captureSessionWork } from "../../application";
 import { cleanupMiddleTermCaptures } from "../state";
 import { ensureBackgroundGraph } from "../../application/graph/build";
 import type { HookHandler } from "./types";
@@ -40,6 +40,12 @@ export function createEventHandler(
             memLog("info", "auto-lessons", msg)
           ).catch(err => memLog("error", "auto-lessons", "Failed", { error: String(err) }));
           tasks.push("lessons");
+        }
+        if (config?.autoCapture?.enabled) {
+          captureSessionWork(store, config.autoCapture, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
+            memLog("info", "auto-capture", msg)
+          ).catch(err => memLog("error", "auto-capture", "Failed", { error: String(err) }));
+          tasks.push("capture");
         }
         if (config?.autoDistill?.enabled) {
           distillRules(store, config.autoDistill, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>

@@ -1,6 +1,6 @@
 {
   "name": "opencode-fractal-memory",
-  "version": "0.7.13",
+  "version": "0.7.14",
   "description": "Fractal memory system for OpenCode with semantic search and automatic compression.",
   "main": "./dist/plugin.js",
   "exports": {
@@ -72,6 +72,7 @@
     "esbuild": "^0.28.0",
     "eslint": "^10.6.0",
     "eslint-plugin-unused-imports": "^4.4.1",
+    "hyparquet": "^1.27.1",
     "oxlint": "^1.72.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1"

@@ -12,6 +12,7 @@ const RULE_LABELS = [
   { label: "rule:mandatory:core", type: "mandatory" },
   { label: "rule:mandatory:agent-pull", type: "mandatory" },
   { label: "rule:mandatory:tools", type: "mandatory" },
+  { label: "rule:mandatory:what-to-store", type: "mandatory" },
   { label: "rule:standard", type: "standard" },
   { label: "rule:suggestion", type: "suggestion" },
   { label: "rule:feature:command-compression", type: "info" },
@@ -21,6 +22,7 @@ const RULE_LABELS = [
   { label: "rule:feature:source-propagation", type: "info" },
   { label: "rule:feature:confidence-diminishing-returns", type: "info" },
   { label: "rule:feature:auto-lessons", type: "info" },
+  { label: "rule:feature:auto-capture", type: "info" },
 ];
 
 function extractKeywords(text: string): Set<string> {

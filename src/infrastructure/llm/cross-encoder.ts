@@ -91,44 +91,57 @@ export async function scorePairs(
   const loadTime = performance.now() - _start;
   const results: CrossEncoderResult[] = [];
 
-  for (const c of candidates) {
+  if (candidates.length === 0) {
+    return { topResults: [], allScores: [] };
+  }
+
+  const pairs = candidates.map(c => {
     const docText = c.content.slice(0, 500);
-    const pair = encodePair(tok, query, docText);
-    const seqLen = pair.ids.length;
+    return { id: c.id, pair: encodePair(tok, query, docText) };
+  });
+  const maxLen = Math.max(...pairs.map(p => p.pair.ids.length));
 
-    const inputIds = new BigInt64Array(seqLen);
-    const mask = new BigInt64Array(seqLen);
-    const tids = new BigInt64Array(seqLen);
-    for (let i = 0; i < seqLen; i++) {
-      inputIds[i] = BigInt(pair.ids[i] ?? 0);
-      mask[i] = BigInt(pair.mask[i] ?? 0);
-      tids[i] = BigInt(pair.typeIds[i] ?? 0);
+  const inputIds = new BigInt64Array(pairs.length * maxLen);
+  const mask = new BigInt64Array(pairs.length * maxLen);
+  const tids = new BigInt64Array(pairs.length * maxLen);
+  for (let b = 0; b < pairs.length; b++) {
+    const p = pairs[b]!;
+    const { ids, mask: m, typeIds } = p.pair;
+    const offset = b * maxLen;
+    for (let i = 0; i < ids.length; i++) {
+      inputIds[offset + i] = BigInt(ids[i] ?? 0);
+      mask[offset + i] = BigInt(m[i] ?? 0);
+      tids[offset + i] = BigInt(typeIds[i] ?? 0);
     }
-
-    const feeds: Record<string, Tensor> = {
-      input_ids: new Tensor("int64", inputIds, [1, seqLen]),
-      attention_mask: new Tensor("int64", mask, [1, seqLen]),
-      token_type_ids: new Tensor("int64", tids, [1, seqLen]),
-    };
-
-    const output = await _session.run(feeds);
-    const outputKeys = Object.keys(output);
-    const logits = output["logits"] ?? output["score"] ?? (outputKeys[0] ? output[outputKeys[0]] : undefined);
-    if (!logits) {
-      memLog("warn", "cross-encoder", "No logits output from model", { outputs: Object.keys(output) });
-      results.push({ id: c.id, score: 0 });
-      continue;
+    for (let i = ids.length; i < maxLen; i++) {
+      mask[offset + i] = 0n;
     }
+  }
 
-    const data = logits.data as Float32Array;
-    const logitNonRelevant = data.length >= 2 ? (data[0] ?? 0) : 0;
-    const logitRelevant = data.length >= 2 ? (data[1] ?? 0) : (data[0] ?? 0);
+  const feeds: Record<string, Tensor> = {
+    input_ids: new Tensor("int64", inputIds, [pairs.length, maxLen]),
+    attention_mask: new Tensor("int64", mask, [pairs.length, maxLen]),
+    token_type_ids: new Tensor("int64", tids, [pairs.length, maxLen]),
+  };
+
+  const output = await _session.run(feeds);
+  const outputKeys = Object.keys(output);
+  const logits = output["logits"] ?? output["score"] ?? (outputKeys[0] ? output[outputKeys[0]] : undefined);
+  if (!logits) {
+    memLog("warn", "cross-encoder", "No logits output from model", { outputs: outputKeys });
+    return { topResults: [], allScores: candidates.map(c => ({ id: c.id, score: 0 })) };
+  }
+
+  const data = logits.data as Float32Array;
+  for (let b = 0; b < pairs.length; b++) {
+    const p = pairs[b]!;
+    const logitRelevant = data.length >= pairs.length * 2 ? (data[b * 2 + 1] ?? data[b] ?? 0) : (data[b] ?? 0);
+    const logitNonRelevant = data.length >= pairs.length * 2 ? (data[b * 2] ?? 0) : 0;
     const maxLogit = Math.max(logitNonRelevant, logitRelevant);
     const expRel = Math.exp(logitRelevant - maxLogit);
     const expNon = Math.exp(logitNonRelevant - maxLogit);
     const score = expRel / (expRel + expNon);
-
-    results.push({ id: c.id, score });
+    results.push({ id: p.id, score });
   }
 
   results.sort((a, b) => b.score - a.score);

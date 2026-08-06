@@ -846,6 +846,105 @@
       </div>
 
       <div class="config-category">
+        <h3 class="category-header">Auto-Injection &amp; Lessons <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Auto-Injection Enabled</label>
+            <select id="autoInjection-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Inject relevant memory automatically at message transform time</p>
+          </div>
+          <div class="config-field">
+            <label>Inject On</label>
+            <select id="autoInjection-injectOn">
+              <option value="first">First message only</option>
+              <option value="always">Every message</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Auto-Injection Max Results</label>
+            <input type="number" id="autoInjection-maxResults" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Auto-Injection Max Tokens</label>
+            <input type="number" id="autoInjection-maxTokens" min="100" max="8000">
+          </div>
+          <div class="config-field">
+            <label>Auto-Injection Min Score</label>
+            <input type="number" id="autoInjection-minScore" min="0" max="1" step="0.05">
+          </div>
+          <div class="config-field">
+            <label>Auto-Lessons Enabled</label>
+            <select id="autoLessons-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Extract lesson nodes from failed tool calls at session idle</p>
+          </div>
+          <div class="config-field">
+            <label>Min Failures for Lesson</label>
+            <input type="number" id="autoLessons-minFailures" min="1" max="10">
+          </div>
+          <div class="config-field">
+            <label>Lessons Use LLM</label>
+            <select id="autoLessons-useLlm">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Generate concrete prevention rules via LLM</p>
+          </div>
+          <div class="config-field">
+            <label>Auto Work Capture</label>
+            <select id="autoCapture-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Distill a work: knowledge node from successful edits at session idle</p>
+          </div>
+          <div class="config-field">
+            <label>Min Edits for Capture</label>
+            <input type="number" id="autoCapture-minEdits" min="1" max="50">
+          </div>
+          <div class="config-field">
+            <label>Work Capture Use LLM</label>
+            <select id="autoCapture-useLlm">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Generate a "what was done" summary via LLM</p>
+          </div>
+          <div class="config-field">
+            <label>Max Work Nodes per Session</label>
+            <input type="number" id="autoCapture-maxPerSession" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Injection Visibility</label>
+            <select id="injectionVisibility-enabled">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+            <p class="config-hint">Emit [memory-plugin:*] markers and per-turn digest</p>
+          </div>
+          <div class="config-field">
+            <label>Visibility Markers</label>
+            <select id="injectionVisibility-markers">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Visibility Digest</label>
+            <select id="injectionVisibility-digest">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-category">
         <h3 class="category-header">AI &amp; Compression <span class="collapse-arrow">&#x25BC;</span></h3>
         <div class="category-body">
           <div class="config-field">
@@ -1053,19 +1152,39 @@
         <div class="category-body">
           <div class="config-field">
             <label>Tool Call Dedup</label>
-            <select id="toolDedup">
+            <select id="toolDedup-enabled">
               <option value="true">Enabled</option>
               <option value="false">Disabled</option>
             </select>
             <p class="config-hint">Deduplicate repeated identical tool calls within a turn</p>
           </div>
           <div class="config-field">
+            <label>Tool Dedup Cache Size</label>
+            <input type="number" id="toolDedup-maxCacheEntries" min="10" max="5000">
+          </div>
+          <div class="config-field">
+            <label>Tool Dedup Turn Protection</label>
+            <input type="number" id="toolDedup-turnProtectionTurns" min="0" max="10">
+          </div>
+          <div class="config-field">
+            <label>Tool Dedup Protected Tools</label>
+            <input type="text" id="toolDedup-protectedTools" placeholder="edit, write, task, skill, todowrite, replace">
+          </div>
+          <div class="config-field">
             <label>Error Input Pruning</label>
-            <select id="errorPruning">
+            <select id="errorPruning-enabled">
               <option value="true">Enabled</option>
               <option value="false">Disabled</option>
             </select>
-            <p class="config-hint">Replace errored tool call inputs with placeholders after 4 turns</p>
+            <p class="config-hint">Replace errored tool call inputs with placeholders after N turns</p>
+          </div>
+          <div class="config-field">
+            <label>Error Pruning Turns</label>
+            <input type="number" id="errorPruning-turns" min="1" max="20">
+          </div>
+          <div class="config-field">
+            <label>Error Pruning Protected Tools</label>
+            <input type="text" id="errorPruning-protectedTools" placeholder="edit, write, task">
           </div>
         </div>
       </div>

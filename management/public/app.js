@@ -2461,6 +2461,25 @@ async function loadSettings() {
     document.getElementById('autoRetrieve-minQueryLength').value = config.autoRetrieve?.minQueryLength ?? 10;
     document.getElementById('autoRetrieve-injectionCooldownMs').value = config.autoRetrieve?.injectionCooldownMs ?? 30000;
     document.getElementById('autoRetrieve-llmJudgeEnabled').value = String(config.autoRetrieve?.llmJudgeEnabled ?? true);
+    const ai = config.autoInjection || {};
+    document.getElementById('autoInjection-enabled').value = String(ai.enabled ?? false);
+    document.getElementById('autoInjection-injectOn').value = ai.injectOn ?? 'first';
+    document.getElementById('autoInjection-maxResults').value = ai.maxResults ?? 3;
+    document.getElementById('autoInjection-maxTokens').value = ai.maxTokens ?? 2000;
+    document.getElementById('autoInjection-minScore').value = ai.minScore ?? 0.5;
+    const al = config.autoLessons || {};
+    document.getElementById('autoLessons-enabled').value = String(al.enabled ?? true);
+    document.getElementById('autoLessons-minFailures').value = al.minFailures ?? 2;
+    document.getElementById('autoLessons-useLlm').value = String(al.useLlm ?? false);
+    const ac = config.autoCapture || {};
+    document.getElementById('autoCapture-enabled').value = String(ac.enabled ?? true);
+    document.getElementById('autoCapture-minEdits').value = ac.minEdits ?? 1;
+    document.getElementById('autoCapture-useLlm').value = String(ac.useLlm ?? false);
+    document.getElementById('autoCapture-maxPerSession').value = ac.maxPerSession ?? 3;
+    const iv = config.injectionVisibility || {};
+    document.getElementById('injectionVisibility-enabled').value = String(iv.enabled ?? true);
+    document.getElementById('injectionVisibility-markers').value = String(iv.markers ?? true);
+    document.getElementById('injectionVisibility-digest').value = String(iv.digest ?? true);
     document.getElementById('ollama-enabled').value = String(config.ollama?.enabled ?? false);
     document.getElementById('ollama-model').value = config.ollama?.model ?? 'qwen2.5-coder:1.5b';
     document.getElementById('ollama-baseUrl').value = config.ollama?.baseUrl ?? 'http://localhost:11434';
@@ -2517,8 +2536,15 @@ async function loadSettings() {
     document.getElementById('reReadElimination-maxCacheSize').value = config.reReadElimination?.maxCacheSize ?? 100;
     document.getElementById('outputOffloading-enabled').value = String(config.outputOffloading?.enabled ?? true);
     document.getElementById('outputOffloading-thresholdChars').value = config.outputOffloading?.thresholdChars ?? 8000;
-    document.getElementById('toolDedup').value = String(config.toolDedup ?? true);
-    document.getElementById('errorPruning').value = String(config.errorPruning ?? false);
+    const td = config.toolDedup || {};
+    document.getElementById('toolDedup-enabled').value = String(td.enabled ?? false);
+    document.getElementById('toolDedup-maxCacheEntries').value = td.maxCacheEntries ?? 500;
+    document.getElementById('toolDedup-turnProtectionTurns').value = td.turnProtectionTurns ?? 3;
+    document.getElementById('toolDedup-protectedTools').value = (td.protectedTools ?? ['edit', 'write', 'task', 'skill', 'todowrite', 'replace']).join(', ');
+    const ep = config.errorPruning || {};
+    document.getElementById('errorPruning-enabled').value = String(ep.enabled ?? false);
+    document.getElementById('errorPruning-turns').value = ep.turns ?? 4;
+    document.getElementById('errorPruning-protectedTools').value = (ep.protectedTools ?? ['edit', 'write', 'task']).join(', ');
     const g = config.graph || {};
     document.getElementById('graph-enabled').value = String(g.enabled ?? true);
     document.getElementById('graph-maxFiles').value = g.maxFiles ?? 5000;
@@ -2570,6 +2596,29 @@ async function saveSettings() {
       minQueryLength: parseInt(document.getElementById('autoRetrieve-minQueryLength').value) || 10,
       injectionCooldownMs: parseInt(document.getElementById('autoRetrieve-injectionCooldownMs').value) || 30000,
       llmJudgeEnabled: document.getElementById('autoRetrieve-llmJudgeEnabled').value === 'true',
+    },
+    autoInjection: {
+      enabled: document.getElementById('autoInjection-enabled').value === 'true',
+      injectOn: document.getElementById('autoInjection-injectOn').value,
+      maxResults: parseInt(document.getElementById('autoInjection-maxResults').value) || 3,
+      maxTokens: parseInt(document.getElementById('autoInjection-maxTokens').value) || 2000,
+      minScore: parseFloat(document.getElementById('autoInjection-minScore').value) || 0.5,
+    },
+    autoLessons: {
+      enabled: document.getElementById('autoLessons-enabled').value === 'true',
+      minFailures: parseInt(document.getElementById('autoLessons-minFailures').value) || 2,
+      useLlm: document.getElementById('autoLessons-useLlm').value === 'true',
+    },
+    autoCapture: {
+      enabled: document.getElementById('autoCapture-enabled').value === 'true',
+      minEdits: parseInt(document.getElementById('autoCapture-minEdits').value) || 1,
+      useLlm: document.getElementById('autoCapture-useLlm').value === 'true',
+      maxPerSession: parseInt(document.getElementById('autoCapture-maxPerSession').value) || 3,
+    },
+    injectionVisibility: {
+      enabled: document.getElementById('injectionVisibility-enabled').value === 'true',
+      markers: document.getElementById('injectionVisibility-markers').value === 'true',
+      digest: document.getElementById('injectionVisibility-digest').value === 'true',
     },
     ollama: {
       enabled: document.getElementById('ollama-enabled').value === 'true',
@@ -2655,8 +2704,17 @@ async function saveSettings() {
       enabled: document.getElementById('outputOffloading-enabled').value === 'true',
       thresholdChars: parseInt(document.getElementById('outputOffloading-thresholdChars').value) || 8000,
     },
-    toolDedup: document.getElementById('toolDedup').value === 'true',
-    errorPruning: document.getElementById('errorPruning').value === 'true',
+    toolDedup: {
+      enabled: document.getElementById('toolDedup-enabled').value === 'true',
+      maxCacheEntries: parseInt(document.getElementById('toolDedup-maxCacheEntries').value) || 500,
+      turnProtectionTurns: parseInt(document.getElementById('toolDedup-turnProtectionTurns').value) || 3,
+      protectedTools: document.getElementById('toolDedup-protectedTools').value.split(',').map(s => s.trim()).filter(Boolean),
+    },
+    errorPruning: {
+      enabled: document.getElementById('errorPruning-enabled').value === 'true',
+      turns: parseInt(document.getElementById('errorPruning-turns').value) || 4,
+      protectedTools: document.getElementById('errorPruning-protectedTools').value.split(',').map(s => s.trim()).filter(Boolean),
+    },
     graph: {
       enabled: document.getElementById('graph-enabled').value === 'true',
       maxFiles: parseInt(document.getElementById('graph-maxFiles').value) || 5000,

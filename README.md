@@ -53,6 +53,7 @@ if you find bugs or if you just want to suggest improvements
 - **LLM compression** — uses LLM to generate richer summaries instead of regex extraction
 - **Auto-distill** — automatically extracts actionable rules from lesson nodes into `### Auto-Learned` section
 - **Purpose-centric lessons** — at session idle, auto-extracts a distilled `lesson` node (type `lesson`, label `lesson:<ts>`, tag `sig:<failed-tools>`) from the session's failed tool calls — what failed, on which files, and how to avoid it next time. ArcticMem-style dedup: a lesson whose failure signature already exists is skipped. Config: `autoLessons {enabled (default true), minFailures (2), useLlm}`. Optional LLM pass generates concrete prevention rules. Impl at `src/application/lesson-extraction.ts`
+- **Auto work capture** — the success-mirror of auto-lessons: at session idle, distills a `work:<ts>` knowledge node (type `knowledge`, tag `sess:<sessionId>`) from the session's successful edit/write tool calls — files touched + tools used, optional LLM "what was done" summary. So failures become `lesson:` nodes AND completed work becomes `work:` nodes — neither direction of session history is lost. Config: `autoCapture {enabled (default true), minEdits (1), useLlm (false), maxPerSession (3)}`. Dedup: per-session cap via `sess:` tag. Impl at `src/application/work-capture.ts`
 - **Purpose-based search ranking** — RRF final scoring applies a quality multiplier: curated purpose labels (`lesson:`/`decision:`/`convention:`/`fact:` ×1.3, `knowledge:`/`rule:`/`skill:` ×1.25, `plan:`/`task:` ×1.1) are boosted while `storedcontext` session dumps (×0.5) and `middle-term:`/`[history]` snapshots (×0.6) are demoted, so distilled knowledge outranks raw session noise
 - **Intent-aware retrieval** — `searchByEmbedding` accepts `intent` (read/edit/debug/discovery) and boosts purpose-typed nodes per intent: `debug`→`lesson`/`bug`/`fix`, `read`→`knowledge`/`concept`/`architecture`, `edit`→`convention`/`decision`/`preference` (×1.4 each)
 - **Predictive rating** — adjusts memory usefulness scores over time based on usage patterns
@@ -199,6 +200,17 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
     "minLessons": 3,
     "useLlm": false
   },
+  "autoLessons": {
+    "enabled": true,
+    "minFailures": 2,
+    "useLlm": false
+  },
+  "autoCapture": {
+    "enabled": true,
+    "minEdits": 1,
+    "useLlm": false,
+    "maxPerSession": 3
+  },
   "autoConsolidate": {
     "enabled": false,
     "similarityThreshold": 0.3,
@@ -267,6 +279,13 @@ Create `~/.config/opencode/opencode-mem.json` to customize (optional — all def
 | `autoDistill.enabled` | bool | `false` | Auto-extract rules from lesson nodes |
 | `autoDistill.minLessons` | int | `3` | Min lessons before extraction |
 | `autoDistill.useLlm` | bool | `false` | Use LLM for more specific rules |
+| `autoLessons.enabled` | bool | `true` | Extract lesson nodes from failed tool calls at session idle |
+| `autoLessons.minFailures` | int | `2` | Min failed tool calls before extracting a lesson |
+| `autoLessons.useLlm` | bool | `false` | Generate concrete prevention rules via LLM |
+| `autoCapture.enabled` | bool | `true` | Distill a `work:` knowledge node from successful edits at session idle |
+| `autoCapture.minEdits` | int | `1` | Min successful edit/write calls before capturing |
+| `autoCapture.useLlm` | bool | `false` | Generate a "what was done" summary via LLM |
+| `autoCapture.maxPerSession` | int | `3` | Max work nodes captured per session (dedup via `sess:` tag) |
 | `autoDiscover.enabled` | bool | `false` | Auto-detect playbook patterns from tool call sequences |
 | `autoDiscover.minSequenceLength` | int | `3` | Min steps for a detected pattern |
 | `autoDiscover.minRepeatCount` | int | `2` | Min repeats to qualify as a pattern |

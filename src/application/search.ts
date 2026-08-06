@@ -39,6 +39,7 @@ export async function searchNodes(
     minUsefulness?: number | undefined;
     rrfK?: number | undefined;
     rerank?: boolean | undefined;
+    rerankMode?: "keyword" | "cross-encoder" | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
     categoryFilter?: MemoryCategory | undefined;
@@ -75,6 +76,7 @@ export async function searchNodes(
     queryText?: string;
     minUsefulness?: number | undefined;
     rerank?: boolean | undefined;
+    rerankMode?: "keyword" | "cross-encoder" | undefined;
     projectName?: string | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
@@ -97,6 +99,7 @@ export async function searchNodes(
   if (opts.domainFilter !== undefined) options.domainFilter = opts.domainFilter;
   if (opts.typeFilter !== undefined) options.typeFilter = opts.typeFilter;
   if (opts.tagsFilter !== undefined) options.tagsFilter = opts.tagsFilter;
+  if (opts.rerankMode !== undefined) options.rerankMode = opts.rerankMode;
 
   return store.searchByEmbedding(embedding, limit, options);
 }

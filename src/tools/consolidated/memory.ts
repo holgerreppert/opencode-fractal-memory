@@ -15,9 +15,9 @@ const SUGGESTIONS: Record<string, string> = {
   replace: "\n\n---\nNEXT: `learn(mode=verify, label=<label>)` to certify the updated content.",
 };
 
-export function createMemoryTool(store: MemoryStore) {
+export function createMemoryTool(store: MemoryStore, defaultRerankMode?: "keyword" | "cross-encoder") {
   const handlers: Record<string, ToolDefinition> = {
-    search: MemorySearch(store),
+    search: MemorySearch(store, defaultRerankMode),
     get: MemoryGet(store),
     set: MemorySet(store),
     delete: MemoryDelete(store),
@@ -74,6 +74,7 @@ TIP: For context pressure, use context tool.`,
       rrf_k: tool.schema.number().int().min(1).max(1000).optional(),
       temporal_hops: tool.schema.number().int().min(0).max(5).optional(),
       rerank: tool.schema.boolean().optional(),
+      rerank_mode: tool.schema.enum(["keyword", "cross-encoder"]).optional().describe("Rerank strategy: keyword (default) or cross-encoder (local ONNX model, better relevance)"),
       expand_links: tool.schema.boolean().optional(),
       expand_temporal: tool.schema.boolean().optional(),
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional(),
