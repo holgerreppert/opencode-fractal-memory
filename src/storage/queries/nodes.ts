@@ -14,6 +14,7 @@ const CreateNodeSchema = z.object({
   level: z.number().int().min(0).max(5).optional(),
   parentIds: z.array(z.string()).nullable().optional(),
   embedding: z.array(z.number()).nullable().optional(),
+  embeddingSegments: z.array(z.array(z.number())).nullable().optional(),
   importance: z.number().min(0).max(2).optional(),
   type: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
@@ -296,7 +297,7 @@ export async function queryCreateNode(
   const resolvedTags = node.tags !== undefined ? node.tags : (resolvedMetadata?.tags as string[] | undefined) ?? null;
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
@@ -307,6 +308,7 @@ export async function queryCreateNode(
       node.parentIds ? JSON.stringify(node.parentIds) : null,
       node.embedding ? JSON.stringify(node.embedding) : null,
       node.embedding ? embeddingToBlob(node.embedding) : null,
+      node.embeddingSegments ? JSON.stringify(node.embeddingSegments) : null,
       now,
       now,
       node.importance ?? 0.5,
@@ -338,10 +340,15 @@ resolvedSupertype,
   }
   updateBM25Index(db, id, node.content, node.label, node.scope);
 
-  // HNSW add is outside transaction (in-memory)
+  // HNSW add is outside transaction (in-memory) — one point per segment
+  const hnsw = getHNSWIndex();
   if (node.embedding) {
-    const hnsw = getHNSWIndex();
     await hnsw.addNode(node.scope, id, node.embedding);
+  }
+  if (node.embeddingSegments && node.embeddingSegments.length > 0) {
+    for (const seg of node.embeddingSegments) {
+      await hnsw.addNode(node.scope, id, seg);
+    }
   }
 
   return {
@@ -353,6 +360,7 @@ resolvedSupertype,
     level: node.level ?? 0,
     parentIds: node.parentIds ?? null,
     embedding: node.embedding ?? null,
+    embeddingSegments: node.embeddingSegments ?? null,
     createdAt: new Date(now),
     updatedAt: new Date(now),
     importance: node.importance ?? 0.5,
@@ -397,6 +405,9 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
     ["embedding = ?", v ? JSON.stringify(v) : null],
     ["embedding_blob = ?", v ? embeddingToBlob(v as number[]) : null],
   ],
+  embeddingSegments: (v) => [
+    ["embedding_segments = ?", v ? JSON.stringify(v) : null],
+  ],
   sticky: (v) => [["sticky = ?", v ? 1 : 0]],
   ttlDays: (v) => {
     const now = Date.now();
@@ -413,7 +424,7 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
 export async function queryUpdateNode(
   db: Database,
   id: string,
-  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>
+  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>
 ): Promise<void> {
   const setClauses: string[] = ["updated_at = ?"];
   const params: (string | number | Buffer | null)[] = [Date.now()];
@@ -447,7 +458,7 @@ export function querySearchText(db: Database, scope: MemoryScope, query: string,
   params.push(limit);
   const projectClause = hasProjectFilter ? "AND project_name = ?" : "";
   const rows = db.query(`
-    SELECT id, scope, label, content, summary, level, parent_ids, embedding_blob, created_at, updated_at,
+    SELECT id, scope, label, content, summary, level, parent_ids, embedding_blob, embedding_segments, created_at, updated_at,
            importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at,
            confidence, last_verified, verification_count, usefulness_score, times_used, times_helpful, project_name
     FROM memory_nodes
@@ -465,7 +476,7 @@ export function querySearchBM25(db: Database, scope: MemoryScope, terms: string[
   if (projectName && scope === "project") params.push(projectName);
   params.push(limit);
   const rows = db.query(`
-    SELECT n.id, n.scope, n.label, n.content, n.summary, n.level, n.parent_ids, n.embedding_blob,
+    SELECT n.id, n.scope, n.label, n.content, n.summary, n.level, n.parent_ids, n.embedding_blob, n.embedding_segments,
            n.created_at, n.updated_at, n.importance, n.access_count, n.last_accessed,
            n.type, n.category, n.supertype, n.domain, n.tags, n.source, n.metadata, n.sticky, n.ttl_days, n.expires_at,
            n.confidence, n.last_verified, n.verification_count, n.usefulness_score, n.times_used, n.times_helpful, n.project_name,

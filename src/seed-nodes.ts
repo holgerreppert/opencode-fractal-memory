@@ -318,7 +318,7 @@ Golden rule: Use the \`memory\` tool for ALL node CRUD (search/get/set/delete/li
 
 Tool selection order: search (ALWAYS first, 100x cheaper than reading files) → drilldown/get (after search) → set (store discoveries) → replace (fix outdated) → delete (cleanup).
 
-Search params: \`rrf_k\` 30-100 tunes rank fusion sharpness (default 60); \`tagsFilter\` for intersection filtering; \`rerank\` for LLM judge scoring on ambiguous queries.
+Search params: \`tagsFilter\` for intersection filtering; \`rerank\` and \`rerank_mode\` for keyword or cross-encoder reranking on ambiguous queries; feature weights come from the \`ranking.featureWeights\` config.
 
 Source-of-truth linking: encode verification pointers as tags — \`file:src/foo.ts\`, \`fn:calculateTotal\`, \`commit:abc123\`, \`line:42\`, \`test:testCalculateTotal\`, \`cmd:make migrate\`. Searchable via \`tagsFilter\`. Every node should answer "where in the repo can this be checked?"
 
@@ -1488,38 +1488,20 @@ OpenCode installs it automatically at startup.
 ### How to Update
 OpenCode caches plugins at \`~/.cache/opencode/packages/\`. When a new version is published, the cache may stay pinned to the old version due to bun's dual caching. Two approaches:
 
-**Approach 1 — npm pack + local install:**
+**Approach 1 — dev-install script (RECOMMENDED for local development):**
 \`\`\`bash
 cd /path/to/opencode-fractal-memory
-bun run build && npm pack
-
-cd ~/.config/opencode
-rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.23.tgz
-
-# CRITICAL: Also copy to plugin cache (npm install does NOT populate this)
-cp -r node_modules/opencode-fractal-memory/dist \\
-  node_modules/opencode-fractal-memory/management \\
-  node_modules/opencode-fractal-memory/package.json \\
-  node_modules/opencode-fractal-memory/LICENSE \\
-  node_modules/opencode-fractal-memory/commands \\
-  node_modules/opencode-fractal-memory/agent \\
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+bun run dev-install                # build + clean + sync to the plugin cache @latest path
+bun run dev-install --skip-build   # skip tsc, just sync
 \`\`\`
+The script (scripts/dev-install.ts) wipes the plugin cache dir \`~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/\` (the ONLY location OpenCode loads — beacon-proven via the \`PLUGIN_LOADED_FROM\` startup log in \`~/.config/opencode/logs/memory-plugin.log\`; the legacy \`~/.config/opencode/node_modules\` copy is cleaned for npm-pack compat only, never read by OpenCode), copies all files (dist management package.json LICENSE README.md commands agent scripts) plus runtime deps, prints a RESTART REQUIRED warning, and exits non-zero if dist is missing from the cache. Then RESTART OpenCode and verify: \`grep "PLUGIN_LOADED_FROM" ~/.config/opencode/logs/memory-plugin.log\` — \`resolvedDir\` must be the cache @latest path.
 
-**Approach 2 — cache-only (quick iteration):**
-\`\`\`bash
-bun run build
-cp -r dist management package.json LICENSE README.md commands agent \\
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
-\`\`\`
-
-**Approach 3 — npm publish (production):**
+**Approach 2 — npm publish (production):**
 \`\`\`bash
 npm version patch --no-git-tag-version
 npm run build && npm test
 npm publish
-git commit -am "v0.6.x" && git tag v0.6.x
+git commit -am "v0.7.x" && git tag v0.7.x
 \`\`\`
 
 ### npm v12 Note
@@ -1527,7 +1509,7 @@ As of npm v12 (July 2026), \`--ignore-scripts\` is the default — \`postinstall
 
 ### Troubleshooting
 - **Plugin not loading**: Check logs at \`~/.config/opencode/logs/memory-plugin.log\`
-- **Stale version**: The cache at \`~/.cache/opencode/packages/\` must be updated manually — npm install alone is insufficient
+- **Stale version**: The cache at \`~/.cache/opencode/packages/\` must be synced manually — npm install alone is insufficient (only touches \`~/.config/opencode/node_modules\`, which OpenCode never loads). Use \`bun run dev-install\` (local) or \`cd ~/.cache/opencode/packages/opencode-fractal-memory@latest && bun add opencode-fractal-memory@latest\` (published)
 - **"The path property must be of type string, got object"**: Known OpenCode bug (#12589, #7082) in the npm plugin resolver. Non-blocking — plugin works anyway
 - **UNIQUE constraint errors**: Fixed in v0.6.23+ via \`INSERT OR IGNORE\` — ensure you're on the latest version`,
   },

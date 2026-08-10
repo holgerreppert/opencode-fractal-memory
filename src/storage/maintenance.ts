@@ -3,6 +3,7 @@ import type { MemoryScope } from "./types";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { extractLinks, embeddingToBlob, blobToEmbedding, withRetry } from "./utils";
 import { updateBM25Index } from "./queries/search-helpers";
+import { memLog } from "../logging";
 
 export async function backfillLinks(
   db: Database
@@ -115,14 +116,15 @@ export async function rebuildHNSWIndex(
     return;
   }
 
-  const nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }> = [];
+  const nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project"; segments?: number[][] }> = [];
 
   for (const s of scopes) {
     const db = await getDb(s);
-    const rows = db.query("SELECT id, embedding, embedding_blob FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND scope = ?").all(s) as Array<{
+    const rows = db.query("SELECT id, embedding, embedding_blob, embedding_segments FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND scope = ?").all(s) as Array<{
       id: string;
       embedding: string | null;
       embedding_blob: Buffer | null;
+      embedding_segments: string | null;
     }>;
 
     for (const row of rows) {
@@ -134,10 +136,22 @@ export async function rebuildHNSWIndex(
       }
 
       if (embedding) {
-        nodes.push({ id: row.id, embedding, scope: s });
+        let segments: number[][] | undefined;
+        if (row.embedding_segments) {
+          try {
+            const parsed = JSON.parse(row.embedding_segments) as unknown;
+            if (Array.isArray(parsed)) segments = parsed as number[][];
+          } catch { /* ignore corrupt segments */ }
+        }
+        nodes.push(segments
+          ? { id: row.id, embedding, scope: s, segments }
+          : { id: row.id, embedding, scope: s });
       }
     }
   }
 
   await hnsw.rebuild(nodes);
+  const rebuildStats = hnsw.getStats();
+  const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  memLog("info", "hnsw", "HNSW index rebuilt", { nodes: nodes.length, globalNodes: rebuildStats.globalNodes, projectNodes: rebuildStats.projectNodes, rssMB: rss });
 }

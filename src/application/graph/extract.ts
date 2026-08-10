@@ -107,9 +107,13 @@ interface FlatDef {
   line: number;
 }
 
-function flattenStructure(items: WasmStructureItem[], depth: number, out: FlatDef[]): void {
+// Only top-level declarations (depth 0) become symbols. Nested arrow functions /
+// callbacks are reported by tree-sitter with their parameter name (e.g.
+// `.some(p => …)` → name "p"), which pollutes the graph with single-letter
+// noise like `Function l [line 5]`.
+export function flattenStructure(items: WasmStructureItem[], depth: number, out: FlatDef[]): void {
   for (const item of items) {
-    if (item.name && depth > 0) {
+    if (item.name && depth === 0) {
       out.push({ name: item.name, kind: item.kind, line: item.span.startLine + 1 });
     }
     if (item.children && item.children.length > 0) {
@@ -202,17 +206,27 @@ export function extractFile(
   const callees = extractRegexCallees(content, localNames);
   const types = extractRegexTypes(content, localNames);
 
+  // Callees/types are filtered to localNames above, so they always reference an
+  // existing def. Look them up and reuse the def node — creating placeholder
+  // symbols with kind "unknown" / line 0 pollutes the graph (and the read
+  // preamble) with duplicate nodes like `unknown hasGraph [line 0]`.
+  const defByName = new Map(defs.map(d => [d.name, d]));
+
   for (const d of defs) {
     const fromId = graph.addSymbol(filePath, d.name, d.kind, d.line);
     for (const callee of callees) {
       if (callee !== d.name) {
-        const toId = graph.addSymbol(filePath, callee, "unknown", 0);
+        const target = defByName.get(callee);
+        if (!target) continue;
+        const toId = graph.addSymbol(filePath, target.name, target.kind, target.line);
         graph.addCall(fromId, toId);
       }
     }
     for (const t of types) {
       if (t !== d.name) {
-        const toId = graph.addSymbol(filePath, t, "unknown", 0);
+        const target = defByName.get(t);
+        if (!target) continue;
+        const toId = graph.addSymbol(filePath, target.name, target.kind, target.line);
         graph.addReferences(fromId, toId);
       }
     }

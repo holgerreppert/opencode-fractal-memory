@@ -1,5 +1,5 @@
 import { memLog, writeLiveFeedLog } from "../logging";
-import { generateEmbedding } from "../infrastructure/llm/embeddings";
+import { generateEmbeddingWithSegments } from "../infrastructure/llm/embeddings";
 import { getRuntimeInfo } from "../infrastructure/llm/onnx-runtime";
 import { Router } from "./router";
 import type { MemoryStore } from "../domain/ports/MemoryStore";
@@ -66,7 +66,6 @@ export function registerRoutes(router: Router, store: MemoryStore): void {
 
   // ==================== Embeddings Status ====================
   router.get(/^\/api\/embeddings-status$/, () => handleEmbeddingsStatus());
-
   // ==================== Shutdown ====================
   router.get(/^\/api\/shutdown$/, () => handleShutdown());
 
@@ -258,8 +257,9 @@ async function handleNodeUpdate(req: Request, ctx: { params: Record<string, stri
 
     if (body.content !== undefined && body.content !== existing.content) {
       memLog("info", "management", `[api] Regenerating embedding for node ${nodeId}`);
-      const embedding = await generateEmbedding(String(body.content));
-      updates.embedding = embedding;
+      const { primary, segments } = await generateEmbeddingWithSegments(String(body.content));
+      updates.embedding = primary;
+      updates.embeddingSegments = segments;
     }
 
     await store.updateNode(nodeId, updates as Parameters<typeof store.updateNode>[1]);

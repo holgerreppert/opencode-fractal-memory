@@ -1,7 +1,8 @@
 import { createSqliteMemoryStore, type MemoryStore } from "../storage/sqlite";
 import type { MemConfig } from "./config/config";
 import { loadMemConfig } from "./config/config";
-import { generateEmbedding } from "./llm/embeddings";
+import { generateEmbeddingWithSegments } from "./llm/embeddings";
+import { loadHNSWIndexFromDisk, persistHNSWIndex, getHNSWIndex } from "./vector/hnsw-index";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
 import { createAutoRetrieveHook } from "../application";
 import { startManagementServer } from "../management-server";
@@ -55,6 +56,7 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
 }
 
 async function initializeStore(directory: string, globalDbPath?: string): Promise<MemoryStore> {
+  const rss = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
   memLog("info", "init", "Creating memory store", { directory });
   const store = createSqliteMemoryStore(directory, globalDbPath);
 
@@ -65,6 +67,31 @@ async function initializeStore(directory: string, globalDbPath?: string): Promis
   memLog("info", "init", "Ensuring seed nodes");
   await store.ensureSeed();
   await ensureSeedRules(store);
+
+  memLog("info", "init", "Restoring HNSW index", { rssMB: rss() });
+  const loaded = await loadHNSWIndexFromDisk();
+  if (loaded) {
+    const stats = loaded.getStats();
+    memLog("info", "init", "HNSW index loaded from disk", { globalNodes: stats.globalNodes, projectNodes: stats.projectNodes, rssMB: rss() });
+  } else {
+    memLog("info", "init", "No HNSW index on disk — rebuilding from DB embeddings", { rssMB: rss() });
+  }
+
+  memLog("info", "init", "Reconciling HNSW index with DB", { rssMB: rss() });
+  const before = getHNSWIndex().getStats();
+  await store.rebuildHNSWIndex("all");
+  const after = getHNSWIndex().getStats();
+  const changed = before.globalNodes !== after.globalNodes || before.projectNodes !== after.projectNodes;
+  const persisted = persistHNSWIndex();
+  memLog("info", "init", "HNSW index reconciled", {
+    beforeGlobal: before.globalNodes,
+    beforeProject: before.projectNodes,
+    afterGlobal: after.globalNodes,
+    afterProject: after.projectNodes,
+    changed,
+    persisted,
+    rssMB: rss(),
+  });
 
   return store;
 }
@@ -142,19 +169,43 @@ export function createAutoRetrieve(
 }
 
 export function scheduleBackgroundEmbeddings(store: MemoryStore): void {
+  const rss = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
+  const MAX_EMBED_CONTENT_CHARS = 100_000;
   setTimeout(async () => {
     try {
       const nodes = await store.listNodes("all");
-      const withoutEmbeddings = nodes.filter(n => !n.embedding);
-      if (withoutEmbeddings.length === 0) return;
+      const candidates = nodes.filter(n => !n.embedding);
+      const skipTags = candidates.filter(n => (n.tags ?? []).some(t => t === "middle-term" || t === "storedcontext" || t === "history"));
+      const skipOversized = candidates.filter(n => !skipTags.includes(n) && (n.content?.length ?? 0) > MAX_EMBED_CONTENT_CHARS);
+      const withoutEmbeddings = candidates.filter(n => !skipTags.includes(n) && !skipOversized.includes(n));
+      memLog("info", "embeddings", "Background embedding task started", {
+        totalNodes: nodes.length,
+        withoutEmbeddings: candidates.length,
+        skipMiddleTerm: skipTags.length,
+        skipOversized: skipOversized.length,
+        toEmbed: withoutEmbeddings.length,
+        rssMB: rss(),
+      });
+      if (withoutEmbeddings.length === 0) {
+        memLog("info", "embeddings", "Background embedding task finished — nothing to do", { rssMB: rss() });
+        return;
+      }
 
+      let embedded = 0;
       for (const node of withoutEmbeddings) {
         try {
           if (!node.content || node.content.trim().length < 10) continue;
-          const embedding = await generateEmbedding(node.content);
-          await store.updateNode(node.id, { embedding });
+          const { primary, segments } = await generateEmbeddingWithSegments(node.content);
+          await store.updateNode(node.id, { embedding: primary, embeddingSegments: segments });
+          embedded++;
+          if (embedded % 10 === 0 || embedded === withoutEmbeddings.length) {
+            memLog("info", "embeddings", "Background embedding progress", { embedded, total: withoutEmbeddings.length, rssMB: rss() });
+          }
         } catch { /* ignore */ }
       }
-    } catch { /* ignore */ }
+      memLog("info", "embeddings", "Background embedding task finished", { embedded, total: withoutEmbeddings.length, rssMB: rss() });
+    } catch (e) {
+      memLog("error", "embeddings", "Background embedding task failed", { error: String(e), rssMB: rss() });
+    }
   }, 1000);
 }

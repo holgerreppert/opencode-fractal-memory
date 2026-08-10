@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { generateEmbedding } from "../infrastructure/llm/embeddings";
+import { generateEmbeddingWithSegments } from "../infrastructure/llm/embeddings";
 import { resolveNode, wrapWithTracking } from "./shared";
 
 export function MemoryPrune(store: MemoryStore) {
@@ -196,8 +196,8 @@ export function MemoryGenerateEmbeddings(store: MemoryStore) {
       
       for (const node of nodesWithoutEmbedding) {
         try {
-          const embedding = await generateEmbedding(node.content);
-          await store.updateNode(node.id, { embedding });
+          const { primary, segments } = await generateEmbeddingWithSegments(node.content);
+          await store.updateNode(node.id, { embedding: primary, embeddingSegments: segments });
           generated++;
         } catch {
           failed++;

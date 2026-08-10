@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fractal Memory Viewer</title>
   <script defer src="alpine.local.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="vendor/fuse.min.js"></script>
   <style>
     :root { --sidebar-width: 280px; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -34,8 +34,8 @@
     #sidebar.sidebar-collapsed .subtitle,
     #sidebar.sidebar-collapsed #visualize-panel,
     #sidebar.sidebar-collapsed #graph-sidebar-panel { display: none; }
-    #sidebar.sidebar-collapsed .tab-buttons { flex-direction: column; }
-    #sidebar.sidebar-collapsed .tab-btn { font-size: 10px; padding: 6px 0; writing-mode: vertical-rl; text-orientation: mixed; }
+    #sidebar.sidebar-collapsed .tab-dropdown-trigger { justify-content: center; padding: 8px 4px; }
+    #sidebar.sidebar-collapsed .tab-dropdown-label { display: none; }
 
     #resize-handle {
       width: 4px; height: 100vh; flex-shrink: 0;
@@ -189,18 +189,34 @@
     .toggle-sidebar:hover { background: rgba(255,255,255,0.1); }
     #main-content.tab-content .toggle-sidebar { display: block; }
 
-    /* Tabs */
-    .tab-buttons { display: flex; gap: 4px; margin-bottom: 16px; }
+    /* Tabs (dropdown menu) */
+    .tab-dropdown { position: relative; margin-bottom: 16px; }
+    .tab-dropdown-trigger {
+      width: 100%; display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.05); color: #fff; font-size: 12.5px; cursor: pointer; transition: all 0.2s;
+    }
+    .tab-dropdown-trigger:hover { background: rgba(255,255,255,0.1); }
+    .tab-dropdown-caret { font-size: 10px; color: #888; transition: transform 0.2s; }
+    .tab-dropdown.open .tab-dropdown-caret { transform: rotate(180deg); }
+    .tab-dropdown-menu {
+      position: fixed; z-index: 200; min-width: 220px; max-height: 60vh; overflow-y: auto;
+      display: none;
+      background: rgba(15, 15, 25, 0.98); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+      padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .tab-dropdown.open .tab-dropdown-menu { display: block; }
     .tab-btn {
-      flex: 1; padding: 8px 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
-      background: transparent; color: #888; font-size: 12px; cursor: pointer; transition: all 0.2s;
+      width: 100%; padding: 7px 12px; border-radius: 6px; border: 1px solid transparent;
+      background: transparent; color: #888; font-size: 12.5px; text-align: left; cursor: pointer; transition: all 0.2s;
     }
     .tab-btn:hover { background: rgba(255,255,255,0.1); }
     .tab-btn.active { background: rgba(100, 150, 255, 0.3); border-color: rgba(100, 150, 255, 0.5); color: #fff; }
     .tab-group-label {
       width: 100%; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px;
-      padding: 10px 0 4px 0; text-align: center; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px;
+      padding: 10px 12px 4px 12px; text-align: left; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px;
     }
+    .tab-group-label:first-of-type { border-top: none; margin-top: 0; }
 
     /* Settings Panel */
     .settings-panel { display: none; }
@@ -458,26 +474,32 @@
     <h1>Fractal Memory</h1>
     <div class="subtitle"><span id="version">3D Node Visualization</span></div>
 
-    <div class="tab-buttons">
-      <button class="tab-btn active" data-tab="visualize">Visualize</button>
+    <div class="tab-dropdown">
+      <button class="tab-dropdown-trigger" id="tab-dropdown-trigger" aria-haspopup="true" aria-expanded="false">
+        <span class="tab-dropdown-label">Visualize</span>
+        <span class="tab-dropdown-caret">▾</span>
+      </button>
+      <div class="tab-dropdown-menu" id="tab-dropdown-menu">
+        <button class="tab-btn active" data-tab="visualize">Visualize</button>
 
-      <div class="tab-group-label">MONITOR</div>
-      <button class="tab-btn" data-tab="dashboard">Dashboard</button>
-      <button class="tab-btn" data-tab="context">Context</button>
-      <button class="tab-btn" data-tab="quality">Quality</button>
+        <div class="tab-group-label">MONITOR</div>
+        <button class="tab-btn" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="context">Context</button>
+        <button class="tab-btn" data-tab="quality">Quality</button>
 
-      <div class="tab-group-label">DATA</div>
-      <button class="tab-btn" data-tab="compress">Compress</button>
-      <button class="tab-btn" data-tab="tokens">Tokens</button>
-      <button class="tab-btn" data-tab="graph">Graph</button>
+        <div class="tab-group-label">DATA</div>
+        <button class="tab-btn" data-tab="compress">Compress</button>
+        <button class="tab-btn" data-tab="tokens">Tokens</button>
+        <button class="tab-btn" data-tab="graph">Graph</button>
 
-      <div class="tab-group-label">LIVE</div>
-      <button class="tab-btn" data-tab="live-agent">Live Agent</button>
-      <button class="tab-btn" data-tab="live-metrics">Live Metrics</button>
+        <div class="tab-group-label">LIVE</div>
+        <button class="tab-btn" data-tab="live-agent">Live Agent</button>
+        <button class="tab-btn" data-tab="live-metrics">Live Metrics</button>
 
-      <div class="tab-group-label">SYSTEM</div>
-      <button class="tab-btn" data-tab="settings">Settings</button>
-      <button class="tab-btn" data-tab="backup">Backup</button>
+        <div class="tab-group-label">SYSTEM</div>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+        <button class="tab-btn" data-tab="backup">Backup</button>
+      </div>
     </div>
 
     <!-- Visualize Panel (stays in sidebar) -->
@@ -623,8 +645,22 @@
     <!-- Node list (Alpine-rendered) -->
     <div class="section" style="margin-bottom:8px;">
       <h3>Nodes <span style="font-size:11px;color:#666;font-weight:normal;" x-text="`(${nodeListItems.length})`"></span></h3>
+      <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center;">
+        <select :value="sortBy" @change="setSortBy($event.target.value)" class="filter-select" style="flex:1;min-width:0;">
+          <option value="importance">Importance</option>
+          <option value="createdAt">Created</option>
+          <option value="updatedAt">Updated</option>
+          <option value="lastAccessed">Last accessed</option>
+          <option value="label">Label</option>
+          <option value="level">Level</option>
+          <option value="type">Type</option>
+          <option value="confidence">Confidence</option>
+        </select>
+        <button class="filter-btn" @click="toggleSortDir()" title="Toggle sort direction"
+                style="flex-shrink:0;padding:3px 8px;" x-text="sortDir === 'desc' ? '\u25BC' : '\u25B2'"></button>
+      </div>
       <div class="node-list-container" style="max-height:250px;overflow-y:auto;border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
-        <template x-for="n in nodeListItems.slice(0, 100)">
+        <template x-for="n in nodeListItems.slice(0, nodeListLimit)">
           <div @click="selectNode(n)"
                style="padding:4px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;display:flex;justify-content:space-between;align-items:center;"
                :style="window.sceneCtrl?.selectedNode?.userData?.nodeId === n.id ? 'background:rgba(100,150,255,0.2);' : ''">
@@ -636,6 +672,9 @@
           </div>
         </template>
         <div x-show="nodeListItems.length === 0" style="text-align:center;padding:12px;color:#555;font-size:11px;">No matching nodes</div>
+      </div>
+      <div x-show="nodeListItems.length > nodeListLimit" style="margin-top:6px;text-align:center;">
+        <button class="filter-btn" @click="showMoreNodes()" x-text="`Show more (${nodeListItems.length - nodeListLimit} remaining)`"></button>
       </div>
     </div>
 
@@ -1429,6 +1468,74 @@
           <div class="config-field">
             <label>Min Cluster Size</label>
             <input type="number" id="autoConsolidate-minClusterSize" min="2" max="10">
+          </div>
+        </div>
+      </div>
+
+      <div class="config-category">
+        <h3 class="category-header">Ranking <span class="collapse-arrow">&#x25BC;</span></h3>
+        <div class="category-body">
+          <div class="config-field">
+            <label>Feature Weight: Semantic</label>
+            <input type="number" id="ranking-featureWeights-semantic" min="0" max="1" step="0.05">
+            <p class="config-hint">Linear-model weight for embedding similarity (default 0.5)</p>
+          </div>
+          <div class="config-field">
+            <label>Feature Weight: BM25</label>
+            <input type="number" id="ranking-featureWeights-bm25" min="0" max="1" step="0.05">
+            <p class="config-hint">Keyword match weight (default 0.25)</p>
+          </div>
+          <div class="config-field">
+            <label>Feature Weight: Quality</label>
+            <input type="number" id="ranking-featureWeights-quality" min="0" max="1" step="0.05">
+            <p class="config-hint">Purpose-label quality weight (default 0.15)</p>
+          </div>
+          <div class="config-field">
+            <label>Feature Weight: Confidence</label>
+            <input type="number" id="ranking-featureWeights-confidence" min="0" max="1" step="0.05">
+            <p class="config-hint">Node confidence weight (default 0.05)</p>
+          </div>
+          <div class="config-field">
+            <label>Feature Weight: Usefulness</label>
+            <input type="number" id="ranking-featureWeights-usefulness" min="0" max="1" step="0.05">
+            <p class="config-hint">Usefulness-score weight (default 0.05)</p>
+          </div>
+          <div class="config-field">
+            <label>Gate Min Score</label>
+            <input type="number" id="ranking-gate-minScore" min="0" max="1" step="0.05">
+            <p class="config-hint">Injection importance threshold (default 0.3)</p>
+          </div>
+          <div class="config-field">
+            <label>Gate Delta Threshold</label>
+            <input type="number" id="ranking-gate-deltaThreshold" min="0" max="1" step="0.05">
+            <p class="config-hint">Minimum score gap to distinguish candidates</p>
+          </div>
+          <div class="config-field">
+            <label>Rerank Mode</label>
+            <select id="ranking-rerank-mode">
+              <option value="keyword">Keyword</option>
+              <option value="cross-encoder">Cross-Encoder (ONNX)</option>
+              <option value="off">Off</option>
+            </select>
+            <p class="config-hint">Rerank strategy after the linear-model pass</p>
+          </div>
+          <div class="config-field">
+            <label>Rerank Pool Size</label>
+            <input type="number" id="ranking-rerank-poolSize" min="10" max="100">
+            <p class="config-hint">Candidate pool for reranking (default 20)</p>
+          </div>
+          <div class="config-field">
+            <label>Recency Role</label>
+            <select id="ranking-recency-role">
+              <option value="tiebreak">Tiebreak only</option>
+              <option value="off">Off</option>
+            </select>
+            <p class="config-hint">Recency breaks equal-relevance ties; it never penalizes the score</p>
+          </div>
+          <div class="config-field">
+            <label>Recency Half-Life (hours)</label>
+            <input type="number" id="ranking-recency-halfLifeHours" min="1" max="8760">
+            <p class="config-hint">Recency decay half-life in hours (default 24)</p>
           </div>
         </div>
       </div>

@@ -9,6 +9,7 @@ export interface SqliteNode {
   parent_ids: string | null;
   embedding: string | null;
   embedding_blob: Buffer | null;
+  embedding_segments: string | null;
   created_at: number;
   updated_at: number;
   importance: number;
@@ -55,6 +56,15 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     embedding = JSON.parse(row.embedding);
   }
 
+  let embeddingSegments: number[][] | null = null;
+  if (row.embedding_segments) {
+    try {
+      embeddingSegments = JSON.parse(row.embedding_segments);
+    } catch {
+      embeddingSegments = null;
+    }
+  }
+
   return {
     id: row.id,
     scope: row.scope as MemoryScope,
@@ -64,6 +74,7 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     level: row.level as MemoryNodeLevel,
     parentIds: row.parent_ids ? JSON.parse(row.parent_ids) : null,
     embedding,
+    embeddingSegments,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     importance: row.importance,

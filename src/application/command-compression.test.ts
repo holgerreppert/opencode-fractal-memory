@@ -208,6 +208,24 @@ describe("compressCommandOutput", () => {
     expect(result).toBeNull();
   });
 
+  test("grep output preserves code identifiers verbatim (no mangling)", () => {
+    const lines = Array.from(
+      { length: 60 },
+      (_, i) => `src/storage/file${i}.ts:${i + 1}:export function rebuildHNSWIndex(scope${i}: MemoryScope): Promise<void> {`,
+    );
+    const output = lines.join("\n");
+    const result = compressCommandOutput('rg -n "rebuildHNSWIndex" src/ -g "*.ts"', output, false, defaultConfig);
+    expect(result).not.toBeNull();
+    expect(result!.strategy).toBe("grep");
+    const out = result!.output;
+    expect(out).toContain("rebuildHNSWIndex");
+    expect(out).toContain("MemoryScope");
+    expect(out).not.toContain("n as nFn");
+    expect(out).not.toContain("Function n");
+    const wordToken = /(^|\W)n(\W|$)/;
+    expect(wordToken.test(out)).toBe(false);
+  });
+
   test("test strategy", () => {
     const output = Array.from({ length: 45 }, () => "✓ some passing test with a long enough name to hit 80 chars").concat(["45 tests run"]).join("\n");
     const result = compressCommandOutput("npm test", output, false, defaultConfig);

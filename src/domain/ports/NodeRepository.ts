@@ -3,6 +3,7 @@ import type {
   MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult,
   DrilldownResult, TemporalEdge, SearchIntent,
 } from "./MemoryStore";
+import type { RankWeights } from "../../application/ranking/weights";
 
 export interface NodeRepository {
   readonly projectName: string;
@@ -12,18 +13,20 @@ export interface NodeRepository {
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
   getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode>;
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
-  updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
+  updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
   deleteNode(id: string): Promise<void>;
   searchByEmbedding(query: number[], limit?: number | undefined, options?: {
     minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined;
     levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
-    rrfK?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined;
+    queryText?: string | undefined; minUsefulness?: number | undefined;
+    rerank?: boolean | undefined; rerankMode?: "keyword" | "cross-encoder" | undefined;
     bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined;
     temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
     temporalHops?: number | undefined;
     categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined;
     intent?: SearchIntent | undefined;
     tagsFilter?: string[] | undefined;
+    featureWeights?: Partial<RankWeights> | undefined;
   }): Promise<MemoryNode[]>;
   getFractalStats(scope: MemoryScope | "all", projectName?: string | undefined): Promise<FractalStats>;
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;

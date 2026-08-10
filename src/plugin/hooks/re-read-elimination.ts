@@ -12,9 +12,14 @@ export function createReReadEliminationHandler(config: MemConfig): HookHandler {
   }
 
   return {
-    "tool.before": async (_input: unknown, output: unknown) => {
+    // NOTE: `tool.before` output only exposes `{ args }` (see @opencode-ai/plugin
+    // v1.4.x types) — `out.output`/`out.metadata` mutations are silently dropped
+    // there. The serve MUST happen in `tool.after`, which exposes a writable
+    // `{ output, metadata }` (same pattern as graph-search-hint / rg-footgun).
+    "tool.after": async (_input: unknown, output: unknown) => {
       if (!rrConfig?.enabled) return;
       const input = _input as { tool?: string; args?: { filePath?: string; offset?: number } };
+      const out = output as { output?: string; metadata?: Record<string, unknown> };
       if (input.tool !== "read") return;
 
       const filePath = input.args?.filePath;
@@ -25,40 +30,28 @@ export function createReReadEliminationHandler(config: MemConfig): HookHandler {
         return;
       }
 
-      const result = checkUnchangedRead(filePath);
-      if (!result) {
-        writeFileSumLog("RE-READ", { action: "cache-miss-or-changed", file: filePath, cache_size: getReadCacheSize() });
+      // Serve from cache first: if the file is unchanged since the previous
+      // read, the model already has the full content in context — replace the
+      // fresh output with the cached copy + marker instead of re-shipping it.
+      const cached = checkUnchangedRead(filePath);
+      if (cached) {
+        const marker = injectionMarker(config, "re-read-elimination", `served cached content for ${filePath} (since turn ${cached.turn})`);
+        out.output = marker ? marker + "\n" + cached.content : cached.content;
+        out.metadata = {
+          ...((out.metadata as Record<string, unknown>) ?? {}),
+          reread_eliminated: true,
+        };
+        recordInjection(config, "re-read-elimination", `cached read of ${filePath} (${cached.content.length} chars)`);
+        writeFileSumLog("RE-READ", {
+          action: "cache-hit",
+          file: filePath,
+          chars: cached.content.length,
+          since_turn: cached.turn,
+          cache_size: getReadCacheSize(),
+          max_cache: getReadCacheMaxSize(),
+        });
         return;
       }
-
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
-      const marker = injectionMarker(config, "re-read-elimination", `served cached content for ${filePath} (since turn ${result.turn})`);
-      out.output = marker ? marker + "\n" + result.content : result.content;
-      out.metadata = {
-        ...((out.metadata as Record<string, unknown>) ?? {}),
-        reread_eliminated: true,
-      };
-      recordInjection(config, "re-read-elimination", `cached read of ${filePath} (${result.content.length} chars)`);
-      writeFileSumLog("RE-READ", {
-        action: "cache-hit",
-        file: filePath,
-        chars: result.content.length,
-        since_turn: result.turn,
-        cache_size: getReadCacheSize(),
-        max_cache: getReadCacheMaxSize(),
-      });
-    },
-
-    "tool.after": async (_input: unknown, output: unknown) => {
-      if (!rrConfig?.enabled) return;
-      const input = _input as { tool?: string; args?: { filePath?: string; offset?: number } };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
-      if (input.tool !== "read") return;
-
-      const filePath = input.args?.filePath;
-      if (!filePath) return;
-
-      if (input.args?.offset) return;
 
       if ((out.metadata as Record<string, unknown> | undefined)?.reread_eliminated) {
         return;

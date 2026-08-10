@@ -8,8 +8,9 @@ import { loadExperienceTasks, loadRelatedTasks, type ExperienceTask } from "./da
 export const SWE_CONTEXT_PROJECT_NAME = "swe-contextbench";
 
 const DATA_DIR = path.resolve(__dirname, "../../tests/dbs/swe-contextbench");
-const EXPERIENCE_EMBEDDINGS_CACHE = path.resolve(__dirname, "../../tests/dbs/swe-contextbench/experience-embeddings.bin");
-const RELATED_EMBEDDINGS_CACHE = path.resolve(__dirname, "../../tests/dbs/swe-contextbench/related-embeddings.json");
+const EMBEDDING_MODEL = "gte-small";
+const EXPERIENCE_EMBEDDINGS_CACHE = path.resolve(__dirname, `../../tests/dbs/swe-contextbench/experience-embeddings-${EMBEDDING_MODEL}.bin`);
+const RELATED_EMBEDDINGS_CACHE = path.resolve(__dirname, `../../tests/dbs/swe-contextbench/related-embeddings-${EMBEDDING_MODEL}.json`);
 
 export type SeedSweContextOptions = {
   /** Re-generate embeddings (deterministic ONNX) instead of using the committed cache. */
@@ -155,7 +156,7 @@ export async function seedSweContextDatabase(outDir: string, opts: SeedSweContex
   await store.rebuildHNSWIndex("project");
   await store.close();
 
-  const relatedPath = path.join(outDir, "related-embeddings.json");
+  const relatedPath = path.join(outDir, `related-embeddings-${EMBEDDING_MODEL}.json`);
   fs.writeFileSync(
     relatedPath,
     JSON.stringify(related.map((r, i) => ({ ...r, embedding: relatedEmbeddings[i] }))),

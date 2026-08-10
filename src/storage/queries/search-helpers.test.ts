@@ -7,8 +7,7 @@ import {
   computeBM25TermScore,
   computeBM25Scores,
   computeBM25ScoresSQL,
-  computeRRFScores,
-  rerankResults,
+  computeQualityMultiplier,
   updateBM25Index,
   removeBM25Index,
 } from "./search-helpers";
@@ -247,196 +246,38 @@ describe("updateBM25Index and removeBM25Index", () => {
   });
 });
 
-describe("computeRRFScores", () => {
-  test("normalizes single candidate to 1.0", () => {
-    const nodes = [makeNode({ id: "a", importance: 0.8, lastAccessed: null })];
-    const result = computeRRFScores(nodes, { queryText: "" });
-    expect(result).toHaveLength(1);
-    expect(result[0]!.importance).toBeCloseTo(1.0, 6);
-  });
-
-  test("top-ranked candidate normalizes to 1.0, bottom to 0", () => {
-    const nodes = [
-      makeNode({ id: "a", importance: 0.9, lastAccessed: null }),
-      makeNode({ id: "b", importance: 0.8, lastAccessed: null }),
-    ];
-    const result = computeRRFScores(nodes, { queryText: "hello", bm25Scores: new Map([["b", 1.0]]) });
-    expect(result.find(n => n.id === "b")!.importance).toBeCloseTo(1.0, 6);
-    expect(result.find(n => n.id === "a")!.importance).toBeCloseTo(0.0, 6);
-    expect(result.find(n => n.id === "b")!.importance).toBeGreaterThan(result.find(n => n.id === "a")!.importance);
-  });
-
-  test("both-legs node beats rank-1-in-one-leg node", () => {
-    const nodes = [
-      makeNode({ id: "a", importance: 0.9, lastAccessed: null }),
-      makeNode({ id: "b", importance: 0.8, lastAccessed: null }),
-      makeNode({ id: "c", importance: 0.7, lastAccessed: null }),
-    ];
-    // b and c each in both legs; a only in semantic leg (no BM25 score)
-    const result = computeRRFScores(nodes, {
-      queryText: "hello",
-      bm25Scores: new Map([["b", 1.0], ["c", 0.9]]),
-    });
-    const a = result.find(n => n.id === "a")!.importance;
-    const b = result.find(n => n.id === "b")!.importance;
-    const c = result.find(n => n.id === "c")!.importance;
-    expect(b).toBeGreaterThan(a);
-    expect(c).toBeGreaterThan(a);
-    expect(b).toBeGreaterThan(c);
-    expect(b).toBeCloseTo(1.0, 6);
-  });
-
-  test("applies multiplicative recency penalty", () => {
-    const fresh = makeNode({ id: "fresh", importance: 0.5, lastAccessed: new Date(), content: "same" });
-    const old = makeNode({ id: "old", importance: 0.5, lastAccessed: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), content: "same" });
-    const freshResult = computeRRFScores([fresh], { queryText: "" });
-    const oldResult = computeRRFScores([old], { queryText: "" });
-    // Fresh node keeps ~full normalized score (recencyScore=1 → 0.3+0.7=1.0);
-    // stale node is demoted to the 0.3 floor — NOT merely left at 1.0.
-    expect(freshResult[0]!.importance).toBeGreaterThan(oldResult[0]!.importance);
-    expect(freshResult[0]!.importance).toBeCloseTo(1.0, 6);
-    expect(oldResult[0]!.importance).toBeCloseTo(0.3, 6);
-  });
-
-  test("applies type/label quality multiplier", () => {
-    const mk = (id: string, type?: string, label?: string) =>
-      makeNode({ id, importance: 0.5, lastAccessed: null, type: type as MemoryNode["type"], label: label ?? id });
-    const generic = computeRRFScores([mk("g")], { queryText: "" })[0]!.importance;
-    const stored = computeRRFScores([mk("s", "storedcontext")], { queryText: "" })[0]!.importance;
-    const knowledge = computeRRFScores([mk("k", "concept", "knowledge:foo")], { queryText: "" })[0]!.importance;
-    const rule = computeRRFScores([mk("r", "concept", "rule:mandatory:x")], { queryText: "" })[0]!.importance;
-    const middleTerm = computeRRFScores([mk("m", "concept", "middle-term:ses-x")], { queryText: "" })[0]!.importance;
-    // storedcontext session dumps are demoted below generic nodes
+describe("computeQualityMultiplier", () => {
+  test("storedcontext session dumps are demoted below generic nodes", () => {
+    const generic = computeQualityMultiplier(makeNode({ id: "g", type: "concept", label: "generic" }));
+    const stored = computeQualityMultiplier(makeNode({ id: "s", type: "storedcontext", label: "sess-x" }));
     expect(stored).toBeLessThan(generic);
-    // curated knowledge/rule labels are boosted above generic
+    expect(stored).toBe(0.5);
+  });
+
+  test("curated knowledge/rule labels are boosted above generic", () => {
+    const generic = computeQualityMultiplier(makeNode({ id: "g", type: "concept", label: "generic" }));
+    const knowledge = computeQualityMultiplier(makeNode({ id: "k", type: "concept", label: "knowledge:foo" }));
+    const rule = computeQualityMultiplier(makeNode({ id: "r", type: "concept", label: "rule:mandatory:x" }));
     expect(knowledge).toBeGreaterThan(generic);
     expect(rule).toBeGreaterThan(generic);
-    // middle-term snapshots are demoted like storedcontext
+    expect(knowledge).toBe(1.25);
+    expect(rule).toBe(1.25);
+  });
+
+  test("middle-term snapshots are demoted like storedcontext", () => {
+    const generic = computeQualityMultiplier(makeNode({ id: "g", type: "concept", label: "generic" }));
+    const middleTerm = computeQualityMultiplier(makeNode({ id: "m", type: "concept", label: "middle-term:ses-x" }));
     expect(middleTerm).toBeLessThan(generic);
+    expect(middleTerm).toBe(0.6);
   });
 
   test("purpose-centric lesson/decision/convention/fact labels are boosted hardest", () => {
-    const base = computeRRFScores([makeNode({ id: "g", importance: 0.5, lastAccessed: null, label: "generic" })], { queryText: "" })[0]!.importance;
-    const lessonScore = computeRRFScores([makeNode({ id: "l", importance: 0.5, lastAccessed: null, label: "lesson:z" })], { queryText: "" })[0]!.importance;
-    const decisionScore = computeRRFScores([makeNode({ id: "d", importance: 0.5, lastAccessed: null, label: "decision:use-bun" })], { queryText: "" })[0]!.importance;
-    // purpose labels (×1.3) strictly beat generic (×1.0)
+    const base = computeQualityMultiplier(makeNode({ id: "g", type: "concept", label: "generic" }));
+    const lessonScore = computeQualityMultiplier(makeNode({ id: "l", type: "lesson", label: "lesson:z" }));
+    const decisionScore = computeQualityMultiplier(makeNode({ id: "d", type: "decision", label: "decision:use-bun" }));
     expect(lessonScore).toBeGreaterThan(base);
     expect(decisionScore).toBeGreaterThan(base);
-    expect(lessonScore).toBeCloseTo(1.3, 6);
-  });
-
-  test("level>=1 nodes decay from createdAt, not lastAccessed", () => {
-    // Stale summary: created 30 days ago, but lastAccessed refreshed to now
-    // (simulating the searchByEmbedding re-stamp loop). With createdAt decay
-    // the recency penalty collapses to the 0.3 floor despite the fresh
-    // lastAccessed.
-    const staleSummary = makeNode({
-      id: "stale-summary",
-      importance: 0.5,
-      level: 1,
-      createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      lastAccessed: new Date(),
-      content: "same",
-    });
-    const freshSummary = makeNode({
-      id: "fresh-summary",
-      importance: 0.5,
-      level: 1,
-      createdAt: new Date(),
-      lastAccessed: new Date(),
-      content: "same",
-    });
-    const staleResult = computeRRFScores([staleSummary], { queryText: "" });
-    const freshResult = computeRRFScores([freshSummary], { queryText: "" });
-    // Single-candidate sets normalize to 1.0; recency penalty is the separator
-    expect(staleResult[0]!.importance).toBeCloseTo(0.3, 6);
-    expect(freshResult[0]!.importance).toBeCloseTo(1.0, 6);
-    expect(freshResult[0]!.importance).toBeGreaterThan(staleResult[0]!.importance);
-  });
-
-  test("higher k flattens score spread between ranks", () => {
-    const mk = (id: string, imp: number) => makeNode({ id, importance: imp, lastAccessed: null });
-    const nodes = [mk("r1", 0.9), mk("r2", 0.8), mk("r3", 0.7)];
-    const scores60 = computeRRFScores(nodes, {
-      queryText: "hello",
-      rrfK: 60,
-      bm25Scores: new Map([["r1", 1.0], ["r2", 0.9], ["r3", 0.8]]),
-    });
-    const scores10 = computeRRFScores(nodes, {
-      queryText: "hello",
-      rrfK: 10,
-      bm25Scores: new Map([["r1", 1.0], ["r2", 0.9], ["r3", 0.8]]),
-    });
-    // Higher k gives the middle rank a higher normalized share
-    const mid60 = scores60.find(n => n.id === "r2")!.importance;
-    const mid10 = scores10.find(n => n.id === "r2")!.importance;
-    expect(mid60).toBeGreaterThan(mid10);
-    // Top rank always normalizes to 1.0 regardless of k
-    expect(scores60.find(n => n.id === "r1")!.importance).toBeCloseTo(1.0, 6);
-    expect(scores10.find(n => n.id === "r1")!.importance).toBeCloseTo(1.0, 6);
-  });
-
-  test("empty input returns empty array", () => {
-    const result = computeRRFScores([], { queryText: "" });
-    expect(result).toEqual([]);
-  });
-
-  test("null/undefined importance does not crash and ranks bottom", () => {
-    const nodes = [
-      makeNode({ id: "high", importance: 0.9, lastAccessed: null }),
-      makeNode({ id: "null-imp", importance: null as unknown as number, lastAccessed: null }),
-      makeNode({ id: "undef-imp", importance: undefined as unknown as number, lastAccessed: null }),
-    ];
-    const result = computeRRFScores(nodes, { queryText: "" });
-    expect(result).toHaveLength(3);
-    // Ties in importance sort stably; both bottom nodes get distinct ranks
-    expect(result[0]!.id).toBe("high");
-    expect(Number.isFinite(result[1]!.importance)).toBe(true);
-    expect(Number.isFinite(result[2]!.importance)).toBe(true);
-  });
-
-  test("k=0 and negative k are clamped to 1, no NaN", () => {
-    const nodes = [
-      makeNode({ id: "a", importance: 0.9, lastAccessed: null }),
-      makeNode({ id: "b", importance: 0.8, lastAccessed: null }),
-    ];
-    const bm25 = new Map([["a", 1.0], ["b", 0.5]]);
-    for (const badK of [0, -5, -60]) {
-      const result = computeRRFScores(nodes, { queryText: "hello", rrfK: badK, bm25Scores: bm25 });
-      expect(result).toHaveLength(2);
-      expect(result.every(n => Number.isFinite(n.importance))).toBe(true);
-      expect(result[0]!.id).toBe("a");
-      expect(result[0]!.importance).toBeCloseTo(1.0, 6);
-    }
-  });
-});
-
-describe("rerankResults", () => {
-  test("returns original scores when fewer nodes than topK", () => {
-    const nodes = [makeNode({ id: "a", importance: 0.5 }), makeNode({ id: "b", importance: 0.3 })];
-    const result = rerankResults("hello", nodes, 10);
-    expect(result).toHaveLength(2);
-    expect(result[0]!.node.id).toBe("a");
-    expect(result[0]!.rerankScore).toBe(1);
-    expect(result[0]!.finalScore).toBe(0.5);
-  });
-
-  test("boosts nodes matching query terms", () => {
-    const matching = makeNode({ id: "match", importance: 0.3, content: "hello world hello here", label: "hello" });
-    const nonMatching = makeNode({ id: "no-match", importance: 0.5, content: "completely unrelated text content provided", label: "other" });
-    const extras = Array.from({ length: 10 }, (_, i) =>
-      makeNode({ id: `extra-${i}`, importance: 0.1, content: "filler content", label: "filler" })
-    );
-    const nodes = [matching, nonMatching, ...extras];
-    const result = rerankResults("hello world", nodes, 5);
-    expect(result[0]!.node.id).toBe("match");
-  });
-
-  test("returns topK results", () => {
-    const nodes = Array.from({ length: 20 }, (_, i) =>
-      makeNode({ id: `n-${i}`, importance: 0.5, content: `item ${i}`, label: `item-${i}` })
-    );
-    const result = rerankResults("test", nodes, 5);
-    expect(result).toHaveLength(5);
+    expect(lessonScore).toBe(1.3);
+    expect(decisionScore).toBe(1.3);
   });
 });

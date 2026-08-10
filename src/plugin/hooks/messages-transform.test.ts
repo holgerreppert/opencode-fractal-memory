@@ -22,6 +22,7 @@ function makeMockStore(): MemoryStore {
     drilldownQuery: async (_query: string, _limit: number) => [
       {
         node: {
+          id: "node-1",
           label: "test:memory-1",
           content: "This is a test memory node with useful context information for testing purposes.",
           type: "note",
@@ -32,6 +33,7 @@ function makeMockStore(): MemoryStore {
       },
       {
         node: {
+          id: "node-2",
           label: "test:memory-2",
           content: "This is another test memory node with additional context.",
           type: "fact",
@@ -147,5 +149,61 @@ describe("createMessagesTransformHandler", () => {
     expect(injected).toBeDefined();
     expect(injected!.parts[0]!.text).toContain("test:memory-1");
     expect(injected!.parts[0]!.text).not.toContain("test:memory-2");
+  });
+
+  test("dedups per session: a node injected once is not re-injected the same session", async () => {
+    const store = makeMockStore();
+    const config = makeConfig();
+    const sessionId = { value: "ses-dedup" };
+    const handler = createMessagesTransformHandler(store, config, sessionId);
+
+    const makeOutput = () => ({
+      messages: [
+        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
+        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
+        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory again" }] },
+      ],
+    });
+
+    const transform = handler["chat.messages.transform"]!;
+
+    // First turn: both nodes pass (minScore 0.05 default) → injected.
+    const out1 = makeOutput();
+    await transform({} as any, out1);
+    expect(out1.messages.length).toBe(4);
+    const injected1 = out1.messages[2]!;
+    expect(injected1.parts[0]?.text).toContain("test:memory-1");
+
+    // Second turn, same session: both nodes already seen → nothing injected.
+    const out2 = makeOutput();
+    await transform({} as any, out2);
+    expect(out2.messages.length).toBe(3);
+  });
+
+  test("allows re-injection in a new session (dedup is per-session)", async () => {
+    const store = makeMockStore();
+    const config = makeConfig();
+    const sessionId = { value: "ses-1" };
+    const handler = createMessagesTransformHandler(store, config, sessionId);
+
+    const makeOutput = () => ({
+      messages: [
+        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
+        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
+        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory once more" }] },
+      ],
+    });
+
+    const transform = handler["chat.messages.transform"]!;
+
+    const out1 = makeOutput();
+    await transform({} as any, out1);
+    expect(out1.messages.length).toBe(4);
+
+    // New session id → fresh dedup set → injects again.
+    sessionId.value = "ses-2";
+    const out2 = makeOutput();
+    await transform({} as any, out2);
+    expect(out2.messages.length).toBe(4);
   });
 });

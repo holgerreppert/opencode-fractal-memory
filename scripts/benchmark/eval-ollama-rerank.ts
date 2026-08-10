@@ -18,7 +18,7 @@ const store = createSqliteMemoryStore(dbDir, result.dbPath);
 
 const rel = loadRelationshipLinks();
 const byRelated = new Map(rel.map(l => [l.related_instance_id, l.experience_instance_ids.map(labelForExperience)]));
-const withEmb = JSON.parse(fs.readFileSync(path.join(dbDir, "related-embeddings.json"), "utf-8")) as Array<{
+const withEmb = JSON.parse(fs.readFileSync(path.join(dbDir, "related-embeddings-gte-small.json"), "utf-8")) as Array<{
   instance_id: string; repo: string; problem_statement: string; embedding: number[];
 }>;
 

@@ -21,6 +21,7 @@ import { memLog } from "../logging";
 import { getExpiredNodes as getExpiredNodesFn, deleteExpiredNodes as deleteExpiredNodesFn, pruneNodes as pruneNodesFn } from "./expiration";
 import { backfillLinks as backfillLinksFn, backfillBinaryEmbeddingsAndBM25 as backfillBinaryEmbeddingsAndBM25Fn, backfillSupertype as backfillSupertypeFn, rebuildHNSWIndex as rebuildHNSWIndexFn } from "./maintenance";
 import { searchByEmbedding as searchByEmbeddingFn, detectTopicBoundaries as detectTopicBoundariesFn, drilldownQuery as drilldownQueryFn, getDrilldownPath as getDrilldownPathFn } from "./search";
+import type { RankWeights } from "../application/ranking/weights";
 import { retrieveFractal as retrieveFractalFn, getFractalStats as getFractalStatsFn } from "./navigation";
 import { getCompressionCandidates as getCompressionCandidatesFn, runCompression as runCompressionFn, runPatternExtraction as runPatternExtractionFn } from "./compress-ops";
 import { ensureSeed as ensureSeedFn, resolveNode as resolveNodeFn, getNode as getNodeFn, verifyNode as verifyNodeFn } from "./lifecycle";
@@ -354,7 +355,7 @@ class SqliteMemoryStore implements MemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; rrfK?: number | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined }
+    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; rerankMode?: "keyword" | "cross-encoder" | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined; featureWeights?: Partial<RankWeights> | undefined }
   ): Promise<MemoryNode[]> {
     return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
   }

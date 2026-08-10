@@ -15,6 +15,10 @@ document.addEventListener('alpine:init', () => {
     loading: false,
     info: '',
     showAdvancedFilters: false,
+    sortBy: 'importance',
+    sortDir: 'desc',
+    nodeListLimit: 100,
+    nodeListStep: 100,
 
     levels: [],
     types: [],
@@ -29,6 +33,14 @@ document.addEventListener('alpine:init', () => {
     availableSources: [],
 
     init() {
+      const saved = localStorage.getItem('mgmt-node-sort');
+      if (saved) {
+        try {
+          const p = JSON.parse(saved);
+          if (p.sortBy) this.sortBy = p.sortBy;
+          if (p.sortDir) this.sortDir = p.sortDir;
+        } catch { /* ignore */ }
+      }
       this._refreshOptions();
       this._updateNodeList();
       window.addEventListener(STATS_LOADED_EVENT, () => {
@@ -49,12 +61,61 @@ document.addEventListener('alpine:init', () => {
 
     _updateNodeList() {
       if (this.results.length > 0) {
-        this.nodeListItems = this.results;
+        this.nodeListItems = this._sorted(this.results);
       } else if (window.nodeData && window.filterEngine) {
-        this.nodeListItems = window.nodeData.filter(n => window.filterEngine.matches(n)).slice(0, 100);
+        this.nodeListItems = this._sorted(
+          window.nodeData.filter(n => window.filterEngine.matches(n))
+        );
       } else {
         this.nodeListItems = [];
       }
+    },
+
+    showMoreNodes() {
+      this.nodeListLimit += this.nodeListStep;
+    },
+
+    resetNodeListLimit() {
+      this.nodeListLimit = 100;
+    },
+
+    _sorted(items) {
+      const arr = [...items];
+      const dir = this.sortDir === 'asc' ? 1 : -1;
+      const key = this.sortBy;
+      const isDateKey = key === 'createdAt' || key === 'updatedAt' || key === 'lastAccessed';
+      const num = (n) => {
+        const v = n[key];
+        if (v === undefined || v === null) return null;
+        return isDateKey ? new Date(v).getTime() : v;
+      };
+      arr.sort((a, b) => {
+        const va = num(a);
+        const vb = num(b);
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        let cmp;
+        if (typeof va === 'string' || typeof vb === 'string') {
+          cmp = String(va).localeCompare(String(vb));
+        } else {
+          cmp = va - vb;
+        }
+        return cmp * dir;
+      });
+      return arr;
+    },
+
+    setSortBy(v) {
+      this.sortBy = v;
+      localStorage.setItem('mgmt-node-sort', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir }));
+      this._updateNodeList();
+    },
+
+    toggleSortDir() {
+      this.sortDir = this.sortDir === 'desc' ? 'asc' : 'desc';
+      localStorage.setItem('mgmt-node-sort', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir }));
+      this._updateNodeList();
     },
 
     selectNode(node) {

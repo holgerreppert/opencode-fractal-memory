@@ -8,11 +8,13 @@ import type {
   SearchIntent,
 } from "../domain/ports/MemoryStore";
 import type { MemoryStore } from "../domain/ports/MemoryStore";
+import type { RankWeights } from "./ranking/weights";
 
 /**
- * Unified search mode. `hybrid` (default) fuses semantic + BM25 with RRF.
- * `bm25` and `text` are fast keyword-only paths that never touch the
- * embedding model — useful when embeddings are unavailable or latency matters.
+ * Unified search mode. `hybrid` (default) fuses semantic + BM25 with the
+ * feature-weighted linear model. `bm25` and `text` are fast keyword-only
+ * paths that never touch the embedding model — useful when embeddings are
+ * unavailable or latency matters.
  */
 export type SearchMode = "hybrid" | "bm25" | "text";
 
@@ -37,9 +39,9 @@ export async function searchNodes(
     minLevel?: MemoryNodeLevel | undefined;
     maxLevel?: MemoryNodeLevel | undefined;
     minUsefulness?: number | undefined;
-    rrfK?: number | undefined;
     rerank?: boolean | undefined;
     rerankMode?: "keyword" | "cross-encoder" | undefined;
+    featureWeights?: Partial<RankWeights> | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
     categoryFilter?: MemoryCategory | undefined;
@@ -72,11 +74,11 @@ export async function searchNodes(
   const options: {
     minLevel?: MemoryNodeLevel;
     maxLevel?: MemoryNodeLevel;
-    rrfK?: number;
     queryText?: string;
     minUsefulness?: number | undefined;
     rerank?: boolean | undefined;
     rerankMode?: "keyword" | "cross-encoder" | undefined;
+    featureWeights?: Partial<RankWeights> | undefined;
     projectName?: string | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
@@ -91,7 +93,6 @@ export async function searchNodes(
   if (opts.minLevel !== undefined) options.minLevel = opts.minLevel;
   if (opts.maxLevel !== undefined) options.maxLevel = opts.maxLevel;
   if (opts.minUsefulness !== undefined) options.minUsefulness = opts.minUsefulness;
-  if (opts.rrfK !== undefined) options.rrfK = opts.rrfK;
   if (opts.projectName !== undefined) options.projectName = projectName;
   if (opts.temporalHops !== undefined && opts.temporalHops > 0) options.temporalHops = opts.temporalHops;
   if (opts.intent !== undefined) options.intent = opts.intent;
@@ -100,6 +101,7 @@ export async function searchNodes(
   if (opts.typeFilter !== undefined) options.typeFilter = opts.typeFilter;
   if (opts.tagsFilter !== undefined) options.tagsFilter = opts.tagsFilter;
   if (opts.rerankMode !== undefined) options.rerankMode = opts.rerankMode;
+  if (opts.featureWeights !== undefined) options.featureWeights = opts.featureWeights;
 
   return store.searchByEmbedding(embedding, limit, options);
 }

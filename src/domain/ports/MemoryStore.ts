@@ -21,6 +21,7 @@ export type MemoryNode = {
   level: MemoryNodeLevel;
   parentIds: string[] | null;
   embedding: number[] | null;
+  embeddingSegments: number[][] | null;
   createdAt: Date;
   updatedAt: Date;
   importance: number;
@@ -53,6 +54,7 @@ export type CreateNodeInput = {
   level?: MemoryNodeLevel | undefined;
   parentIds?: string[] | null | undefined;
   embedding?: number[] | null | undefined;
+  embeddingSegments?: number[][] | null | undefined;
   importance?: number | undefined;
   type?: MemoryNodeType | null | undefined;
   category?: MemoryCategory | null | undefined;

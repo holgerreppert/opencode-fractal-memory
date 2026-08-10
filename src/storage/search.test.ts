@@ -262,7 +262,7 @@ describe("searchByEmbedding", () => {
     expect(results.find(n => n.id === "project-node")).toBeDefined();
   });
 
-  test("increments times_used on returned nodes", async () => {
+  test("does not increment times_used on returned nodes (read-only search)", async () => {
     const { getDb, projectDb, insertNode } = setup();
     const emb = makeEmbedding(0.5);
     insertNode(projectDb, { id: "usage-test", embedding: emb, scope: "project" });
@@ -274,7 +274,7 @@ describe("searchByEmbedding", () => {
     await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
 
     const row = projectDb.query("SELECT times_used FROM memory_nodes WHERE id = ?").get("usage-test") as { times_used: number } | null;
-    expect(row!.times_used).toBe(1);
+    expect(row!.times_used).toBe(0);
   });
 
   test("fallback path: uses cosine similarity when HNSW returns no results", async () => {

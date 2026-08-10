@@ -47,6 +47,14 @@ export function createMessagesTransformHandler(
     return {};
   }
 
+  // Per-session dedup: a node injected once in a session is never re-injected
+  // in the same session. This is the anti-flood mechanism — the old
+  // multiplicative recency penalty (0.3 floor) suppressed ALL injection of
+  // durable knowledge instead of just preventing repeats. Dedup lets a
+  // relevant old node be injected exactly once per session, then makes room
+  // for the next-best candidates on later turns.
+  const injectedPerSession = new Map<string, Set<string>>();
+
   return {
     "chat.messages.transform": async (_input: unknown, output: unknown) => {
       const out = output as {
@@ -67,15 +75,26 @@ export function createMessagesTransformHandler(
         const apConfig = config.adaptivePressure;
         const phase = apConfig?.enabled ? getPressurePhase(apConfig) : "normal";
 
-        // Importance gate: autoInjection.minScore applies in ALL phases.
-        // Stale group summaries (level >= 1) decay via the multiplicative
-        // recency penalty in computeRRFScores, landing well below this gate,
-        // so they no longer get injected every turn. Pressure-aware phases
-        // raise the bar further (0.6 aggressive / 0.8 critical).
-        const baseMinImp = config.autoInjection?.minScore ?? config.autoRetrieve?.minInjectionScore ?? 0.05;
+        // Importance gate: ranking.gate.minScore applies in ALL phases.
+        // Importance is the calibrated linear-model relevance ([0,1],
+        // absolute scale) — recency no longer multiplies it, so old-but-
+        // relevant nodes can pass. Pressure-aware phases raise the bar
+        // further (0.6 aggressive / 0.8 critical). Repeats are handled by
+        // the per-session dedup below, not by score decay.
+        const baseMinImp = config.autoInjection?.minScore ?? config.autoRetrieve?.minInjectionScore ?? config.ranking?.gate?.minScore ?? 0.3;
         const minImp = phase === "critical" ? 0.8 : phase === "aggressive" ? Math.max(0.6, baseMinImp) : baseMinImp;
 
-        let filtered = results.filter(r => r.node?.content);
+        const sessionId = currentSessionId?.value || "default";
+        let seen = injectedPerSession.get(sessionId);
+        if (!seen) {
+          seen = new Set<string>();
+          injectedPerSession.set(sessionId, seen);
+          if (injectedPerSession.size > 32) {
+            injectedPerSession.delete(injectedPerSession.keys().next().value as string);
+          }
+        }
+
+        let filtered = results.filter(r => r.node?.content && !(r.node?.id && seen.has(r.node.id)));
         const preGateCount = filtered.length;
         filtered = filtered.filter(r => (r.node?.importance ?? 0) >= minImp);
         if (preGateCount - filtered.length > 0) {
@@ -88,6 +107,9 @@ export function createMessagesTransformHandler(
         if (!memoryBlock) return;
 
         const injectedNodes = filtered.slice(0, 3);
+        for (const r of injectedNodes) {
+          if (r.node?.id) seen.add(r.node.id);
+        }
         const marker = injectionMarker(config, "memory-context", `${injectedNodes.length} node(s), phase=${phase}`) + "\n";
         const body = `${marker}[Relevant context from memory]\n${memoryBlock}`;
         recordInjection(config, "memory-context", `${injectedNodes.length} node(s): ${injectedNodes.map(r => r.node?.label ?? r.node?.id).join(", ")} (phase=${phase})`);

@@ -24,28 +24,25 @@ OpenCode automatically installs npm plugins via `bun install` at startup. The mo
 
 ### For development / manual install
 
-Build from source or install a `.tgz`:
+Use the dev-install script from a local clone (recommended — syncs the plugin cache that OpenCode actually loads, copies all files + runtime deps, prints a RESTART REQUIRED warning):
+
+```bash
+cd /path/to/opencode-fractal-memory
+bun run dev-install                # build + clean + sync to ~/.config/opencode + plugin cache
+bun run dev-install --skip-build   # skip tsc, just sync
+```
+
+Then restart OpenCode. The script wipes `~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/` (the load location) and copies `dist management package.json LICENSE README.md commands agent scripts` plus runtime deps into it, exiting non-zero if `dist` is missing. The `~/.config/opencode/node_modules` copy is legacy — OpenCode never reads it (beacon-proven via the `PLUGIN_LOADED_FROM` log in `~/.config/opencode/logs/memory-plugin.log`). VS Code: "Dev Install Plugin (build+clean+sync)" launch config.
+
+For direct npm install of a `.tgz`:
 
 ```bash
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.7.6.tgz
+npm install --ignore-scripts ./path/to/opencode-fractal-memory-0.7.14.tgz
 ```
 
-Use `--ignore-scripts` to avoid Bun trust prompts (npm v12 defaults to this behavior). Models download on first plugin load instead.
-
-### Quick iteration (cp method)
-
-After rebuilding, copy directly to the cached plugin directory:
-
-```bash
-cd /path/to/opencode-fractal-memory
-bun run build
-cp -r dist management package.json LICENSE README.md commands agent \
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
-```
-
-This also updates the command files. Restart OpenCode to load the changes.
+Use `--ignore-scripts` to avoid Bun trust prompts (npm v12 defaults to this behavior). Models download on first plugin load instead. NOTE: npm install alone only touches `~/.config/opencode/node_modules` — the cache copy that OpenCode actually loads must still be synced with `bun run dev-install`.
 
 ### If the cache stays stale
 
@@ -57,7 +54,7 @@ cd ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/openco
 bun add opencode-fractal-memory@latest
 ```
 
-Or copy the build directly as described above.
+Or run `bun run dev-install` from a local clone to sync the cache copy directly (the manual cp method is replaced by the script — the manual `cp -r dist management ...` ritual caused the 2026-08-06 stale-cache bug where the loaded plugin stayed 0.7.13 after 0.7.14 was published).
 
 This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#25293](https://github.com/anomalyco/opencode/issues/25293).
 

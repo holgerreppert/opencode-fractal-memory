@@ -134,14 +134,17 @@ cd ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/openco
 bun add opencode-fractal-memory@latest
 ```
 
-Or copy the build directly (for development):
+Or use the dev-install script from a local clone (recommended for development — syncs the plugin cache that OpenCode actually loads, copies all files + runtime deps, prints a RESTART REQUIRED warning):
 
 ```bash
 cd <your-local-clone>
-bun run build
-cp -r dist management package.json LICENSE README.md commands agent \
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+bun run dev-install                 # build + clean + sync to ~/.config/opencode + plugin cache
+bun run dev-install --skip-build    # skip tsc, just sync
 ```
+
+Then restart OpenCode — the running process holds the plugin in memory and won't see disk changes until restart.
+
+Why a script: OpenCode loads the plugin ONLY from the cache dir (`~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/`) — beacon-proven via the `PLUGIN_LOADED_FROM` startup log in `~/.config/opencode/logs/memory-plugin.log`. The `~/.config/opencode/node_modules` copy is legacy and never read by OpenCode. `scripts/dev-install.ts` syncs the cache. VS Code: "Dev Install Plugin (build+clean+sync)" launch config.
 
 This is a known OpenCode issue: [#6774](https://github.com/anomalyco/opencode/issues/6774), [#10546](https://github.com/anomalyco/opencode/issues/10546), [#25293](https://github.com/anomalyco/opencode/issues/25293).
 
@@ -901,14 +904,11 @@ bun test
 ### Installing locally (development)
 
 ```bash
-bun run build
-npm pack
-cd ~/.config/opencode
-rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts <path-to-tgz>
+bun run dev-install                # build + clean + sync to ~/.config/opencode + plugin cache
+bun run dev-install --skip-build   # skip tsc, just sync
 ```
 
-Use `--ignore-scripts` to avoid trust prompts. Models download automatically on first plugin load via `ensureModels()` in `initStorage()`.
+The script (scripts/dev-install.ts) wipes the plugin cache dir, copies all files + runtime deps, and prints a RESTART REQUIRED warning. Models download automatically on first plugin load via `ensureModels()` in `initStorage()`.
 
 ## Architecture
 

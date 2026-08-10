@@ -1,7 +1,7 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, appendSessionLog } from "../../logging";
-import { generateEmbedding } from "../../infrastructure/llm/embeddings";
+import { generateEmbeddingWithSegments } from "../../infrastructure/llm/embeddings";
 import { getWorkingCache, addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
 
@@ -126,9 +126,14 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
 
         store.logInjectionMetrics(sessionId, {
           injectedNodeCount: 1,
-          injectedTokens: Math.round(captureContent.length / 4),
+          injectedTokens: 0,
           injectionMode: "compaction_middle_term",
           injectedNodeTypes: { note: 1 },
+          injectedContent: [{
+            label: `middle-term:${sessionId}`,
+            type: "note",
+            snippet: `Session snapshot stored (${(captureContent.length / 4).toLocaleString()} chars est.) — NOT injected into the model. Retrieve via memory_middle_term.`,
+          }],
         }).catch((err: unknown) => memLog("warn", "compaction", `injection metric error: ${String(err)}`));
 
         summaries.push(`Middle-term capture stored for session ${sessionId}.`);
@@ -234,7 +239,12 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                 const nodeLabel = `storedcontext:${sessionId}:${now}`;
                 const content = `--- storedcontext summary ---\n${structuredYaml}\n--- conversation history ---\n\n${entries.join("\n\n---\n\n")}`;
                 let embedding: number[] | null = null;
-                try { embedding = await generateEmbedding(content.slice(0, 8000)); } catch { embedding = null; }
+                let embeddingSegments: number[][] | null = null;
+                try {
+                  const { primary, segments } = await generateEmbeddingWithSegments(content.slice(0, 8000));
+                  embedding = primary;
+                  embeddingSegments = segments;
+                } catch { embedding = null; }
                 await store.createNode({
                   scope: "project",
                   label: nodeLabel,
@@ -243,6 +253,7 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                   level: 0,
                   parentIds: null,
                   embedding,
+                  embeddingSegments,
                   importance: 0.5,
                   usefulnessScore: 0.1,
                   source: "auto_extract",

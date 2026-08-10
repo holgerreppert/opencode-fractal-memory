@@ -11,7 +11,7 @@ function makeConfig(overrides?: Record<string, unknown>): MemConfig {
     sessionManagement: { enabled: false },
     embedding: { enabled: false, model: "all-MiniLM-L6-v2", dimension: 384 },
     errorPruning: { enabled: false, turns: 1, protectedTools: [] },
-    toolDedup: { enabled: true, maxCacheEntries: 100, protectedTools: [], turnProtectionTurns: 2 },
+    toolDedup: { enabled: true, maxCacheEntries: 100, protectedTools: [], turnProtectionTurns: 0 },
     ...overrides,
   } as MemConfig;
 }
@@ -23,87 +23,67 @@ describe("createToolDedupHandler", () => {
     expect(Object.keys(handler)).toHaveLength(0);
   });
 
-  test("tool.before returns null for uncached calls", async () => {
-    const config = makeConfig();
-    const handler = createToolDedupHandler(config);
-
-    const output = { output: "original result", metadata: {} };
-    const before = handler["tool.before"];
-    if (before) {
-      await before({ tool: "grep", args: { pattern: "foo" } } as any, output);
-    }
-
-    expect(output.output).toBe("original result");
-  });
-
-  test("tool.before serves cached output when available", async () => {
-    const config = makeConfig();
-    const handler = createToolDedupHandler(config);
-
-    const input1 = { tool: "grep", args: { pattern: "foo" } };
-    const output1 = { output: "x".repeat(30), metadata: {} };
-
-    // First call: record after execution
-    const after = handler["tool.after"];
-    if (after) await after(input1 as any, output1);
-
-    // Second call: should be deduped after turn protection passes
-    const output2 = { output: "new result", metadata: {} };
-
-    const before = handler["tool.before"];
-    if (before) {
-      // Need 2 turns for turnProtectionTurns=2
-      // First nextTurn happens inside tool.before...
-      // So first call sets turn to 2, then check with diff=2 >= 2
-      // Actually each tool.before call does cache.nextTurn() AND check
-      // So we need to call before multiple times:
-      await before(input1 as any, output2);
-      await before(input1 as any, output2);
-      await before(input1 as any, output2); // third time should have enough turns
-    }
-
-    if (output2.metadata && (output2.metadata as Record<string, unknown>).deduped) {
-      expect((output2.metadata as Record<string, unknown>).deduped).toBe(true);
-      expect((output2.metadata as Record<string, unknown>).dedupSource).toBe("tool-dedup-cache");
-    } else {
-      // If turn protection still active, output stays unchanged
-      expect(output2.output).toBe("new result");
-    }
-  });
-
-  test("skips bash tool", async () => {
-    const config = makeConfig();
-    const handler = createToolDedupHandler(config);
-
-    const output = { output: "some result", metadata: {} };
-    const before = handler["tool.before"];
-    if (before) {
-      await before({ tool: "bash", args: { command: "ls" } } as any, output);
-    }
-
-    expect(output.output).toBe("some result");
-  });
-
   test("tool.after records output for caching", async () => {
     const config = makeConfig();
     const handler = createToolDedupHandler(config);
 
     const after = handler["tool.after"];
-    if (after) {
-      await after({ tool: "grep", args: { pattern: "unique" } } as any, { output: "x".repeat(30), metadata: {} });
-    }
+    if (after) await after({ tool: "grep", args: { pattern: "unique" } } as any, { output: "x".repeat(30), metadata: {} });
 
-    // Now check that it was cached
+    // Same tool+args again → served from cache in tool.after.
     const output2 = { output: "something else", metadata: {} };
+    if (after) await after({ tool: "grep", args: { pattern: "unique" } } as any, output2);
+    expect(output2.output).toBe("x".repeat(30));
+    expect((output2.metadata as Record<string, unknown>).deduped).toBe(true);
+    expect((output2.metadata as Record<string, unknown>).dedupSource).toBe("tool-dedup-cache");
+  });
+
+  test("does not serve when turn protection active", async () => {
+    const config = makeConfig({ toolDedup: { turnProtectionTurns: 3 } });
+    const handler = createToolDedupHandler(config);
+
+    const after = handler["tool.after"];
     const before = handler["tool.before"];
-    if (before) {
-      await before({ tool: "grep", args: { pattern: "unique" } } as any, output2);
-      await before({ tool: "grep", args: { pattern: "unique" } } as any, output2);
-      await before({ tool: "grep", args: { pattern: "unique" } } as any, output2);
+    if (after) await after({ tool: "grep", args: { pattern: "foo" } } as any, { output: "x".repeat(30), metadata: {} });
+
+    // Advance turn counter by 2 — diff=2 < protection=3, so no serve.
+    for (let i = 0; i < 2; i++) {
+      if (before) await before();
     }
 
-    if (output2.metadata && (output2.metadata as Record<string, unknown>).deduped) {
-      expect((output2.metadata as Record<string, unknown>).deduped).toBe(true);
-    }
+    const output2 = { output: "y".repeat(30), metadata: {} };
+    if (after) await after({ tool: "grep", args: { pattern: "foo" } } as any, output2);
+    expect((output2.metadata as Record<string, unknown>).deduped).toBeUndefined();
+    expect(output2.output).toBe("y".repeat(30));
+  });
+
+  test("skips bash tool", async () => {
+    const config = makeConfig();
+    const handler = createToolDedupHandler(config);
+    const after = handler["tool.after"];
+    const output = { output: "some result", metadata: {} };
+    if (after) await after({ tool: "bash", args: { command: "ls" } } as any, output);
+    expect((output.metadata as Record<string, unknown>).deduped).toBeUndefined();
+  });
+
+  test("skips tiny outputs when recording", async () => {
+    const config = makeConfig();
+    const handler = createToolDedupHandler(config);
+    const after = handler["tool.after"];
+    // Tiny output is not cached → no serve on repeat.
+    if (after) await after({ tool: "grep", args: { pattern: "tiny" } } as any, { output: "short", metadata: {} });
+    const output2 = { output: "short", metadata: {} };
+    if (after) await after({ tool: "grep", args: { pattern: "tiny" } } as any, output2);
+    expect((output2.metadata as Record<string, unknown>).deduped).toBeUndefined();
+  });
+
+  test("respects protectedTools", async () => {
+    const config = makeConfig({ toolDedup: { protectedTools: ["grep"] } });
+    const handler = createToolDedupHandler(config);
+    const after = handler["tool.after"];
+    if (after) await after({ tool: "grep", args: { pattern: "prot" } } as any, { output: "x".repeat(30), metadata: {} });
+    const output2 = { output: "y".repeat(30), metadata: {} };
+    if (after) await after({ tool: "grep", args: { pattern: "prot" } } as any, output2);
+    expect((output2.metadata as Record<string, unknown>).deduped).toBeUndefined();
   });
 });

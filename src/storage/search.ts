@@ -5,77 +5,20 @@ import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
-import { computeBM25ScoresSQL, computeRRFScores, rerankResults } from "./queries/search-helpers";
-import { rerankDocuments } from "../infrastructure/llm/ollama";
+import { computeBM25ScoresSQL } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding } from "./utils";
+import { rankCandidates, toRankedNodes, type RankCandidate } from "../application/ranking/pipeline";
+import { DEFAULT_RANK_WEIGHTS, type RankWeights } from "../application/ranking/weights";
+import { rerank, type RerankMode } from "../application/ranking/rerank";
+import { memLog } from "../logging";
 
-type Stratum = "hot" | "warm" | "cold";
-
-function computeStratum(lastAccessed: Date | null): Stratum {
-  if (!lastAccessed) return "cold";
-  const daysSinceAccess = (Date.now() - lastAccessed.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceAccess < 1) return "hot";
-  if (daysSinceAccess < 7) return "warm";
-  return "cold";
-}
-
-function stratumWeight(s: Stratum): number {
-  switch (s) {
-    case "hot": return 1.0;
-    case "warm": return 0.85;
-    case "cold": return 0.5;
-  }
-}
+let fallbackLogged = false;
+let fallbackCount = 0;
 
 function matchesTagsFilter(nodeTags: string[] | null, tagsFilter: string[] | undefined): boolean {
   if (!tagsFilter || tagsFilter.length === 0) return true;
   if (!nodeTags || nodeTags.length === 0) return tagsFilter.length === 0;
   return tagsFilter.every(t => nodeTags.includes(t));
-}
-
-function computeIntentWeight(intent: SearchIntent | undefined, category: string | null, type: string | null, supertype: string | null): number {
-  // Purpose-centric types dominate their intent: debugging is served by
-  // distilled lessons/bug records, reading by architectural knowledge, editing
-  // by conventions/decisions. These outrank the generic supertype fallback.
-  const purposeBoost: Record<string, number> = {
-    read: type === "knowledge" || type === "concept" || type === "architecture" ? 1.4 : 1.0,
-    edit: type === "convention" || type === "decision" || type === "preference" ? 1.4 : 1.0,
-    debug: type === "lesson" || type === "bug" || type === "fix" || type === "debug-investigation" ? 1.4 : 1.0,
-  };
-  if (intent) {
-    const boost = purposeBoost[intent];
-    if (boost !== undefined && boost !== 1.0) return boost;
-  }
-
-  if (supertype) {
-    switch (intent) {
-      case "read":
-      case "edit":
-        if (supertype === "procedural" || supertype === "declarative") return 1.3;
-        if (supertype === "experiential") return 0.6;
-        return 1.0;
-      case "debug":
-        if (supertype === "experiential") return 1.3;
-        if (supertype === "declarative" || supertype === "procedural") return 0.8;
-        return 1.0;
-      case "discovery":
-        return 1.0;
-      default:
-        if (supertype === "experiential") return 0.5;
-        return 1.0;
-    }
-  }
-  switch (intent) {
-    case "read":
-    case "edit":
-      return category === "episodic" ? 0.6 : 1.2;
-    case "debug":
-      return category === "episodic" ? 1.2 : 0.8;
-    case "discovery":
-      return 1.0;
-    default:
-      return category === "episodic" ? 0.5 : 1.0;
-  }
 }
 
 const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
@@ -136,7 +79,6 @@ export async function searchByEmbedding(
     minLevel?: MemoryNodeLevel | undefined;
     maxLevel?: MemoryNodeLevel | undefined;
     levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
-    rrfK?: number | undefined;
     queryText?: string | undefined;
     minUsefulness?: number | undefined;
     rerank?: boolean | undefined;
@@ -150,21 +92,26 @@ export async function searchByEmbedding(
     domainFilter?: MemoryDomain | undefined;
     intent?: SearchIntent | undefined;
     tagsFilter?: string[] | undefined;
+    featureWeights?: Partial<RankWeights> | undefined;
   }
 ): Promise<MemoryNode[]> {
-  const weights = options?.levelWeights ?? {};
-  
+  const weights: RankWeights = { ...DEFAULT_RANK_WEIGHTS, ...(options?.featureWeights ?? {}) };
+
   const doRerank = options?.rerank ?? false;
   const queryText = options?.queryText ?? "";
 
   const hnsw = getHNSWIndex();
   const hnswResults = await hnsw.search(query, limit * 5);
 
-  const scoredNodes: MemoryNode[] = [];
+  const candidates: RankCandidate[] = [];
 
   if (hnswResults.length > 0) {
     const candidateIds = new Set(hnswResults.map(r => r.id));
-    const hnswScoreMap = new Map(hnswResults.map(r => [r.id, r.score]));
+    const hnswScoreMap = new Map<string, number>();
+    for (const r of hnswResults) {
+      const existing = hnswScoreMap.get(r.id) ?? -Infinity;
+      if (r.score > existing) hnswScoreMap.set(r.id, r.score);
+    }
 
     const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
     for (const scope of scopes) {
@@ -196,23 +143,23 @@ export async function searchByEmbedding(
           _embedding = blobToEmbedding(row.embedding_blob);
         }
 
-        const hnswScore = hnswScoreMap.get(node.id) ?? 0;
+        const semanticScore = hnswScoreMap.get(node.id) ?? 0;
 
-        const levelWeight = weights[level] ?? 1;
-        const confidence = node.confidence ?? 0.5;
-        const confidenceWeight = 0.5 + 0.5 * confidence;
-        const iw = computeIntentWeight(options?.intent, node.category, node.type, node.supertype);
-        const sw = stratumWeight(computeStratum(node.lastAccessed));
-
-        scoredNodes.push({
-          ...node,
-          importance: hnswScore * levelWeight * confidenceWeight * iw * sw * (1 + (node.usefulnessScore ?? 0) * 0.1),
-        });
+        candidates.push({ node, semanticScore });
       }
     }
   }
 
-  if (scoredNodes.length === 0) {
+  if (candidates.length === 0) {
+    fallbackCount++;
+    if (!fallbackLogged || fallbackCount % 20 === 0) {
+      memLog("warn", "search", "HNSW returned no candidates — falling back to insertion-order pool", {
+        fallbackCount,
+        hnswSize: hnsw.getStats().globalNodes + hnsw.getStats().projectNodes,
+        queryLen: query.length,
+      });
+      fallbackLogged = true;
+    }
     const minLevel = options?.minLevel ?? 0;
     const maxLevel = options?.maxLevel ?? 5;
     const minUsefulness = options?.minUsefulness ?? 0;
@@ -228,8 +175,6 @@ export async function searchByEmbedding(
       const rows = db.query(sql).all(...params) as SqliteNode[];
 
       for (const row of rows) {
-        const level = row.level as MemoryNodeLevel;
-
         const node = rowToNode(row);
         if (!node.embedding) continue;
 
@@ -243,17 +188,12 @@ export async function searchByEmbedding(
         if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
         if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
-        const semanticScore = cosineSimilarity(query, embedding);
-        const levelWeight = weights[level] ?? 1;
-        const confidence = node.confidence ?? 0.5;
-        const confidenceWeight = 0.5 + 0.5 * confidence;
-        const iw = computeIntentWeight(options?.intent, node.category, node.type, node.supertype);
-        const sw = stratumWeight(computeStratum(node.lastAccessed));
+        const semanticScore = Math.max(
+          cosineSimilarity(query, embedding),
+          ...(node.embeddingSegments ?? []).map(seg => cosineSimilarity(query, seg)),
+        );
 
-        scoredNodes.push({
-          ...node,
-          importance: semanticScore * levelWeight * confidenceWeight * iw * sw * (1 + (node.usefulnessScore ?? 0) * 0.1),
-        });
+        candidates.push({ node, semanticScore });
       }
     }
   }
@@ -264,7 +204,7 @@ export async function searchByEmbedding(
 
     // Dual retrieval: compute BM25 across ALL scope nodes, not just HNSW candidates
     // This catches keyword matches outside the vector neighborhood
-    const existingIds = new Set(scoredNodes.map(n => n.id));
+    const existingIds = new Set(candidates.map(c => c.node.id));
     const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
 
     for (const scope of scopes) {
@@ -285,6 +225,12 @@ export async function searchByEmbedding(
       const scopeScores = computeBM25ScoresSQL(db, scope, queryTerms, allNodeIds);
       for (const [id, score] of scopeScores) {
         bm25Scores.set(id, score);
+      }
+
+      // Attach BM25 scores to candidates already in the pool
+      for (const c of candidates) {
+        const bs = bm25Scores.get(c.node.id);
+        if (bs !== undefined && (c.bm25Score ?? 0) < bs) c.bm25Score = bs;
       }
 
       // Fetch BM25-only candidates (not already in HNSW results) and add to pool
@@ -309,24 +255,19 @@ export async function searchByEmbedding(
           if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
           if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
-          const levelWeight = weights[level] ?? 1;
-          const confidence = node.confidence ?? 0.5;
-          const confidenceWeight = 0.5 + 0.5 * confidence;
-          const iw = computeIntentWeight(options?.intent, node.category, node.type, node.supertype);
-          const sw = stratumWeight(computeStratum(node.lastAccessed));
-
-          scoredNodes.push({
-            ...node,
-            importance: levelWeight * confidenceWeight * iw * sw * (1 + (node.usefulnessScore ?? 0) * 0.1),
-          });
+          candidates.push({ node, semanticScore: 0, bm25Score: bm25Scores.get(node.id) ?? 0 });
           existingIds.add(node.id);
         }
       }
     }
-    options = { ...options, bm25Scores };
   }
 
-  const finalNodes = computeRRFScores(scoredNodes, options);
+  // Unified scoring: feature-weighted linear model, recency tiebreak only
+  let finalNodes = toRankedNodes(rankCandidates(candidates, {
+    weights,
+    levelWeights: options?.levelWeights,
+    intent: options?.intent,
+  }));
 
   // Multi-hop temporal expansion: expand top candidates along temporal edges with score decay
   const temporalHops = options?.temporalBoost?.boostFactor !== undefined ? 1 : (options?.temporalHops ?? 0);
@@ -390,28 +331,10 @@ export async function searchByEmbedding(
 
   let finalResults = dedupedFinalNodes.slice(0, limit);
   if (doRerank && queryText.length > 0 && dedupedFinalNodes.length > 3) {
-    if (options?.rerankMode === "cross-encoder") {
-      const pool = dedupedFinalNodes.slice(0, Math.max(limit, 20));
-      const out = await rerankDocuments(queryText, pool.map(n => ({ id: n.id, label: n.label ?? "", content: n.content })), {
-        strategy: "cross-encoder",
-        topK: limit,
-      });
-      const byId = new Map(out.allScores.map(r => [r.id, r.score]));
-      finalResults = [...pool].sort((a, b) => (byId.get(b.id) ?? 0) - (byId.get(a.id) ?? 0)).slice(0, limit);
-    } else {
-      const reranked = rerankResults(queryText, finalResults, limit);
-      finalResults = reranked.map(r => ({
-        ...r.node,
-        importance: r.finalScore
-      }));
-    }
+    const mode: RerankMode = options?.rerankMode ?? "keyword";
+    finalResults = await rerank({ mode, query: queryText, candidates: dedupedFinalNodes, topK: limit });
   }
 
-  const now = Date.now();
-  for (const node of finalResults) {
-    const db = await getDb(node.scope as MemoryScope);
-    db.run(`UPDATE memory_nodes SET times_used = times_used + 1, last_accessed = ? WHERE id = ?`, [now, node.id]);
-  }
   return finalResults;
 }
 
@@ -458,6 +381,10 @@ export async function drilldownQuery(
   const results: Array<{ node: MemoryNode; relevance: number; path: MemoryNode[]; level: "summary" | "intermediate" | "detail" }> = [];
   const seenIds = new Set<string>();
 
+  // Relevance is the calibrated pipeline importance (query-relevant, NOT stored
+  // importance). Level banding is a filter, not a score multiplier — the old
+  // ×0.8/×0.6 leg weights silently ranked high-importance L1 nodes above any
+  // query relevance (the "same 3 nodes every time" injection bug).
   const summaries = await deps.searchByEmbedding(queryEmbedding, 5, { minLevel: 2, maxLevel: 4, projectName });
   for (const node of summaries) {
     if (seenIds.has(node.id)) continue;
@@ -466,7 +393,7 @@ export async function drilldownQuery(
     const path = await deps.getDrilldownPath(node.id, 3);
     results.push({
       node,
-      relevance: node.importance,
+      relevance: node.importance ?? 0,
       path,
       level: "summary",
     });
@@ -481,7 +408,7 @@ export async function drilldownQuery(
     const path = await deps.getDrilldownPath(node.id, 2);
     results.push({
       node,
-      relevance: node.importance * 0.8,
+      relevance: node.importance ?? 0,
       path,
       level: "intermediate",
     });
@@ -495,7 +422,7 @@ export async function drilldownQuery(
 
     results.push({
       node,
-      relevance: node.importance * 0.6,
+      relevance: node.importance ?? 0,
       path: [node],
       level: "detail",
     });

@@ -62,7 +62,6 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       min_level: tool.schema.number().int().nonnegative().optional().describe("Minimum compression level (0=raw, 5=highest)"),
       max_level: tool.schema.number().int().nonnegative().optional().describe("Maximum compression level"),
       min_usefulness: tool.schema.number().min(0).max(5).optional().describe("Minimum usefulness score filter"),
-      rrf_k: tool.schema.number().int().min(1).max(1000).optional().describe("RRF k parameter (default 60) — higher = flatter rank weighting"),
       temporal_hops: tool.schema.number().int().min(0).max(5).optional().describe("Multi-hop temporal expansion depth (0=off, 1-5 for depth)"),
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
       rerank_mode: tool.schema.enum(["keyword", "cross-encoder"]).optional().describe("Rerank strategy: keyword (default) or cross-encoder (local ONNX model, better relevance)"),
@@ -77,7 +76,6 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       const options: {
         minLevel?: MemoryNodeLevel;
         maxLevel?: MemoryNodeLevel;
-        rrfK?: number;
         minUsefulness?: number;
         rerank?: boolean;
         rerankMode?: "keyword" | "cross-encoder";
@@ -100,7 +98,6 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       if (args.domain_filter !== undefined) options.domainFilter = args.domain_filter;
       if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
       if (args.temporal_hops !== undefined && args.temporal_hops > 0) options.temporalHops = args.temporal_hops;
-      if (args.rrf_k !== undefined) options.rrfK = args.rrf_k;
 
       let nodes = await searchNodes(store, generateEmbedding, args.query, {
         ...options,

@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { MemoryNode, MemoryNodeLevel } from "../types";
+import type { MemoryNode } from "../types";
 import { tokenize } from "../utils";
-import { estimateTokens } from "../../infrastructure/llm/embeddings";
 export function updateBM25Index(db: Database, nodeId: string, content: string, label: string | undefined, scope: string): void {
   const tokens = tokenize(content + ' ' + (label ?? ''));
   const termFreq = new Map<string, number>();
@@ -58,50 +57,6 @@ export function computeQualityMultiplier(node: MemoryNode): number {
   if (label.startsWith("plan:") || label.startsWith("task:")) return 1.1;
   if (t === "skill" || t === "playbook" || t === "core") return 1.15;
   return 1.0;
-}
-
-export interface RerankResult {
-  node: MemoryNode;
-  originalScore: number;
-  rerankScore: number;
-  finalScore: number;
-}
-
-export function rerankResults(query: string, nodes: MemoryNode[], topK: number = 10): RerankResult[] {
-  if (nodes.length <= topK) {
-    return nodes.map(n => ({ node: n, originalScore: n.importance ?? 0, rerankScore: 1, finalScore: n.importance ?? 0 }));
-  }
-  
-  const queryTerms = new Set(query.toLowerCase().split(/\s+/).filter(t => t.length > 2));
-  const results: RerankResult[] = [];
-  
-  for (const node of nodes) {
-    const contentLower = node.content.toLowerCase();
-    const labelLower = (node.label ?? '').toLowerCase();
-    
-    let keywordScore = 0;
-    const contentTerms = new Set(contentLower.split(/\s+/).filter(t => t.length > 2));
-    for (const term of queryTerms) {
-      if (contentTerms.has(term)) keywordScore += 1;
-      if (labelLower.includes(term)) keywordScore += 0.5;
-    }
-    keywordScore = Math.min(1, keywordScore / Math.max(1, queryTerms.size));
-    
-    const firstLine = contentLower.split('\n')[0] ?? '';
-    const positionScore = firstLine.includes(query.toLowerCase()) ? 0.3 : 0;
-    
-    const termDensity = keywordScore * 100 / Math.max(1, estimateTokens(node.content) / 10);
-    const densityScore = Math.min(0.4, termDensity * 0.1);
-    
-    const rerankScore = keywordScore * 0.4 + positionScore + densityScore;
-    const finalScore = (node.importance ?? 0) * 0.7 + rerankScore * 0.3;
-    
-    results.push({ node, originalScore: node.importance ?? 0, rerankScore, finalScore });
-  }
-  
-  return results
-    .sort((a, b) => b.finalScore - a.finalScore)
-    .slice(0, topK);
 }
 
 const BM25_K1 = 1.2;
@@ -256,82 +211,4 @@ export function computeBM25ScoresSQL(
     scores.set(id, score / maxScore);
   }
   return scores;
-}
-
-export type SearchOptions = {
-  minLevel?: MemoryNodeLevel | undefined;
-  maxLevel?: MemoryNodeLevel | undefined;
-  rrfK?: number | undefined;
-  queryText?: string | undefined;
-  minUsefulness?: number | undefined;
-  rerank?: boolean | undefined;
-  bm25Scores?: Map<string, number> | undefined;
-};
-
-export function computeRRFScores(
-  scoredNodes: MemoryNode[],
-  options?: SearchOptions
-): MemoryNode[] {
-  // Guard against degenerate/negative k: RRF's 1/(k+rank) must keep a positive
-  // denominator and a sane score spread. Config drift (k=0 or negative) would
-  // otherwise produce garbage ranks or NaN normalization.
-  const k = Math.max(1, options?.rrfK ?? 60);
-
-  let bm25Rank = new Map<string, number>();
-  if (options?.bm25Scores && options.bm25Scores.size > 0) {
-    const ranked = Array.from(options.bm25Scores.entries()).sort((a, b) => b[1] - a[1]);
-    ranked.forEach(([id], idx) => bm25Rank.set(id, idx + 1));
-  }
-
-  const bySemantic = scoredNodes
-    .map((n, i) => ({ node: n, idx: i }))
-    .sort((a, b) => (b.node.importance ?? 0) - (a.node.importance ?? 0));
-  const semanticRank = new Map<string, number>();
-  bySemantic.forEach(({ node }, i) => semanticRank.set(node.id, i + 1));
-
-  const rrfScores: Array<{ node: MemoryNode; rrfScore: number }> = [];
-  for (const { node } of bySemantic) {
-    const rankSem = semanticRank.get(node.id)!;
-    const rankBm25 = bm25Rank.get(node.id);
-
-    let rrfScore = 1 / (k + rankSem);
-    if (rankBm25 !== undefined) {
-      rrfScore += 1 / (k + rankBm25);
-    }
-    rrfScores.push({ node, rrfScore });
-  }
-
-  // RRF raw scores (~1/(k+rank), ≈0.02 for k=60) are not on the [0,1]
-  // importance scale downstream consumers expect (pressure-aware injection
-  // filter ≥0.6/0.8, drilldown leg weights ×1.0/0.8/0.6, management UI).
-  // Min-max normalize to [0,1] (top-ranked candidate → 1.0), then apply the
-  // recency penalty — mirroring the old computeFinalScores ordering.
-  //
-  // Recency source: level ≥ 1 nodes (compressed summaries/intermediates) decay
-  // from createdAt, NOT lastAccessed — searchByEmbedding re-stamps
-  // last_accessed on every returned node, which would let stale group
-  // summaries self-renew their recency boost forever. Level 0 details keep
-  // lastAccessed (they represent working context).
-  //
-  // Recency is a MULTIPLICATIVE penalty (range [0.3, 1.0]), not an additive
-  // boost: fresh nodes keep ~full score, stale nodes get demoted to 0.3×.
-  // The old `1 + recency*0.2` formula had range [1.0, 1.2] — it only boosted
-  // fresh nodes and NEVER demoted stale ones, letting 5-month-old group
-  // summaries win injection every turn.
-  const rawScores = rrfScores.map(s => s.rrfScore);
-  const minScore = Math.min(...rawScores);
-  const maxScore = Math.max(...rawScores);
-  const range = maxScore - minScore;
-
-  return rrfScores
-    .map(({ node, rrfScore }) => {
-      const normalized = range > 0 ? (rrfScore - minScore) / range : 1.0;
-      const recencyAnchor = (node.level ?? 0) >= 1 ? node.createdAt : node.lastAccessed;
-      const recencyScore = computeRecencyScore(recencyAnchor);
-      return {
-        ...node,
-        importance: normalized * (0.3 + 0.7 * recencyScore) * computeQualityMultiplier(node),
-      } as MemoryNode;
-    })
-    .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
 }

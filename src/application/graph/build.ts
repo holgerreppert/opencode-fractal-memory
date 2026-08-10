@@ -34,9 +34,11 @@ export interface BuildResult {
 
 
 export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
+  const rssMB = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
+  memLog("info", "graph", "buildGraph start", { root, rssMB: rssMB() });
   const graph = new CodeGraph();
   const files = findCodeFiles(root);
-  memLog("info", "graph", "findCodeFiles result", { root, totalFound: files.length, sample: files.slice(0, 10).map(f => f.replace(root, "")).join(", ") });
+  memLog("info", "graph", "findCodeFiles result", { root, totalFound: files.length, sample: files.slice(0, 10).map(f => f.replace(root, "")).join(", "), rssMB: rssMB() });
   const toProcess = files.slice(0, maxFiles);
   const mod = getWasm();
 
@@ -67,6 +69,7 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
     }
   }
   logExtractDiagnostics();
+  memLog("info", "graph", "buildGraph after extract loop", { processed: toProcess.length, readErrors, tooSmall, extractErrors, skippedUnchanged, rssMB: rssMB() });
 
   if (skippedUnchanged > 0) {
     memLog("info", "graph", "Incremental build", { skippedUnchanged, processed: toProcess.length - skippedUnchanged, total: toProcess.length });
@@ -76,7 +79,7 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
   const analysis = analyze(graph);
   const report = generateReport(analysis);
 
-  memLog("info", "graph", "Build diagnostics", { totalFound: files.length, readErrors, tooSmall, extractErrors, skippedUnchanged, fileNodes: analysis.stats.files, symbolNodes: analysis.stats.symbols });
+  memLog("info", "graph", "Build diagnostics", { totalFound: files.length, readErrors, tooSmall, extractErrors, skippedUnchanged, fileNodes: analysis.stats.files, symbolNodes: analysis.stats.symbols, rssMB: rssMB() });
   writeGraphLog("info", "Graph built", {
     stats: analysis.stats,
     godNodes: analysis.godNodes.map(n => `${n.node.label}(${n.node.kind}):${n.degree}`),
@@ -188,11 +191,13 @@ export function setActiveGraph(g: CodeGraph): void {
 }
 
 export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
+  const rssMB = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
   trackBackgroundBuild("ensureBackgroundGraph");
+  memLog("info", "graph", "ensureBackgroundGraph start", { hasGraph: !!backgroundGraph, rssMB: rssMB() });
   if (backgroundGraph) {
     try {
       const result = incrementalBuildGraph(backgroundGraph, root, maxFiles);
-      memLog("info", "graph", "Background incremental build", { newFiles: result.fileCount, symbols: result.symbolCount });
+      memLog("info", "graph", "Background incremental build", { newFiles: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
     } catch {
       // incremental build failed — fall back to full rebuild
     }
@@ -204,6 +209,7 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
       const result = buildGraph(root, maxFiles);
       backgroundGraph = result.graph;
       activeGraph = backgroundGraph;
+      memLog("info", "graph", "ensureBackgroundGraph done", { fileCount: result.fileCount, symbolCount: result.symbolCount, rssMB: rssMB() });
     } catch {
       // background build failed silently — will retry on explicit call
     }

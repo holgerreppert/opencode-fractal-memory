@@ -1,4 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { createApplication, createAutoRetrieve, scheduleBackgroundEmbeddings } from "../infrastructure/composition-root";
 import { createHookHandlers } from "./hooks";
 import { createToolMap } from "./tools";
@@ -8,12 +10,33 @@ import { stopManagementServer, ensureManagementServer } from "../management-serv
 import { setupJournal } from "./init";
 import { createRegisterAgentsHandler } from "./hooks/register-agents";
 import { createJournalStore } from "../application/journal";
+import { incrementTurn } from "../application/re-read-elimination";
+
+// Read the plugin version from the installed package.json next to dist/ (covers
+// both the repo layout and the plugin-cache copy OpenCode actually loads).
+// At runtime import.meta.dir = <pkg>/dist/plugin → two levels up is <pkg>/.
+function loadPluginVersion(): string {
+  try {
+    const pkgPath = path.join(import.meta.dir, "..", "..", "package.json");
+    const raw = readFileSync(pkgPath, "utf8");
+    const pkg = JSON.parse(raw) as { version?: string };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 export const MemoryPlugin: Plugin = async (ctx) => {
   const { directory, client } = ctx;
   const t0 = perfNow();
 
   memLog("info", "init", "Plugin initialization started", { directory, serverUrl: ctx.serverUrl.origin });
+
+  memLog("info", "TestLogging", "PLUGIN_LOADED_FROM", {
+    resolvedDir: import.meta.dir,
+    entryFile: import.meta.path,
+    version: loadPluginVersion(),
+  });
 
   let t = perfNow();
   let store!: import("../storage/sqlite").MemoryStore;
@@ -64,6 +87,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   const composedChatMessage = async (input: { sessionID: string }, output: unknown) => {
     currentSessionId.value = input.sessionID;
+    incrementTurn();
     memLog("info", "live-capture", "composedChatMessage called", { sessionID: input.sessionID, hasHandler: !!handlers["chat.message"] });
     if (handlers["chat.message"]) {
       await handlers["chat.message"](input, output);

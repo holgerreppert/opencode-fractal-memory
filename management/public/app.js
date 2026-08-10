@@ -1404,11 +1404,47 @@ function setupEventListeners() {
     });
   }
 
+  // Tab dropdown
+  const tabDropdown = document.querySelector(".tab-dropdown");
+  const tabTrigger = document.getElementById("tab-dropdown-trigger");
+  const tabMenu = document.getElementById("tab-dropdown-menu");
+  const tabLabel = tabTrigger ? tabTrigger.querySelector(".tab-dropdown-label") : null;
+
+  const openTabMenu = () => {
+    if (tabDropdown) tabDropdown.classList.add("open");
+    if (tabTrigger) tabTrigger.setAttribute("aria-expanded", "true");
+    if (tabTrigger && tabMenu) {
+      const r = tabTrigger.getBoundingClientRect();
+      const mw = Math.max(r.width, 220);
+      const left = Math.min(r.left, window.innerWidth - mw - 8);
+      tabMenu.style.left = left + "px";
+      tabMenu.style.top = (r.bottom + 4) + "px";
+      tabMenu.style.minWidth = mw + "px";
+    }
+  };
+  const closeTabMenu = () => {
+    if (tabDropdown) tabDropdown.classList.remove("open");
+    if (tabTrigger) tabTrigger.setAttribute("aria-expanded", "false");
+  };
+
+  if (tabTrigger) {
+    tabTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (tabDropdown && tabDropdown.classList.contains("open")) closeTabMenu();
+      else openTabMenu();
+    });
+  }
+  document.addEventListener("click", (e) => {
+    if (tabDropdown && !tabDropdown.contains(e.target)) closeTabMenu();
+  });
+
   // Tab buttons
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      if (tabLabel) tabLabel.textContent = btn.textContent.trim();
+      closeTabMenu();
       const tab = btn.dataset.tab;
       const isVisualize = tab === "visualize";
       const isGraph = tab === "graph";
@@ -1670,21 +1706,62 @@ function buildLegend() {
 }
 
 function buildNodeList() {
-  // Delegate to Alpine searchPanel component if available
+  // Delegate to the Alpine searchPanel component.
+  // Alpine v3 exposes the component data via `_x_dataStack[0]`; v2 used `__x`.
   const alpinePanel = document.getElementById('visualize-panel');
-  if (alpinePanel && alpinePanel.__x) {
-    alpinePanel.__x.$data._updateNodeList();
-    return;
+  if (alpinePanel && window.Alpine) {
+    try {
+      const data = alpinePanel._x_dataStack && alpinePanel._x_dataStack[0];
+      if (data && typeof data._updateNodeList === 'function') {
+        data._updateNodeList();
+        return;
+      }
+    } catch { /* fall through to fallback */ }
   }
 
-  // Fallback for when Alpine.js hasn't loaded
+  // Fallback for when Alpine.js hasn't loaded at all — never clobber an
+  // Alpine-managed container, so skip entirely if Alpine is present but the
+  // component hasn't initialized yet (Alpine renders the list on its own init).
+  if (window.Alpine) return;
+
   if (!window.nodeData || !window.filterEngine) return;
 
   const container = document.querySelector('#visualize-panel .node-list-container');
   if (!container) return;
 
-  const visible = window.nodeData.filter(n => window.filterEngine.matches(n));
+  let visible = window.nodeData.filter(n => window.filterEngine.matches(n));
+
+  // Respect the stored sort preference (same defaults as the Alpine component)
+  let sortBy = 'importance', sortDir = 'desc';
+  try {
+    const saved = JSON.parse(localStorage.getItem('mgmt-node-sort') || '{}');
+    if (saved.sortBy) sortBy = saved.sortBy;
+    if (saved.sortDir) sortDir = saved.sortDir;
+  } catch { /* ignore */ }
+  const isDateKey = sortBy === 'createdAt' || sortBy === 'updatedAt' || sortBy === 'lastAccessed';
+  const num = (n) => {
+    const v = n[sortBy];
+    if (v === undefined || v === null) return null;
+    return isDateKey ? new Date(v).getTime() : v;
+  };
+  const dirMul = sortDir === 'asc' ? 1 : -1;
+  visible.sort((a, b) => {
+    const va = num(a);
+    const vb = num(b);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    const cmp = (typeof va === 'string' || typeof vb === 'string')
+      ? String(va).localeCompare(String(vb))
+      : va - vb;
+    return cmp * dirMul;
+  });
+
   const items = visible.slice(0, 100);
+  let showMore = '';
+  if (visible.length > items.length) {
+    showMore = `<div style="text-align:center;padding:6px;">${visible.length - items.length} more nodes — enable Alpine to view</div>`;
+  }
 
   if (items.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:12px;color:#555;font-size:11px;">No matching nodes</div>';
@@ -1700,7 +1777,7 @@ function buildNodeList() {
         <div style="color:#666;font-size:10px;">L${n.level} · ${n.type || 'unknown'} · imp: ${(n.importance || 0).toFixed(2)}</div>
       </div>
     </div>
-  `).join('');
+  `).join('') + showMore;
 
   container.querySelectorAll('.node-list-item').forEach(el => {
     el.addEventListener('click', () => {
@@ -2572,6 +2649,22 @@ async function loadSettings() {
     document.getElementById('outputTokenControl-aggressivePrompt').value = otc.aggressivePrompt ?? '';
     document.getElementById('outputTokenControl-criticalPrompt').value = otc.criticalPrompt ?? '';
     document.getElementById('outputTokenControl-excludePatterns').value = (otc.excludePatterns || []).join('\n');
+    const rk = config.ranking || {};
+    const rkFw = rk.featureWeights || {};
+    document.getElementById('ranking-featureWeights-semantic').value = rkFw.semantic ?? 0.5;
+    document.getElementById('ranking-featureWeights-bm25').value = rkFw.bm25 ?? 0.25;
+    document.getElementById('ranking-featureWeights-quality').value = rkFw.quality ?? 0.15;
+    document.getElementById('ranking-featureWeights-confidence').value = rkFw.confidence ?? 0.05;
+    document.getElementById('ranking-featureWeights-usefulness').value = rkFw.usefulness ?? 0.05;
+    const rkGate = rk.gate || {};
+    document.getElementById('ranking-gate-minScore').value = rkGate.minScore ?? 0.3;
+    document.getElementById('ranking-gate-deltaThreshold').value = rkGate.deltaThreshold ?? 0.15;
+    const rkRerank = rk.rerank || {};
+    document.getElementById('ranking-rerank-mode').value = rkRerank.mode ?? 'keyword';
+    document.getElementById('ranking-rerank-poolSize').value = rkRerank.poolSize ?? 20;
+    const rkRecency = rk.recency || {};
+    document.getElementById('ranking-recency-role').value = rkRecency.role ?? 'tiebreak';
+    document.getElementById('ranking-recency-halfLifeHours').value = rkRecency.halfLifeHours ?? 24;
   } catch (e) {
     console.error('Failed to load config:', e);
   }
@@ -2743,6 +2836,27 @@ async function saveSettings() {
       aggressivePrompt: document.getElementById('outputTokenControl-aggressivePrompt').value,
       criticalPrompt: document.getElementById('outputTokenControl-criticalPrompt').value,
       excludePatterns: document.getElementById('outputTokenControl-excludePatterns').value.split('\n').filter(Boolean),
+    },
+    ranking: {
+      featureWeights: {
+        semantic: parseFloat(document.getElementById('ranking-featureWeights-semantic').value) ?? 0.5,
+        bm25: parseFloat(document.getElementById('ranking-featureWeights-bm25').value) ?? 0.25,
+        quality: parseFloat(document.getElementById('ranking-featureWeights-quality').value) ?? 0.15,
+        confidence: parseFloat(document.getElementById('ranking-featureWeights-confidence').value) ?? 0.05,
+        usefulness: parseFloat(document.getElementById('ranking-featureWeights-usefulness').value) ?? 0.05,
+      },
+      gate: {
+        minScore: parseFloat(document.getElementById('ranking-gate-minScore').value) ?? 0.3,
+        deltaThreshold: parseFloat(document.getElementById('ranking-gate-deltaThreshold').value) ?? 0.15,
+      },
+      rerank: {
+        mode: document.getElementById('ranking-rerank-mode').value,
+        poolSize: parseInt(document.getElementById('ranking-rerank-poolSize').value) || 20,
+      },
+      recency: {
+        role: document.getElementById('ranking-recency-role').value,
+        halfLifeHours: parseInt(document.getElementById('ranking-recency-halfLifeHours').value) || 24,
+      },
     },
   };
   try {

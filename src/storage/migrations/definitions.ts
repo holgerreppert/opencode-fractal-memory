@@ -652,4 +652,17 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* table may not exist yet */ }
     },
   },
+  {
+    version: 33,
+    name: "add-embedding-segments",
+    up: (db) => {
+      try {
+        const tableInfo = db.query("PRAGMA table_info(memory_nodes)").all() as { name: string }[];
+        const existing = new Set(tableInfo.map(c => c.name));
+        if (!existing.has("embedding_segments")) {
+          db.run("ALTER TABLE memory_nodes ADD COLUMN embedding_segments TEXT");
+        }
+      } catch { /* table may not exist yet */ }
+    },
+  },
 ];

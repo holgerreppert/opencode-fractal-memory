@@ -15,7 +15,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 
 - **Command Output Compression** (`tool.execute.after` for `bash`): tiered pipeline (verbatim pass-through below thresholds, net-win gate, benign/error-aware), payload-preserving strategies (grep/ls/git-status/table), structural shape detection, fuzzy dedup, delta compression, output offloading. Always reversible — original stashed with `[Original stashed — cat <path>]` marker. Impl: `src/application/command-compression/pipeline.ts` (orchestration), `strategy.ts` (registry), `strategies/`, `output-types/`; hook at `src/plugin/hooks/compression.ts`.
 - **Output Token Control** (`experimental.chat.system.transform`): injects concise-output rule based on context pressure. Modes: adaptive/always-on/off; strategies: concise/sentence_limit/char_limit/bullet_only/custom. Impl at `src/application/output-token-control.ts`.
-- **Re-Read Elimination** (`tool.execute.before` for `read`): serves cached file content when mtime unchanged. Impl at `src/application/re-read-elimination.ts`.
+- **Re-Read Elimination** (`tool.execute.after` for `read`): serves cached file content when mtime unchanged — output delivery MUST live in `tool.after` (writable `{output}`); `tool.before` only exposes `{args}` and silently drops `output.output` writes. Impl at `src/application/re-read-elimination.ts`.
 - **Auto Graph Hints** (`tool.execute.after` for `grep`/`glob`/`search`): appends up to 3 symbol suggestions as a `[code-graph-search-hint]` block. Impl at `src/plugin/hooks/graph-search-hint.ts`.
 - **Auto-Skeletonize on Large Reads** (`tool.execute.after` for `read`): generates skeleton via `extractSkeleton` for files ≥ `autoSkeletonizeMinLines` (default 300). Impl at `src/plugin/hooks/graph-context.ts`.
 - **Auto-Retrieve** (`experimental.chat.messages.transform`): reranking pipeline (LLM judge via `client.session.prompt({noReply:true})`, Ollama fallback, ONNX cross-encoder). Pressure-aware injection: aggressive phase filters importance ≥ 0.6, critical ≥ 0.8. Impl at `src/application/auto-retrieve/`.
@@ -23,12 +23,12 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 - **Memory Categorization**: nodes have `type` → `category` (episodic/semantic) + `supertype` (declarative/procedural/experiential/meta). `searchByEmbedding` accepts `intent` (read/edit/debug/discovery) with temporal stratification, entity boosting, and purpose-type boosting (`debug`→`lesson`/`bug`/`fix`, `read`→`knowledge`/`concept`/`architecture`, `edit`→`convention`/`decision`/`preference`). Impl at `src/storage/search.ts`, `src/storage/queries/nodes.ts`.
 - **Purpose-Centric Lessons**: `session.idle` auto-extracts a distilled `lesson` node (type `lesson`, label `lesson:<ts>`, tag `sig:<failed-tools>`) from failed tool calls — ArcticMem-style content (what failed, why, how to avoid). Dedup: skips when a lesson with the same failure signature already exists. Config: `autoLessons {enabled (default true), minFailures (2), useLlm}`. Optional LLM pass generates concrete prevention rules. Impl at `src/application/lesson-extraction.ts`, wired in `src/plugin/hooks/events.ts`. `learn(mode="reflect")` (src/tools/reflect.ts) also creates lessons manually; `distillRules` folds them into `rule:mandatory:memory`.
 - **Auto Work Capture** (`autoCapture`): the success-mirror of auto-lessons — at `session.idle`, `captureSessionWork` (src/application/work-capture.ts) distills a `work:<ts>` knowledge node (type `knowledge`, tag `sess:<sessionId>`) from the session's successful edit/write tool calls (files touched + tools used, optional LLM "what was done" summary). So failures become `lesson:` nodes AND completed work becomes `work:` nodes — neither direction of session history is lost. Config: `autoCapture {enabled (default true), minEdits (1), useLlm (false), maxPerSession (3)}`. Dedup: per-session cap via `sess:` tag. Does NOT replace manual `memory(mode="set")` of significant completed work — see `rule:mandatory:what-to-store` (now injected via RULE_LABELS; it previously existed in the DB but was never injected).
-- **Purpose-based search ranking**: `computeQualityMultiplier` (src/storage/queries/search-helpers.ts) boosts curated purpose labels (`lesson:`/`decision:`/`convention:`/`fact:` ×1.3, `knowledge:`/`rule:`/`skill:` ×1.25, `plan:`/`task:` ×1.1) and demotes `storedcontext` session dumps (×0.5) and `middle-term:`/`[history]` snapshots (×0.6) in RRF final scoring.
+- **Ranking module** (feature-weighted linear model, replaced RRF): `src/application/ranking/` — `weights.ts` (defaults `semantic 0.5, bm25 0.25, quality 0.15, confidence 0.05, usefulness 0.05` + config `ranking.featureWeights` resolution), `features.ts` (normalized [0,1] features incl. `qualityFeature` from `computeQualityMultiplier`), `fusion.ts` (linear `Σ wᵢ·fᵢ` + absolute normalization, no per-query min-max), `intent.ts` (purpose-type boosts per intent), `pipeline.ts` (`rankCandidates` → calibrated importance; recency = tiebreak only), `rerank/` (keyword + cross-encoder registry). `computeQualityMultiplier` (src/storage/queries/search-helpers.ts) boosts curated purpose labels (`lesson:`/`decision:`/`convention:`/`fact:` ×1.3, `knowledge:`/`rule:`/`skill:` ×1.25, `plan:`/`task:` ×1.1) and demotes `storedcontext` session dumps (×0.5) and `middle-term:`/`[history]` snapshots (×0.6); it feeds the `quality` feature, not a multiplicative tail.
 - **Code Graph** (pull-based `graph` tool): relations `callers`, `callees`, `call_chain`, `imports`, `dependents`, `search`, `explain`, `path`. AST knowledge graph via tree-sitter WASM (32 languages), auto-refreshes on edit/write. Plugin + MCP. Impl at `src/tools/graph.ts`, `src/application/graph/`.
 - **Brain Mesh 3D Layout** (management app): Desikan-Killiany atlas brain mesh (70 DK parcels → 5 regions in ~101 KB GLB), vertex-averaged centroids, Fibonacci scattering. Build at `scripts/build-brain-glb.ts`, GLB parser at `management/public/glb-loader.js`. See `docs/threejs/brainregions.md`.
 - **Purpose-type migration scripts** (`scripts/reclassify-purpose-nodes.ts` Tier-1 label-prefix → type; `scripts/reclassify-purpose-tier2.ts` Tier-2 id → type for content-classified nodes): reclassify existing nodes to purpose types. Run with `--dry-run` (preview) or `--force` (apply). Pattern source: `scripts/fix-existing-nodes.ts`.
-- **SWE-ContextBench retrieval test** (`src/storage/search.swecontext.test.ts`, seeds via `scripts/benchmark/seed-swe-context.ts`): real coding-agent memory eval on SWE-ContextBench Lite — 300 experience tasks (trajectory-derived nodes: reasoning + summary + issue + tool-call trace + touched files, tags `swe:experience`/`swe:file`) seeded from actual Claude Code JSONL sessions; 99 related-task problem statements queried against `SWEContextBench_Relationship.parquet` ground truth (HitRate@K/MRR by repo). Committed dataset + ONNX embedding caches at `tests/dbs/swe-contextbench/`; refresh via `scripts/benchmark/fetch-swe-context.ts` (hyparquet parquet decode, `bunx`-able). Baseline: ~27% HitRate@5 keyword rerank (trajectory reasoning in node content: K@5 neutral, K@10 41→44/99).
-- **Cross-encoder rerank** (`rerankMode: "cross-encoder"`): `searchByEmbedding` (src/storage/search.ts) supports a second rerank mode via the local ONNX cross-encoder (`ms-marco-MiniLM-L-6-v2`, `scorePairs` in src/infrastructure/llm/cross-encoder.ts) over a ≥20-candidate pool. No Ollama/network — deterministic CPU. Exposed as `rerank_mode` on the memory search tool (src/tools/search.ts) AND config-driven: `ollama.strategy: "cross-encoder"` sets it as the tool default (threaded via createToolMap → createMemoryTool → MemorySearch → searchNodes → searchByEmbedding). SWE-ContextBench A/B: keyword 27.3% → **51.5%** HitRate@5, 44.4% → **58.6%** @10. `scorePairs` batches all pairs in one ONNX inference (scores match per-pair within ~2e-5); the model outputs `[N,1]` logits — read `data[b]` per row, NOT a 2-class head. Standalone harness: `scripts/benchmark/eval-ollama-rerank.ts 99 cross-encoder`.
+- **SWE-ContextBench retrieval test** (`src/storage/search.swecontext.test.ts`, seeds via `scripts/benchmark/seed-swe-context.ts`): real coding-agent memory eval on SWE-ContextBench Lite — 300 experience tasks (trajectory-derived nodes: reasoning + summary + issue + tool-call trace + touched files, tags `swe:experience`/`swe:file`) seeded from actual Claude Code JSONL sessions; 99 related-task problem statements queried against `SWEContextBench_Relationship.parquet` ground truth (HitRate@K/MRR by repo). Committed dataset + ONNX embedding caches at `tests/dbs/swe-contextbench/` — caches are model-suffixed (`-gte-small`); regenerate via `regenerateEmbeddings`, refresh dataset via `scripts/benchmark/fetch-swe-context.ts`. Baseline (gte-small, 512-token window + chunking, RRF-era): 18.2% HitRate@5 keyword, 39.4% @10; LLM/cross-encoder A/B: 56.6% @5, 66.7% @10 — cross-encoder rerank recovers the quality gap from the smaller embedding model. **After the feature-weighted linear model replaced RRF** (see ranking module below): keyword 77.8% HitRate@5, 83.8% @10; cross-encoder 72.7% @5, 86.9% @10 — the linear model made keyword-mode strong on precision (@5), and the cross-encoder's remaining edge is recall (@10).
+- **Cross-encoder rerank** (`rerankMode: "cross-encoder"`): `searchByEmbedding` (src/storage/search.ts) supports a second rerank mode via the local ONNX cross-encoder (`ms-marco-MiniLM-L-6-v2`, `scorePairs` in src/infrastructure/llm/cross-encoder.ts) over a ≥20-candidate pool. No Ollama/network — deterministic CPU. Exposed as `rerank_mode` on the memory search tool (src/tools/search.ts) AND config-driven: `ollama.strategy: "cross-encoder"` sets it as the tool default (threaded via createToolMap → createMemoryTool → MemorySearch → searchNodes → searchByEmbedding). SWE-ContextBench A/B (gte-small): keyword 18.2% → **77.8%** HitRate@5, 39.4% → **83.8%** @10; cross-encoder 72.7% @5, 86.9% @10 (linear-model era — cross-encoder is a recall win at @10, not a precision win at @5). `scorePairs` batches all pairs in one ONNX inference (scores match per-pair within ~2e-5); the model outputs `[N,1]` logits — read `data[b]` per row, NOT a 2-class head. Standalone harness: `scripts/benchmark/eval-ollama-rerank.ts 99 cross-encoder`. Embedding model: gte-small (384-dim, 512-token window, mean pooling) with multi-segment chunking (`embeddings.chunking {enabled, maxSegments=8, includeStoredContext=true}` in config) — long nodes (≤512 tokens/segment) get one HNSW point per segment; revert path is MiniLM via `--revert` in `scripts/reembed-nodes.ts`.
 
 ## Codebase Layout
 
@@ -49,27 +49,22 @@ Before editing a function, use `graph` with `relation=callers name=<function>` t
 
 ## Development Install (critical — cache or it won't work)
 
-OpenCode loads from plugin cache, NOT from node_modules:
+**The ONLY location OpenCode ever loads is the plugin cache `@latest` path**: `~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/`. This is beacon-proven (see `PLUGIN_LOADED_FROM` in `~/.config/opencode/logs/memory-plugin.log`) — NOT `~/.config/opencode/node_modules` (legacy, never read by OpenCode). Always use the dev-install script — it builds, cleans, and syncs the cache (the config copy is kept only for npm-pack compatibility):
 
 ```bash
-bun run build && npm pack
-cd ~/.config/opencode
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.34.tgz
-cp -r node_modules/opencode-fractal-memory/{dist,management,package.json,LICENSE,commands,agent} \
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+bun run dev-install                # build + clean + sync to plugin cache
+bun run dev-install --skip-build   # skip tsc, just sync
 ```
 
-Quick iteration (also copies graphology deps for management server):
-```bash
-bun run build && \
-CACHE=~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory && \
-cp -r dist management package.json LICENSE README.md commands agent "$CACHE/" && \
-for pkg in graphology graphology-communities-louvain graphology-shortest-path graphology-traversal graphology-utils graphology-indices pandemonium @yomguithereal mnemonist obliterator mitt onnxruntime-node onnxruntime-web; do \
-  [ -d "node_modules/$pkg" ] && cp -r "node_modules/$pkg" "$CACHE/node_modules/" 2>/dev/null; \
-done
-```
+Then **restart OpenCode** — the running process holds the module cache in memory; disk edits have no effect until restart.
 
-**First-time install (if `@yomguithereal/helpers` or `graphology-indices` errors still occur):**
+What the script does (scripts/dev-install.ts): wipes `~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/` (plus the legacy `~/.config/opencode/node_modules/` copy), copies all top-level files + nested `node_modules/` deps into the cache, prints the installed version + a RESTART REQUIRED warning, and fails with a non-zero exit if `dist` is missing from the cache.
+
+VS Code: use the "Dev Install Plugin (build+clean+sync)" launch config in `.vscode/launch.json`.
+
+Why only the cache: `npm install`/`npm pack` alone only touches `~/.config/opencode/node_modules` — which OpenCode never loads. Only a manual `cp -r` into the cache or `bun run dev-install` reaches the copy OpenCode actually reads. The script removes the manual `cp -r` ritual entirely.
+
+**First-time install (if `@yomguithereal/helpers` or `graphology-indices` errors still occur after `bun run dev-install`):**
 ```bash
 CACHE=~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory
 cd "$CACHE"
@@ -77,6 +72,8 @@ npm install --no-save graphology graphology-communities-louvain graphology-short
 ```
 
 Then restart OpenCode.
+
+**Verify the live install** (after restart): `grep "PLUGIN_LOADED_FROM" ~/.config/opencode/logs/memory-plugin.log` — the `resolvedDir` must point at the cache `@latest` path. If it points elsewhere (e.g. `~/.config/opencode/node_modules`), the plugin is being loaded from the wrong location.
 
 ## Coding Paradigms
 
@@ -97,7 +94,7 @@ bun run lint:fix          # auto-fix (--fix-dangerously)
 bun test                  # full suite (36 files) — search.loco.test.ts self-seeds in ~30s, runs ~5min (1986 LoCoMo QAs), cleans up after; search.swecontext.test.ts self-seeds in ~2s, keyword portion ~40s + cross-encoder A/B ~4min (99 SWE-ContextBench Lite queries)
 ```
 
-- Always cp to BOTH node_modules AND cache when installing; verify with `grep -q "<pattern>" "$CACHE/dist/..."`
+- **Only the cache `@latest` path is ever loaded by OpenCode** (`~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory`) — beacon-proven via the `PLUGIN_LOADED_FROM` startup log (see `memory-plugin.log`). The `~/.config/opencode/node_modules` copy is legacy and never read by OpenCode. Verify installs with `grep -q "<pattern>" "$CACHE/dist/..."`; never hand-copy with `cp -r` — use `bun run dev-install`
 - Run `bun run lint` before committing — must be 0 errors, 0 warnings
 - Migration version in `definitions.ts` must increment; never modify existing migrations; bump `CURRENT_VERSION` in `src/storage/migrations/index.ts` to match
 - After schema migrations that add columns: update ALL explicit SELECT column lists (querySearchText, querySearchBM25) AND mapNode in routes.ts AND NodeLike in helpers.ts AND computeStats aggregations

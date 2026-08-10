@@ -43,6 +43,24 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Dev Install Plugin (build+clean+sync)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "scripts/dev-install.ts"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Dev Install Plugin (--skip-build)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "scripts/dev-install.ts", "--skip-build"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Build Project",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "build"],

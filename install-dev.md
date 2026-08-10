@@ -22,69 +22,35 @@ bun install
 bun run build
 ```
 
-## Install locally (development)
+## Install locally (development) — use the dev-install script
 
-After building, pack and install into the OpenCode config directory, then copy to cache:
+ALWAYS use `scripts/dev-install.ts` — it syncs the plugin cache that OpenCode actually loads. The manual `cp -r` ritual it replaces was the root cause of the 2026-08-06 stale-cache bug (cache stayed 0.7.13 while 0.7.14 was published).
 
 ```bash
-# Create the .tgz archive
-npm pack
-
-# Install into OpenCode
-cd ~/.config/opencode
-rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.34.tgz
-
-# Also copy to OpenCode's plugin cache (required — npm install doesn't populate this)
-cp -r node_modules/opencode-fractal-memory/dist \
-  node_modules/opencode-fractal-memory/management \
-  node_modules/opencode-fractal-memory/package.json \
-  node_modules/opencode-fractal-memory/LICENSE \
-  node_modules/opencode-fractal-memory/commands \
-  node_modules/opencode-fractal-memory/agent \
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
+bun run dev-install                # build + clean + sync to ~/.config/opencode + plugin cache
+bun run dev-install --skip-build   # skip tsc, just sync
 ```
 
-Use `--ignore-scripts` to avoid Bun trust prompts (npm v12 defaults to this behavior, making it the standard). Models download on first plugin load instead.
+What the script does:
+1. Runs `bun run build` (unless `--skip-build`)
+2. Wipes `~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/` (the ONLY location OpenCode loads — beacon-proven via `PLUGIN_LOADED_FROM` in `~/.config/opencode/logs/memory-plugin.log`; the legacy `~/.config/opencode/node_modules` copy is also cleaned for npm-pack compat, but is never read by OpenCode)
+3. Copies ALL top-level files into the cache: `dist management package.json LICENSE README.md commands agent scripts`
+4. Copies runtime deps into the cache location's own `node_modules/`: graphology family, `@kreuzberg/tree-sitter-language-pack-wasm`, onnxruntime, events, pandemonium, `@yomguithereal/helpers`, mnemonist, obliterator
+5. Prints the installed version + a RESTART REQUIRED warning; exits non-zero if `dist` is missing from the cache
+
+VS Code: use the "Dev Install Plugin (build+clean+sync)" launch config in `.vscode/launch.json`.
+
+## Why two locations
+
+OpenCode loads the plugin from the **cache** dir (`~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/`), NOT from `~/.config/opencode/node_modules`. A plain `npm install`/`npm pack` only touches the latter and leaves the loaded copy stale — the cache copy must be synced by hand (or by the script).
 
 ## Iterate on changes
 
-After making code changes:
-
 ```bash
-# 1. Rebuild and pack
 cd /path/to/opencode-fractal-memory
-bun run build
-npm pack
-
-# 2. Reinstall in OpenCode
-cd ~/.config/opencode
-rm -rf node_modules/opencode-fractal-memory package-lock.json
-npm install --ignore-scripts /path/to/opencode-fractal-memory-0.6.34.tgz
-
-# 3. Copy to plugin cache (npm install does NOT populate this automatically)
-cp -r node_modules/opencode-fractal-memory/dist \
-  node_modules/opencode-fractal-memory/management \
-  node_modules/opencode-fractal-memory/package.json \
-  node_modules/opencode-fractal-memory/LICENSE \
-  node_modules/opencode-fractal-memory/commands \
-  node_modules/opencode-fractal-memory/agent \
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
-
-# 4. Restart OpenCode to load the updated plugin
+bun run dev-install     # rebuilds, syncs the plugin cache OpenCode actually loads
+# Restart OpenCode to load the updated plugin
 ```
-
-### Quick iteration (cp to cache only)
-
-For small changes that don't affect `package.json`, skip the npm install and copy directly:
-
-```bash
-bun run build
-cp -r dist management package.json LICENSE README.md commands agent \
-  ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/
-```
-
-OpenCode loads from the cache, so this is sufficient for most changes. Restart OpenCode to see the update.
 
 ## Verify
 
@@ -100,12 +66,26 @@ Look for:
 [INFO] MemoryPlugin: Seed nodes ensured
 ```
 
+Or verify the cache copy matches the repo version:
+
+```bash
+grep '"version"' ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory/package.json
+```
+
 ## Direct install from npm (non-development)
 
 ```bash
 cd ~/.config/opencode
 rm -rf node_modules/opencode-fractal-memory package-lock.json
 npm install --ignore-scripts opencode-fractal-memory
+```
+
+For published releases, refresh the cache pin after publish:
+```bash
+cd ~/.cache/opencode/packages/opencode-fractal-memory@latest
+rm -rf node_modules bun.lock package.json
+echo '{"dependencies":{}}' > package.json
+bun add opencode-fractal-memory@latest
 ```
 
 ## Logs

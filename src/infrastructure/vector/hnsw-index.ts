@@ -79,15 +79,19 @@ export class HNSWIndex {
   async removeNode(scope: "global" | "project", nodeId: string): Promise<void> {
     const labelMap = this.getMaps(scope);
     const deletedSet = scope === "global" ? this.globalDeletedIds : this.projectDeletedIds;
+    const toDelete: number[] = [];
     for (const [hnswId, storedId] of labelMap) {
       if (storedId === nodeId) {
-        labelMap.delete(hnswId);
-        deletedSet.add(hnswId);
-        if (deletedSet.size > HNSWIndex.MAX_CACHE_SIZE) {
-          deletedSet.clear();
-        }
-        return;
+        toDelete.push(hnswId);
       }
+    }
+    for (const hnswId of toDelete) {
+      labelMap.delete(hnswId);
+      this.embeddingCache.delete(`${scope}:${hnswId}`);
+      deletedSet.add(hnswId);
+    }
+    if (deletedSet.size > HNSWIndex.MAX_CACHE_SIZE) {
+      deletedSet.clear();
     }
   }
 
@@ -138,7 +142,7 @@ export class HNSWIndex {
   }
 
   async rebuild(
-    nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }>
+    nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project"; segments?: number[][] }>
   ): Promise<void> {
     if (nodes.length > 0) {
       this.dimension = nodes[0]!.embedding.length;
@@ -152,6 +156,7 @@ export class HNSWIndex {
     this.projectDeletedIds.clear();
     this.globalIdCounter = 0;
     this.projectIdCounter = 0;
+    this.embeddingCache.clear();
     this.initialized = true;
 
     const globalNodes = nodes.filter(n => n.scope === "global");
@@ -164,19 +169,22 @@ export class HNSWIndex {
   private async rebuildScope(
     index: HNSW,
     scope: "global" | "project",
-    nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project" }>
+    nodes: Array<{ id: string; embedding: number[]; scope: "global" | "project"; segments?: number[][] }>
   ): Promise<void> {
     const labelMap = this.getMaps(scope);
     const counter = this.getCounter(scope);
     const valid: Array<{ id: number; vector: number[] }> = [];
 
     for (const node of nodes) {
-      if (node.embedding.length !== this.dimension) continue;
-      const hnswId = counter.value;
-      labelMap.set(hnswId, node.id);
-      this.embeddingCache.set(`${scope}:${node.id}`, node.embedding);
-      valid.push({ id: hnswId, vector: node.embedding });
-      counter.value = hnswId + 1;
+      const vectors = [node.embedding, ...(node.segments ?? [])];
+      for (const vector of vectors) {
+        if (vector.length !== this.dimension) continue;
+        const hnswId = counter.value;
+        labelMap.set(hnswId, node.id);
+        this.embeddingCache.set(`${scope}:${hnswId}`, vector);
+        valid.push({ id: hnswId, vector });
+        counter.value = hnswId + 1;
+      }
     }
     this.setCounter(scope, counter.value);
 
@@ -186,9 +194,10 @@ export class HNSWIndex {
   }
 
   getStats(): { globalNodes: number; projectNodes: number; dimension: number } {
+    const distinct = (map: Map<number, string>): number => new Set(map.values()).size;
     return {
-      globalNodes: this.globalLabelMap.size,
-      projectNodes: this.projectLabelMap.size,
+      globalNodes: distinct(this.globalLabelMap),
+      projectNodes: distinct(this.projectLabelMap),
       dimension: this.dimension,
     };
   }
@@ -196,12 +205,12 @@ export class HNSWIndex {
   saveState(): HNSWSavedState {
     const globalNodes: HNSWNodeData[] = [];
     for (const [hnswId, nodeId] of this.globalLabelMap) {
-      const embedding = this.embeddingCache.get(`global:${nodeId}`) ?? [];
+      const embedding = this.embeddingCache.get(`global:${hnswId}`) ?? [];
       globalNodes.push({ hnswId, nodeId, embedding });
     }
     const projectNodes: HNSWNodeData[] = [];
     for (const [hnswId, nodeId] of this.projectLabelMap) {
-      const embedding = this.embeddingCache.get(`project:${nodeId}`) ?? [];
+      const embedding = this.embeddingCache.get(`project:${hnswId}`) ?? [];
       projectNodes.push({ hnswId, nodeId, embedding });
     }
     return {
@@ -227,28 +236,38 @@ export class HNSWIndex {
     this.projectIndex = new HNSW(M, EF_CONSTRUCTION, this.dimension, "cosine", EF_SEARCH);
     this.initialized = true;
 
+    const globalValid: Array<{ id: number; vector: number[] }> = [];
     for (const nd of state.globalNodes) {
       this.globalLabelMap.set(nd.hnswId, nd.nodeId);
-      this.embeddingCache.set(`global:${nd.nodeId}`, nd.embedding);
+      this.embeddingCache.set(`global:${nd.hnswId}`, nd.embedding);
       if (nd.embedding.length === this.dimension) {
-        await this.globalIndex!.addPoint(nd.hnswId, nd.embedding);
+        globalValid.push({ id: nd.hnswId, vector: nd.embedding });
       }
     }
+    const projectValid: Array<{ id: number; vector: number[] }> = [];
     for (const nd of state.projectNodes) {
       this.projectLabelMap.set(nd.hnswId, nd.nodeId);
-      this.embeddingCache.set(`project:${nd.nodeId}`, nd.embedding);
+      this.embeddingCache.set(`project:${nd.hnswId}`, nd.embedding);
       if (nd.embedding.length === this.dimension) {
-        await this.projectIndex!.addPoint(nd.hnswId, nd.embedding);
+        projectValid.push({ id: nd.hnswId, vector: nd.embedding });
       }
+    }
+    if (globalValid.length > 0) {
+      await this.globalIndex.buildIndex(globalValid);
+    }
+    if (projectValid.length > 0) {
+      await this.projectIndex.buildIndex(projectValid);
     }
   }
 
   private embeddingCache: Map<string, number[]> = new Map();
 
   async addNode(scope: "global" | "project", nodeId: string, embedding: number[]): Promise<number> {
-    const existing = await this._addNode(scope, nodeId, embedding);
-    this.embeddingCache.set(`${scope}:${nodeId}`, embedding);
-    return existing;
+    const hnswId = await this._addNode(scope, nodeId, embedding);
+    if (hnswId >= 0) {
+      this.embeddingCache.set(`${scope}:${hnswId}`, embedding);
+    }
+    return hnswId;
   }
 
   private async _addNode(scope: "global" | "project", nodeId: string, embedding: number[]): Promise<number> {
@@ -270,25 +289,39 @@ const PERSIST_PATH = path.join(os.homedir(), ".config", "opencode", "hnsw-index.
 
 export function persistHNSWIndex(): boolean {
   const idx = hnswInstance;
-  if (!idx) return false;
+  if (!idx) {
+    memLog("warn", "hnsw", "persistHNSWIndex skipped — no in-memory index");
+    return false;
+  }
   try {
     const state = idx.saveState();
     const dir = path.dirname(PERSIST_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const json = JSON.stringify(state);
     fs.writeFileSync(PERSIST_PATH, json, "utf-8");
+    const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    memLog("info", "hnsw", "HNSW index persisted", { bytes: json.length, path: PERSIST_PATH, rssMB: rss });
     return true;
-  } catch { return false; }
+  } catch (e) {
+    memLog("error", "hnsw", "Failed to persist HNSW index", { error: String(e) });
+    return false;
+  }
 }
 
-export function loadHNSWIndexFromDisk(dimension: number = 384): HNSWIndex | null {
+export async function loadHNSWIndexFromDisk(dimension: number = 384): Promise<HNSWIndex | null> {
   try {
-    if (!fs.existsSync(PERSIST_PATH)) return null;
+    if (!fs.existsSync(PERSIST_PATH)) {
+      memLog("info", "hnsw", "No HNSW index file on disk", { path: PERSIST_PATH });
+      return null;
+    }
     const raw = fs.readFileSync(PERSIST_PATH, "utf-8");
     const state = JSON.parse(raw) as HNSWSavedState;
     const idx = new HNSWIndex(dimension);
-    idx.loadState(state);
+    await idx.loadState(state);
     hnswInstance = idx;
+    const stats = idx.getStats();
+    const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    memLog("info", "hnsw", "HNSW index loaded from disk", { globalNodes: stats.globalNodes, projectNodes: stats.projectNodes, bytes: raw.length, rssMB: rss });
     return idx;
   } catch (e) {
     memLog("error", "hnsw", "Failed to load HNSW index, clearing corrupt state", { error: String(e) });

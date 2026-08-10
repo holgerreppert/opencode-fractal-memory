@@ -74,6 +74,13 @@ export interface MemConfig {
     model?: string;
     maxSummaryTokens: number;
   } | undefined;
+  embeddings?: {
+    chunking: {
+      enabled: boolean;
+      maxSegments: number;
+      includeStoredContext: boolean;
+    };
+  } | undefined;
   autoDistill?: {
     enabled: boolean;
     minLessons: number;
@@ -182,6 +189,27 @@ export interface MemConfig {
     markers: boolean;
     digest: boolean;
   } | undefined;
+  ranking?: {
+    featureWeights: {
+      semantic: number;
+      bm25: number;
+      quality: number;
+      confidence: number;
+      usefulness: number;
+    };
+    gate: {
+      minScore: number;
+      deltaThreshold: number;
+    };
+    rerank: {
+      mode: "keyword" | "cross-encoder" | "off";
+      poolSize: number;
+    };
+    recency: {
+      role: "tiebreak" | "off";
+      halfLifeHours: number;
+    };
+  } | undefined;
 }
 
 const AutoRetrieveSchema = z.object({
@@ -207,6 +235,14 @@ const LlmCompressionSchema = z.object({
   enabled: z.boolean().default(false),
   model: z.string().optional(),
   maxSummaryTokens: z.number().positive().int().default(500),
+});
+
+const EmbeddingsSchema = z.object({
+  chunking: z.object({
+    enabled: z.boolean().default(true),
+    maxSegments: z.number().positive().int().default(8),
+    includeStoredContext: z.boolean().default(true),
+  }).default({ enabled: true, maxSegments: 8, includeStoredContext: true }),
 });
 
 const AutoDistillSchema = z.object({
@@ -377,6 +413,13 @@ const DEFAULT_CONFIG: MemConfig = {
     enabled: false,
     maxSummaryTokens: 500,
   },
+  embeddings: {
+    chunking: {
+      enabled: true,
+      maxSegments: 8,
+      includeStoredContext: true,
+    },
+  },
   autoDistill: {
     enabled: false,
     minLessons: 3,
@@ -513,6 +556,27 @@ const DEFAULT_CONFIG: MemConfig = {
     markers: true,
     digest: true,
   },
+  ranking: {
+    featureWeights: {
+      semantic: 0.5,
+      bm25: 0.25,
+      quality: 0.15,
+      confidence: 0.05,
+      usefulness: 0.05,
+    },
+    gate: {
+      minScore: 0.3,
+      deltaThreshold: 0.15,
+    },
+    rerank: {
+      mode: "keyword",
+      poolSize: 20,
+    },
+    recency: {
+      role: "tiebreak",
+      halfLifeHours: 24,
+    },
+  },
   smallModel: {},
 };
 
@@ -550,6 +614,28 @@ const InjectionVisibilitySchema = z.object({
   digest: z.boolean().default(true),
 });
 
+const RankingSchema = z.object({
+  featureWeights: z.object({
+    semantic: z.number().min(0).max(1).default(0.5),
+    bm25: z.number().min(0).max(1).default(0.25),
+    quality: z.number().min(0).max(1).default(0.15),
+    confidence: z.number().min(0).max(1).default(0.05),
+    usefulness: z.number().min(0).max(1).default(0.05),
+  }).default({ semantic: 0.5, bm25: 0.25, quality: 0.15, confidence: 0.05, usefulness: 0.05 }),
+  gate: z.object({
+    minScore: z.number().min(0).max(1).default(0.3),
+    deltaThreshold: z.number().min(0).max(1).default(0.15),
+  }).default({ minScore: 0.3, deltaThreshold: 0.15 }),
+  rerank: z.object({
+    mode: z.enum(["keyword", "cross-encoder", "off"]).default("keyword"),
+    poolSize: z.number().positive().int().default(20),
+  }).default({ mode: "keyword", poolSize: 20 }),
+  recency: z.object({
+    role: z.enum(["tiebreak", "off"]).default("tiebreak"),
+    halfLifeHours: z.number().positive().default(24),
+  }).default({ role: "tiebreak", halfLifeHours: 24 }),
+});
+
 const SmallModelSchema = z.record(z.string(), z.string()).default({});
 
 const MemConfigSchema = z.object({
@@ -565,6 +651,7 @@ const MemConfigSchema = z.object({
   autoRetrieve: AutoRetrieveSchema.optional(),
   ollama: OllamaSchema.optional(),
   llmCompression: LlmCompressionSchema.optional(),
+  embeddings: EmbeddingsSchema.optional(),
   autoDistill: AutoDistillSchema.optional(),
   autoLessons: AutoLessonsSchema.optional(),
   autoCapture: AutoCaptureSchema.optional(),
@@ -585,6 +672,7 @@ const MemConfigSchema = z.object({
   errorPruning: ErrorPruningSchema.optional(),
   autoInjection: AutoInjectionSchema.optional(),
   injectionVisibility: InjectionVisibilitySchema.optional(),
+  ranking: RankingSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

@@ -1,6 +1,6 @@
 {
   "name": "opencode-fractal-memory",
-  "version": "0.7.14",
+  "version": "0.7.16",
   "description": "Fractal memory system for OpenCode with semantic search and automatic compression.",
   "main": "./dist/plugin.js",
   "exports": {
@@ -37,6 +37,7 @@
     "lint:fix": "oxlint --fix-dangerously --config oxlintrc.json",
     "prepublishOnly": "npm run build && npm run typecheck",
     "postinstall": "node scripts/postinstall.cjs",
+    "dev-install": "bun run scripts/dev-install.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "view": "bun run dist/management-standalone.js",
@@ -44,38 +45,38 @@
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",
-    "@kreuzberg/tree-sitter-language-pack-wasm": "^1.10.3",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@types/three": "^0.185.1",
+    "@kreuzberg/tree-sitter-language-pack-wasm": "^1.10.9",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@types/three": "^0.185.4",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "graphology-shortest-path": "^2.1.0",
     "graphology-traversal": "^0.3.1",
     "hnsw": "^1.1.1",
-    "js-yaml": "^4.2.0",
+    "js-yaml": "^5.2.3",
     "onnxruntime-node": "^1.27.0",
     "onnxruntime-web": "^1.27.0",
     "three": "^0.185.1",
     "zod": "4.3.6"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": "^1.15.13"
+    "@opencode-ai/plugin": "^1.18.16"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@opencode-ai/plugin": "^1.15.13",
+    "@opencode-ai/plugin": "^1.18.16",
     "@tsconfig/bun": "^1.0.10",
     "@types/bun": "^1.3.14",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.9.1",
-    "d3": "^7",
-    "esbuild": "^0.28.0",
-    "eslint": "^10.6.0",
+    "d3": "^7.9.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.8.1",
     "eslint-plugin-unused-imports": "^4.4.1",
-    "hyparquet": "^1.27.1",
-    "oxlint": "^1.72.0",
+    "hyparquet": "^1.28.1",
+    "oxlint": "^1.78.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.1"
+    "typescript-eslint": "^8.66.0"
   },
   "engines": {
     "node": ">=18.0.0",
