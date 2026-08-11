@@ -1,11 +1,8 @@
-import * as fs from "node:fs/promises";
 import { existsSync } from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Database } from "bun:sqlite";
-
-import { runMigrations } from "./migrations";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
+import { DbProvider } from "../infrastructure/db/DbProvider";
 import { type SqliteNode } from "./queries/base";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
@@ -41,16 +38,17 @@ const SEED_BLOCKS: Array<{ scope: MemoryScope; label: string }> = [
   { scope: "project", label: "project" },
 ];
 
-function scopeDbPath(_projectDirectory: string, _scope: MemoryScope, globalDbPath?: string): string {
-  return globalDbPath ?? path.join(os.homedir(), ".config", "opencode", "memory.db");
+interface StoreDeps {
+  sessionTracker: SqliteSessionTracker;
+  compressionStore: SqliteCompressionStore;
+  configStore: SqliteConfigStore;
+  injectionStore: SqliteInjectionStore;
+  liveFeedStore: SqliteLiveFeedStore;
 }
 
 class SqliteMemoryStore implements MemoryStore {
-  private dbs: Map<string, Database> = new Map();
-  private dbInitPromises: Map<string, Promise<Database>> = new Map();
+  private dbProvider: DbProvider;
   private idScopeCache: Map<string, MemoryScope> = new Map();
-  private projectDirectory: string;
-  private globalDbPath: string | undefined;
   private _projectName: string;
 
   private sessionTracker: SqliteSessionTracker;
@@ -63,71 +61,27 @@ class SqliteMemoryStore implements MemoryStore {
     return this._projectName;
   }
 
-  constructor(projectDirectory: string, globalDbPath?: string) {
-    this.projectDirectory = projectDirectory;
-    this.globalDbPath = globalDbPath;
+  constructor(projectDirectory: string, globalDbPath: string | undefined, deps: StoreDeps) {
+    this.dbProvider = new DbProvider(projectDirectory, globalDbPath);
     this._projectName = path.basename(projectDirectory);
 
-    this.sessionTracker = new SqliteSessionTracker(() => this.getGlobalDb());
-    this.compressionStore = new SqliteCompressionStore(() => this.getGlobalDb());
-    this.configStore = new SqliteConfigStore((s) => this.getDb(s));
-    this.injectionStore = new SqliteInjectionStore(() => this.getGlobalDb());
-    this.liveFeedStore = new SqliteLiveFeedStore(() => this.getGlobalDb());
+    this.sessionTracker = deps.sessionTracker;
+    this.compressionStore = deps.compressionStore;
+    this.configStore = deps.configStore;
+    this.injectionStore = deps.injectionStore;
+    this.liveFeedStore = deps.liveFeedStore;
   }
 
-  private async getDb(_scope?: MemoryScope): Promise<Database> {
-    const key = this.projectDirectory;
-    if (this.dbs.has(key)) {
-      return this.dbs.get(key)!;
-    }
-
-    const existing = this.dbInitPromises.get(key);
-    if (existing) return existing;
-
-    const promise = this.initDb(key);
-    this.dbInitPromises.set(key, promise);
-
-    try {
-      const db = await promise;
-      return db;
-    } catch (err) {
-      this.dbInitPromises.delete(key);
-      throw err;
-    }
-  }
-
-  private async initDb(key: string): Promise<Database> {
-    const dbPath = scopeDbPath(this.projectDirectory, "global", this.globalDbPath);
-
-    const dbDir = path.dirname(dbPath);
-    await fs.mkdir(dbDir, { recursive: true });
-
-    const db = new Database(dbPath);
-
-    db.run("PRAGMA journal_mode = WAL");
-    db.run("PRAGMA synchronous = NORMAL");
-    db.run("PRAGMA busy_timeout = 5000");
-
-    runMigrations(db);
-
-    this.dbs.set(key, db);
-    this.dbInitPromises.delete(key);
-    return db;
+  private async getDb(scope?: MemoryScope): Promise<Database> {
+    return this.dbProvider.getDb(scope);
   }
 
   private async getGlobalDb(): Promise<Database> {
-    return this.getDb("global");
+    return this.dbProvider.getGlobalDb();
   }
 
   async close(): Promise<void> {
-    for (const [key, db] of this.dbs) {
-      try {
-        db.close();
-      } catch (error) {
-        memLog("error", "storage", `Error closing database ${key}:`, { error });
-      }
-    }
-    this.dbs.clear();
+    await this.dbProvider.close();
     this.idScopeCache.clear();
   }
 
@@ -141,7 +95,7 @@ class SqliteMemoryStore implements MemoryStore {
 
   async migrateFromProjectDb(): Promise<number> {
     const unifiedDb = await this.getDb();
-    const oldDbPath = path.join(this.projectDirectory, ".opencode", "memory.db");
+    const oldDbPath = path.join(this.dbProvider.projectDirectory, ".opencode", "memory.db");
     if (!existsSync(oldDbPath)) return 0;
 
     memLog("info", "storage", "Migrating project DB to unified storage", { path: oldDbPath, projectName: this.projectName });
@@ -697,5 +651,17 @@ class SqliteMemoryStore implements MemoryStore {
 }
 
 export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): MemoryStore {
-  return new SqliteMemoryStore(projectDirectory, globalDbPath);
+  const dbProvider = new DbProvider(projectDirectory, globalDbPath);
+  const sessionTracker = new SqliteSessionTracker(dbProvider);
+  const compressionStore = new SqliteCompressionStore(dbProvider);
+  const configStore = new SqliteConfigStore(dbProvider);
+  const injectionStore = new SqliteInjectionStore(dbProvider);
+  const liveFeedStore = new SqliteLiveFeedStore(dbProvider);
+  return new SqliteMemoryStore(projectDirectory, globalDbPath, {
+    sessionTracker,
+    compressionStore,
+    configStore,
+    injectionStore,
+    liveFeedStore,
+  });
 }

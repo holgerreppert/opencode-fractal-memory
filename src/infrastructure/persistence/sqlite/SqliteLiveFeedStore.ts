@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import { DbProvider } from "../../db/DbProvider";
 import type { LiveFeedStore, ConversationTurn, LiveFeedSnapshot } from "../../../domain/ports/LiveFeedStore";
 import {
   insertConversationTurn,
@@ -6,10 +6,10 @@ import {
 } from "../../../storage/queries/live-feed";
 
 export class SqliteLiveFeedStore implements LiveFeedStore {
-  constructor(private getGlobalDb: () => Promise<Database>) {}
+  constructor(private provider: DbProvider) {}
 
   async recordConversationTurn(turn: ConversationTurn): Promise<void> {
-    const db = await this.getGlobalDb();
+    const db = await this.provider.getGlobalDb();
     insertConversationTurn(db, {
       sessionId: turn.sessionId,
       turnIndex: turn.turnIndex,
@@ -25,7 +25,7 @@ export class SqliteLiveFeedStore implements LiveFeedStore {
   }
 
   async getLiveFeedSnapshot(limit = 50): Promise<LiveFeedSnapshot> {
-    const db = await this.getGlobalDb();
+    const db = await this.provider.getGlobalDb();
     return queryLiveFeedSnapshot(db, limit);
   }
 }
