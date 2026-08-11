@@ -46,7 +46,7 @@ export function MemoryDrilldown(store: MemoryStore) {
       }
 
       const resultStr = lines.join("\n");
-      const pathTokens = result.path.reduce((sum, n) => sum + estimateTokens(n.content), 0);
+      const pathTokens = result.path.reduce((sum, n) => sum + estimateTokens(n.summary || n.content.slice(0, 300)), 0);
       return wrapWithContextWarning(resultStr, pathTokens);
     },
   });
@@ -192,7 +192,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       ];
 
       const result = lines.join("\n");
-      const contentTokens = nodes.reduce((sum, n) => sum + estimateTokens(n.content), 0);
+      const contentTokens = nodes.reduce((sum, n) => sum + estimateTokens(n.summary || n.content.slice(0, 300)), 0);
       return wrapWithContextWarning(result, contentTokens);
     },
   });

@@ -2,6 +2,14 @@ import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
 import { estimateTokens } from "../infrastructure/llm/embeddings";
 import { CONTEXT_LIMIT, WARN_THRESHOLD, wrapWithTracking } from "./shared";
+import { isDumpNode } from "../storage/queries/search-helpers";
+
+// Token accounting for context pressure is bounded to a content window — full
+// node content (esp. session-dump blobs) must never be materialized/counted.
+const TOKEN_CAP_CHARS = 2000;
+function boundedContentTokens(content: string | undefined, summary: string | null | undefined): number {
+  return estimateTokens(summary ?? (content ?? "").slice(0, TOKEN_CAP_CHARS));
+}
 
 export function MemoryStats(store: MemoryStore) {
   const t = tool({
@@ -271,10 +279,16 @@ export function MemoryCheckContext(store: MemoryStore) {
       } else {
         nodes = await store.listNodes(scope as "all" | "global" | "project", undefined, undefined, undefined, undefined, args.project_name);
       }
-      
-      const totalTokens = nodes.reduce((sum, n) => sum + estimateTokens(n.content), 0);
+
+      // Session-dump artifacts (storedcontext / middle-term / [history]) are
+      // excluded from context accounting — their content can be huge (up to
+      // hundreds of MB) and is preserved via dedicated accessors instead.
+      const excluded = nodes.filter(n => isDumpNode(n));
+      nodes = nodes.filter(n => !isDumpNode(n));
+
+      const totalTokens = nodes.reduce((sum, n) => sum + boundedContentTokens(n.content, n.summary), 0);
       const ratio = totalTokens / CONTEXT_LIMIT;
-      
+
       const lines: string[] = [
         "## Memory Context Check",
         "",
@@ -282,7 +296,13 @@ export function MemoryCheckContext(store: MemoryStore) {
         `Estimated tokens: ${totalTokens.toLocaleString()} / ${CONTEXT_LIMIT.toLocaleString()} (${(ratio * 100).toFixed(1)}%)`,
         "",
       ];
-      
+
+      if (excluded.length > 0) {
+        const rawBytes = excluded.reduce((sum, n) => sum + (n.content?.length ?? 0), 0);
+        lines.push(`_Excluded ${excluded.length} session-dump node(s) (~${(rawBytes / 1024 / 1024).toFixed(1)} MB raw content). Reachable via memory(mode=list) or context(mode=middle_term)._`);
+        lines.push("");
+      }
+
       if (ratio >= threshold) {
         const warningLines = [
           `⚠️ Context at ${(ratio * 100).toFixed(0)}% — above threshold (${(threshold * 100).toFixed(0)}%)`,
@@ -292,23 +312,23 @@ export function MemoryCheckContext(store: MemoryStore) {
           "- Run memory(mode=\"compress\", scope=\"project\", force=true) to create L1 summaries",
           "- Run memory(mode=\"drilldown\") on the created summaries to retrieve compressed content",
         ];
-        
+
         const nodesByLevel: Record<number, number> = {};
         let rawTokens = 0;
         for (const n of nodes) {
           nodesByLevel[n.level] = (nodesByLevel[n.level] ?? 0) + 1;
-          if (n.level === 0) rawTokens += estimateTokens(n.content);
+          if (n.level === 0) rawTokens += boundedContentTokens(n.content, n.summary);
         }
-        
+
         if ((nodesByLevel[0] ?? 0) > 0) {
           warningLines.push(`\n${nodesByLevel[0]} L0 nodes (~${rawTokens.toLocaleString()} tokens) could be compressed.`);
         }
-        
+
         lines.push(...warningLines);
       } else {
         lines.push(`✅ Context at ${(ratio * 100).toFixed(0)}% — below threshold (${(threshold * 100).toFixed(0)}%). No action needed.`);
       }
-      
+
       if (nodes.length > 0 && nodes.length <= 20) {
         lines.push("", "### Node Breakdown");
         const nodesByLevel: Record<number, typeof nodes> = {};
@@ -317,11 +337,11 @@ export function MemoryCheckContext(store: MemoryStore) {
           nodesByLevel[n.level]!.push(n);
         }
         for (const [level, lvlNodes] of Object.entries(nodesByLevel).sort((a, b) => Number(a[0]) - Number(b[0]))) {
-          const lvlTokens = lvlNodes.reduce((s, n) => s + estimateTokens(n.content), 0);
+          const lvlTokens = lvlNodes.reduce((s, n) => s + boundedContentTokens(n.content, n.summary), 0);
           lines.push(`L${level}: ${lvlNodes.length} nodes (~${lvlTokens.toLocaleString()} tokens)`);
         }
       }
-      
+
       return lines.join("\n");
     },
   });

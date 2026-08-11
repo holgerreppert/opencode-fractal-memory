@@ -176,16 +176,19 @@ describe("searchByEmbedding", () => {
     const emb = makeEmbedding(0.5);
 
     insertNode(projectDb, { id: "note", embedding: emb, type: "note", scope: "project" });
+    insertNode(projectDb, { id: "other", embedding: emb, type: "other", scope: "project" });
     insertNode(projectDb, { id: "storedctx", embedding: emb, type: "storedcontext", scope: "project" });
 
     await getHNSWIndex().rebuild([
       { id: "note", embedding: emb, scope: "project" },
+      { id: "other", embedding: emb, scope: "project" },
       { id: "storedctx", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", typeFilter: "storedcontext" });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", typeFilter: "other" });
     expect(results.find(n => n.id === "note")).toBeUndefined();
-    expect(results.find(n => n.id === "storedctx")).toBeDefined();
+    expect(results.find(n => n.id === "other")).toBeDefined();
+    expect(results.find(n => n.id === "storedctx")).toBeUndefined();
   });
 
   test("typeFilter returns all types when not specified", async () => {
@@ -200,9 +203,48 @@ describe("searchByEmbedding", () => {
       { id: "b", embedding: emb, scope: "project" },
     ]);
 
-    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
+    const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", typeFilter: "note" });
     expect(results.find(n => n.id === "a")).toBeDefined();
-    expect(results.find(n => n.id === "b")).toBeDefined();
+    expect(results.find(n => n.id === "b")).toBeUndefined();
+  });
+
+  describe("session-dump exclusion", () => {
+    test("excludes storedcontext and middle-term/[history] nodes by default", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const emb = makeEmbedding(0.5);
+
+      insertNode(projectDb, { id: "note", embedding: emb, type: "note", scope: "project" });
+      insertNode(projectDb, { id: "storedctx", embedding: emb, type: "storedcontext", scope: "project" });
+      insertNode(projectDb, { id: "midterm", embedding: emb, type: "note", label: "middle-term:2026-01-01", scope: "project" });
+      insertNode(projectDb, { id: "history", embedding: emb, type: "note", label: "[history] old session", scope: "project" });
+
+      await getHNSWIndex().rebuild([
+        { id: "note", embedding: emb, scope: "project" },
+        { id: "storedctx", embedding: emb, scope: "project" },
+        { id: "midterm", embedding: emb, scope: "project" },
+        { id: "history", embedding: emb, scope: "project" },
+      ]);
+
+      const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project" });
+      expect(results.find(n => n.id === "note")).toBeDefined();
+      expect(results.find(n => n.id === "storedctx")).toBeUndefined();
+      expect(results.find(n => n.id === "midterm")).toBeUndefined();
+      expect(results.find(n => n.id === "history")).toBeUndefined();
+    });
+
+    test("typeFilter storedcontext alone returns nothing by default", async () => {
+      const { getDb, projectDb, insertNode } = setup();
+      const emb = makeEmbedding(0.5);
+
+      insertNode(projectDb, { id: "storedctx", embedding: emb, type: "storedcontext", scope: "project" });
+
+      await getHNSWIndex().rebuild([
+        { id: "storedctx", embedding: emb, scope: "project" },
+      ]);
+
+      const results = await searchByEmbedding(getDb, makeEmbedding(0.5), 10, { projectName: "test-project", typeFilter: "storedcontext" });
+      expect(results).toEqual([]);
+    });
   });
 
   test("filters by minUsefulness", async () => {

@@ -5,7 +5,7 @@ import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
-import { computeBM25ScoresSQL } from "./queries/search-helpers";
+import { computeBM25ScoresSQL, isDumpNode } from "./queries/search-helpers";
 import { tokenize, blobToEmbedding } from "./utils";
 import { rankCandidates, toRankedNodes, type RankCandidate } from "../application/ranking/pipeline";
 import { DEFAULT_RANK_WEIGHTS, type RankWeights } from "../application/ranking/weights";
@@ -20,6 +20,13 @@ function matchesTagsFilter(nodeTags: string[] | null, tagsFilter: string[] | und
   if (!nodeTags || nodeTags.length === 0) return tagsFilter.length === 0;
   return tagsFilter.every(t => nodeTags.includes(t));
 }
+
+// Session-dump artifacts (storedcontext/middle-term/[history]) are excluded
+// completely from search at the SQL level — before their (potentially huge)
+// content is materialized into node objects. Kept in sync with isDumpNode.
+// COALESCE guards NULL type/label (NULL = 'x' is NULL, and NOT NULL = NULL
+// would silently exclude every row without a type/label).
+const DUMP_EXCLUSION_SQL = "AND NOT (COALESCE(type,'') = 'storedcontext' OR COALESCE(label,'') LIKE 'middle-term:%' OR COALESCE(label,'') LIKE '[history]%')";
 
 const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
 
@@ -100,54 +107,72 @@ export async function searchByEmbedding(
   const doRerank = options?.rerank ?? false;
   const queryText = options?.queryText ?? "";
 
+  const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
+
   const hnsw = getHNSWIndex();
-  const hnswResults = await hnsw.search(query, limit * 5);
+  const indexSize = hnsw.getStats().globalNodes + hnsw.getStats().projectNodes;
+  const maxPool = Math.max(limit * 5, Math.min(1500, indexSize));
 
-  const candidates: RankCandidate[] = [];
+  const collectCandidates = async (poolSize: number): Promise<{ candidates: RankCandidate[]; hnswResultCount: number }> => {
+    const hnswResults = await hnsw.search(query, poolSize, scopes[0]);
+    const out: RankCandidate[] = [];
 
-  if (hnswResults.length > 0) {
-    const candidateIds = new Set(hnswResults.map(r => r.id));
-    const hnswScoreMap = new Map<string, number>();
-    for (const r of hnswResults) {
-      const existing = hnswScoreMap.get(r.id) ?? -Infinity;
-      if (r.score > existing) hnswScoreMap.set(r.id, r.score);
-    }
+    if (hnswResults.length > 0) {
+      const candidateIds = new Set(hnswResults.map(r => r.id));
+      const hnswScoreMap = new Map<string, number>();
+      for (const r of hnswResults) {
+        const existing = hnswScoreMap.get(r.id) ?? -Infinity;
+        if (r.score > existing) hnswScoreMap.set(r.id, r.score);
+      }
 
-    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
-    for (const scope of scopes) {
-      const db = await getDb(scope);
-      const projectFilter = options?.projectName !== undefined && scope === "project";
+      for (const scope of scopes) {
+        const db = await getDb(scope);
+        const projectFilter = options?.projectName !== undefined && scope === "project";
 
-      const placeholders = Array.from(candidateIds).map(() => "?").join(",");
-      const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""}`;
-      const params: (string | number)[] = [...Array.from(candidateIds), Date.now(), scope];
-      if (projectFilter) params.push(options!.projectName!);
-      const rows = db.query(sql).all(...params) as SqliteNode[];
+        const placeholders = Array.from(candidateIds).map(() => "?").join(",");
+        const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} ${DUMP_EXCLUSION_SQL}`;
+        const params: (string | number)[] = [...Array.from(candidateIds), Date.now(), scope];
+        if (projectFilter) params.push(options!.projectName!);
+        const rows = db.query(sql).all(...params) as SqliteNode[];
 
-      for (const row of rows) {
-        const level = row.level as MemoryNodeLevel;
+        for (const row of rows) {
+          const level = row.level as MemoryNodeLevel;
 
-        const node = rowToNode(row);
-        if (!node.embedding) continue;
+          const node = rowToNode(row);
+          if (!node.embedding) continue;
 
-        if (options?.minLevel !== undefined && level < options.minLevel) continue;
-        if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
-        if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
-        if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
-        if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
-        if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
-        if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
+          if (options?.minLevel !== undefined && level < options.minLevel) continue;
+          if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
+          if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
+          if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
+          if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+          if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
+          if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
 
-        let _embedding = node.embedding;
-        if (row.embedding_blob) {
-          _embedding = blobToEmbedding(row.embedding_blob);
+          let _embedding = node.embedding;
+          if (row.embedding_blob) {
+            _embedding = blobToEmbedding(row.embedding_blob);
+          }
+
+          const semanticScore = hnswScoreMap.get(node.id) ?? 0;
+
+          out.push({ node, semanticScore });
         }
-
-        const semanticScore = hnswScoreMap.get(node.id) ?? 0;
-
-        candidates.push({ node, semanticScore });
       }
     }
+
+    return { candidates: out, hnswResultCount: hnswResults.length };
+  };
+
+  // HNSW returns the top-K by similarity across ALL levels/scopes. If strict
+  // filters (level band, tags, type) exclude every neighbor, widen the pool so
+  // sparse levels (e.g. summaries) or small projects get a chance before we
+  // concede to the insertion-order fallback.
+  let candidates: RankCandidate[] = [];
+  for (let poolSize = limit * 5; poolSize <= maxPool && candidates.length === 0; poolSize *= 2) {
+    const { candidates: collected, hnswResultCount } = await collectCandidates(poolSize);
+    candidates = collected;
+    if (hnswResultCount === 0) break;
   }
 
   if (candidates.length === 0) {
@@ -164,11 +189,10 @@ export async function searchByEmbedding(
     const maxLevel = options?.maxLevel ?? 5;
     const minUsefulness = options?.minUsefulness ?? 0;
 
-    const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
     for (const scope of scopes) {
       const db = await getDb(scope);
       const projectFilter = options?.projectName !== undefined && scope === "project";
-      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} LIMIT ?`;
+      const sql = `SELECT * FROM memory_nodes WHERE (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND level >= ? AND level <= ? AND usefulness_score >= ? AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} ${DUMP_EXCLUSION_SQL} LIMIT ?`;
       const params: (number | string)[] = [minLevel, maxLevel, minUsefulness, Date.now(), scope];
       if (projectFilter) params.push(options!.projectName!);
       params.push(limit * 5);
@@ -214,6 +238,7 @@ export async function searchByEmbedding(
       const projectFilter = options?.projectName !== undefined && scope === "project";
       let idSql = "SELECT id FROM memory_nodes WHERE (expires_at IS NULL OR expires_at > ?) AND scope = ?";
       if (projectFilter) idSql += " AND project_name = ?";
+      idSql += " " + DUMP_EXCLUSION_SQL;
       const idParams: (string | number)[] = [Date.now(), scope];
       if (projectFilter) idParams.push(options!.projectName!);
       const allRows = db.query(idSql).all(...idParams) as { id: string }[];
@@ -241,7 +266,7 @@ export async function searchByEmbedding(
 
       if (bm25OnlyIds.length > 0) {
         const placeholders = bm25OnlyIds.map(() => "?").join(",");
-        const bm25Sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?`;
+        const bm25Sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (expires_at IS NULL OR expires_at > ?) AND scope = ? ${DUMP_EXCLUSION_SQL}`;
         const bm25Rows = db.query(bm25Sql).all(...bm25OnlyIds, Date.now(), scope) as SqliteNode[];
 
         for (const row of bm25Rows) {
@@ -297,7 +322,7 @@ export async function searchByEmbedding(
       const toFetch = [...expandedIds].filter(id => !existingIds.has(id));
       if (toFetch.length === 0) continue;
       const placeholders = toFetch.map(() => "?").join(",");
-      const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND scope = ?`).all(...toFetch, scope) as SqliteNode[];
+      const rows = db.query(`SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND scope = ? ${DUMP_EXCLUSION_SQL}`).all(...toFetch, scope) as SqliteNode[];
       for (const row of rows) {
         const node = rowToNode(row);
         const hopScore = hopScores.get(node.id) ?? 0;
@@ -390,7 +415,7 @@ export async function drilldownQuery(
     if (seenIds.has(node.id)) continue;
     seenIds.add(node.id);
 
-    const path = await deps.getDrilldownPath(node.id, 3);
+    const path = (await deps.getDrilldownPath(node.id, 3)).filter(n => !isDumpNode(n));
     results.push({
       node,
       relevance: node.importance ?? 0,
@@ -405,7 +430,7 @@ export async function drilldownQuery(
     if (results.length >= maxResults) break;
     seenIds.add(node.id);
 
-    const path = await deps.getDrilldownPath(node.id, 2);
+    const path = (await deps.getDrilldownPath(node.id, 2)).filter(n => !isDumpNode(n));
     results.push({
       node,
       relevance: node.importance ?? 0,
@@ -433,7 +458,7 @@ export async function drilldownQuery(
     for (const scope of textScopes) {
       const db = await deps.getDb(scope);
       const projectFilter = projectName !== undefined && scope === "project";
-      const sql = `SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL) AND scope = ?${projectFilter ? " AND project_name = ?" : ""}`;
+      const sql = `SELECT * FROM memory_nodes WHERE (label LIKE ? OR content LIKE ?) AND (embedding IS NULL AND embedding_blob IS NULL) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} ${DUMP_EXCLUSION_SQL}`;
       const params: (string | number)[] = [`%${query}%`, `%${query}%`, scope];
       if (projectFilter) params.push(projectName);
       const rows = db.query(sql).all(...params) as SqliteNode[];
