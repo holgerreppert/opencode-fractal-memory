@@ -1,0 +1,143 @@
+digraph DbAccessApproaches {
+  rankdir=TB;
+  splines=polyline;
+  compound=true;
+  newrank=true;
+  fontname="monospace";
+  fontsize=10;
+  labelloc=t;
+  label="Centralized Database Access — Three Approaches (A / B / C)";
+  labeljust=l;
+  pad=0.5;
+  overlap=false;
+
+  node [shape=box, style="rounded,filled", fillcolor="#1a1a2e", fontcolor=white, fontname="monospace", fontsize=9];
+  edge [fontname="monospace", fontsize=8];
+
+  // ===================================================================
+  // Current state (fragmentation baseline)
+  // ===================================================================
+  subgraph cluster_current {
+    label="Current — Fragmentation";
+    style="dashed";
+    color="#444444";
+    fontcolor="#888888";
+    fontsize=10;
+
+    cur_store [label="SqliteMemoryStore\n(src/storage/sqlite.ts, 701 lines)\nowns new Database() :105", fillcolor="#16213e"];
+
+    cur_q1 [label="queries/nodes.ts\npure fn: db arg", fillcolor="#3a1d1d"];
+    cur_q2 [label="queries/links.ts\npure fn: db arg", fillcolor="#3a1d1d"];
+    cur_q3 [label="queries/search-helpers.ts\npure fn: db arg", fillcolor="#3a1d1d"];
+    cur_q4 [label="queries/temporal-edges.ts\npure fn: db arg", fillcolor="#3a1d1d"];
+    cur_q5 [label="search.ts (536 lines)\nparallel subsystem\n(own SQL + HNSW + ranking)", fillcolor="#3a1d1d"];
+
+    cur_c1 [label="SqliteConfigStore", fillcolor="#1d3a2b"];
+    cur_c2 [label="SqliteCompressionStore", fillcolor="#1d3a2b"];
+    cur_c3 [label="SqliteInjectionStore", fillcolor="#1d3a2b"];
+    cur_c4 [label="SqliteSessionTracker", fillcolor="#1d3a2b"];
+    cur_c5 [label="SqliteLiveFeedStore", fillcolor="#1d3a2b"];
+
+    cur_store -> cur_q1 [label="getDb(scope)"];
+    cur_store -> cur_q2;
+    cur_store -> cur_q3;
+    cur_store -> cur_q4;
+    cur_store -> cur_q5;
+    cur_store -> cur_c1 [label="closure:\n() => getDb(scope)\n(sqlite.ts:71-75)", style=dashed];
+    cur_store -> cur_c2 [style=dashed];
+    cur_store -> cur_c3 [style=dashed];
+    cur_store -> cur_c4 [style=dashed];
+    cur_store -> cur_c5 [style=dashed];
+  }
+
+  // ===================================================================
+  // Approach A — DbProvider (connection lifecycle centralized)
+  // ===================================================================
+  subgraph cluster_a {
+    label="Approach A — DbProvider (connection lifecycle centralized)";
+    style="dashed";
+    color="#444444";
+    fontcolor="#888888";
+    fontsize=10;
+
+    a_provider [label="DbProvider\n(infrastructure/db/)\nnew Database · scope cache\nmigrations · pragmas · close()\nwithRetryableTransaction", fillcolor="#0f3460", shape=cylinder];
+
+    a_store [label="SqliteMemoryStore\n(takes DbProvider via ctor)", fillcolor="#16213e"];
+    a_c1 [label="SqliteConfigStore", fillcolor="#1d3a2b"];
+    a_c2 [label="SqliteCompressionStore", fillcolor="#1d3a2b"];
+    a_c3 [label="SqliteInjectionStore", fillcolor="#1d3a2b"];
+    a_c4 [label="SqliteSessionTracker", fillcolor="#1d3a2b"];
+    a_q1 [label="query modules\n(db arg from provider)", fillcolor="#3a1d1d"];
+
+    a_provider -> a_store [label="injected"];
+    a_provider -> a_c1 [label="injected"];
+    a_provider -> a_c2;
+    a_provider -> a_c3;
+    a_provider -> a_c4;
+    a_store -> a_q1 [label="db"];
+    a_c1 -> a_q1 [style=invis];
+  }
+
+  // ===================================================================
+  // Approach B — A + factory-map DI container (narrow ports)
+  // ===================================================================
+  subgraph cluster_b {
+    label="Approach B — A + factory-map container (consumers use narrow ports)";
+    style="dashed";
+    color="#444444";
+    fontcolor="#888888";
+    fontsize=10;
+
+    b_container [label="composition-root\ncreateContainer()\n(plain factory map, no framework)", fillcolor="#0f3460", shape=box3d];
+
+    b_provider [label="DbProvider", fillcolor="#16213e", shape=cylinder];
+    b_port_config [label="ConfigStore (port)", fillcolor="#1d3a2b"];
+    b_port_compress [label="CompressionStore (port)", fillcolor="#1d3a2b"];
+    b_port_session [label="SessionTracker (port)", fillcolor="#1d3a2b"];
+    b_port_inject [label="InjectionStore (port)", fillcolor="#1d3a2b"];
+    b_port_maintain [label="MaintenanceStore (port)", fillcolor="#1d3a2b"];
+    b_port_node [label="NodeRepository (port)", fillcolor="#1d3a2b"];
+
+    b_consumer [label="tools / hooks / management / mcp\n(depend on narrow ports only)", fillcolor="#1a1a2e", shape=note];
+
+    b_container -> b_provider;
+    b_container -> b_port_config;
+    b_container -> b_port_compress;
+    b_container -> b_port_session;
+    b_container -> b_port_inject;
+    b_container -> b_port_maintain;
+    b_container -> b_port_node;
+    b_consumer -> b_port_config [label="e.g. ConfigStore"];
+    b_consumer -> b_port_session [label="e.g. SessionTracker"];
+  }
+
+  // ===================================================================
+  // Approach C — B + SearchStore port + UnitOfWork
+  // ===================================================================
+  subgraph cluster_c {
+    label="Approach C — B + SearchStore port + UnitOfWork (full hexagonal)";
+    style="dashed";
+    color="#444444";
+    fontcolor="#888888";
+    fontsize=10;
+
+    c_container [label="composition-root\ncreateContainer()", fillcolor="#0f3460", shape=box3d];
+    c_provider [label="DbProvider\n(unified getDb(scope) API)", fillcolor="#16213e", shape=cylinder];
+    c_search [label="SearchStore (port)\n(migrates search.ts 536 lines)", fillcolor="#3a1d1d"];
+    c_uow [label="UnitOfWork\nuow.transaction(tx) →\ntransaction-scoped repos\n(compression / link updates)", fillcolor="#2d1b69", shape=box3d];
+
+    c_container -> c_provider;
+    c_container -> c_search;
+    c_container -> c_uow;
+    c_uow -> c_provider [label="tx"];
+    c_search -> c_provider [label="db"];
+  }
+
+  // ===================================================================
+  // Evolution flow (current → A → B → C)
+  // ===================================================================
+  edge [style=dotted, color="#888888"];
+  cur_store -> a_provider [label="extract\nconnection owner", lhead=cluster_a, ltail=cluster_current];
+  a_provider -> b_container [label="add\nDI container", lhead=cluster_b, ltail=cluster_a];
+  b_container -> c_container [label="add\nSearchStore + UoW", lhead=cluster_c, ltail=cluster_b];
+}
