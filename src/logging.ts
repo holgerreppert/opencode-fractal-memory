@@ -35,6 +35,11 @@ function fallbackLog(e: unknown, context: string): void {
   process.stderr.write(`[opencode-memory][${context}] ${e}\n`);
 }
 
+function localTimestamp(d: Date = new Date()): string {
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function rotateFile(filePath: string, maxSize: number): void {
   if (!fs.existsSync(filePath)) return;
   try {
@@ -72,7 +77,7 @@ export function memLog(
 ): void {
   if (!shouldLog(level, category)) return;
 
-  const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const ts = localTimestamp();
   const session = currentSessionId ? `[${currentSessionId.slice(0, 8)}]` : "";
 
   const line = `[${ts}] [${level.padEnd(5)}] [${category}]${session} ${msg}` +
@@ -109,7 +114,7 @@ export function writeCompressLog(fields: Record<string, string | number>): void 
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(COMPRESS_LOG_FILE, COMPRESS_LOG_MAX_SIZE);
-    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const ts = localTimestamp();
     const session = currentSessionId ? `session=${currentSessionId.slice(0, 8)}` : "";
     const parts = Object.entries(fields).map(([k, v]) => `${k}=${v}`);
     const line = `[${ts}] | COMPRESS | ${session}${session ? " | " : ""}${parts.join(" | ")}`;
@@ -129,7 +134,7 @@ export function writeGraphLog(level: string, msg: string, data?: Record<string, 
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(GRAPH_LOG_FILE, GRAPH_LOG_MAX_SIZE);
-    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const ts = localTimestamp();
     const session = currentSessionId ? `[${currentSessionId.slice(0, 8)}]` : "";
     const line = `[${ts}] [${level}]${session} ${msg}` +
       (data && Object.keys(data).length > 0 ? ` ${JSON.stringify(data)}` : "");
@@ -146,7 +151,7 @@ export function writeGraphUsageLog(fields: Record<string, string | number>): voi
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(GRAPH_USAGE_LOG_FILE, GRAPH_USAGE_LOG_MAX_SIZE);
-    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const ts = localTimestamp();
     const session = currentSessionId ? `session=${currentSessionId.slice(0, 8)}` : "";
     const parts = Object.entries(fields).map(([k, v]) => `${k}=${v}`);
     const line = `[${ts}] | GRAPH-USAGE | ${session}${session ? " | " : ""}${parts.join(" | ")}`;
@@ -160,7 +165,7 @@ export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE" | "R
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(FILE_SUM_LOG_FILE, FILE_SUM_LOG_MAX_SIZE);
-    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const ts = localTimestamp();
     const session = currentSessionId ? `session=${currentSessionId.slice(0, 8)}` : "";
     const parts = Object.entries(fields).map(([k, v]) => `${k}=${v}`);
     const line = `[${ts}] | ${component} | ${session}${session ? " | " : ""}${parts.join(" | ")}`;
@@ -177,7 +182,7 @@ export function writeLiveFeedLog(data: Record<string, unknown>): void {
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(LIVE_FEED_LOG_FILE, LIVE_FEED_LOG_MAX_SIZE);
-    const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const ts = localTimestamp();
     const turnCount = (data.turns as any[])?.length ?? 0;
     const injCount = (data.injections as any[])?.length ?? 0;
     const compCount = (data.compressions as any[])?.length ?? 0;

@@ -1388,7 +1388,7 @@ describe("sqlite store", () => {
     expect(updated.timesHelpful).toBe(5);
   });
 
-  test("usefulness tracking - timesUsed increments after search", async () => {
+  test("usefulness tracking - search is read-only and does not increment timesUsed", async () => {
     const { dir, globalDbPath } = await mkTmpDir();
     const store = createMemoryStore(dir, globalDbPath);
     await store.ensureSeed();
@@ -1403,11 +1403,11 @@ describe("sqlite store", () => {
     const before = await store.getNode(node.id);
     expect(before.timesUsed).toBe(0);
 
-    // Search should increment timesUsed
+    // Search is read-only: it should NOT increment timesUsed
     await store.searchByEmbedding(Array.from({length: 384}).fill(0.1), 10, { projectName: store.projectName });
 
     const after = await store.getNode(node.id);
-    expect(after.timesUsed).toBeGreaterThanOrEqual(1);
+    expect(after.timesUsed).toBe(0);
   });
 
   test("usefulness tracking - minUsefulness filter works", async () => {
