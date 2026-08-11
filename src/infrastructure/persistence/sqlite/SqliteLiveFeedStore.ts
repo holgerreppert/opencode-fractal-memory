@@ -9,7 +9,7 @@ export class SqliteLiveFeedStore implements LiveFeedStore {
   constructor(private provider: DbProvider) {}
 
   async recordConversationTurn(turn: ConversationTurn): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     insertConversationTurn(db, {
       sessionId: turn.sessionId,
       turnIndex: turn.turnIndex,
@@ -25,7 +25,7 @@ export class SqliteLiveFeedStore implements LiveFeedStore {
   }
 
   async getLiveFeedSnapshot(limit = 50): Promise<LiveFeedSnapshot> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return queryLiveFeedSnapshot(db, limit);
   }
 }

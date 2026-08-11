@@ -28,27 +28,27 @@ export class SqliteInjectionStore implements InjectionStore {
       injectedContent?: Array<{ label: string; type: string; snippet: string }>;
     }
   ): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await insertInjectionMetrics(db, sessionId, data);
   }
 
   async getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return getPendingInjectionRows(db);
   }
 
   async markInjectionProcessed(id: number): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     markProcessed(db, id);
   }
 
   async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await updateMemoryToolCall(db, sessionId, toolName);
   }
 
   async finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await finalizeInjectionRow(db, sessionId, effectivenessScore, taskDescription);
   }
 
@@ -59,7 +59,7 @@ export class SqliteInjectionStore implements InjectionStore {
     taskOutcome?: string,
     neededNodes?: string[]
   ): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await insertInjectionFeedback(db, sessionId, upvotes, downvotes, taskOutcome, neededNodes);
   }
 
@@ -76,12 +76,12 @@ export class SqliteInjectionStore implements InjectionStore {
     injectionUpvotes: number; injectionDownvotes: number;
     taskOutcome: string | null;
   }>> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return queryInjectionMetrics(db, limit);
   }
 
   async injectNode(nodeId: string, scope: string): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     const exists = db.query("SELECT id FROM memory_nodes WHERE id = ?").get(nodeId);
     if (!exists) throw new Error("Node not found");
     db.run("INSERT INTO pending_injections (node_id, scope, source) VALUES (?, ?, 'management')", [nodeId, scope]);

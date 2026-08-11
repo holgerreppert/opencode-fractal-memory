@@ -76,8 +76,8 @@ class SqliteMemoryStore implements MemoryStore {
     return this.dbProvider.getDb(scope);
   }
 
-  private async getGlobalDb(): Promise<Database> {
-    return this.dbProvider.getGlobalDb();
+  withTransaction<T>(operation: () => T | Promise<T>): Promise<T> {
+    return this.dbProvider.withTransaction(operation);
   }
 
   async close(): Promise<void> {

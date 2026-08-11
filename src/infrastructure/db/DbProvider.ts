@@ -49,12 +49,8 @@ export class DbProvider {
     }
   }
 
-  getGlobalDb(): Promise<Database> {
-    return this.getDb("global");
-  }
-
-  withTransaction<T>(db: Database, operation: () => T | Promise<T>): Promise<T> {
-    return withRetryableTransaction(db, operation);
+  withTransaction<T>(operation: () => T | Promise<T>): Promise<T> {
+    return this.getDb().then((db) => withRetryableTransaction(db, operation));
   }
 
   private async initDb(key: string): Promise<Database> {
