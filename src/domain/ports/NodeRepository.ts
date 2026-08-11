@@ -1,9 +1,8 @@
 import type {
-  MemoryScope, MemoryNodeLevel, MemoryNode, MemoryNodeType,
+  MemoryScope, MemoryNodeLevel, MemoryNode,
   MemoryCategory, CreateNodeInput, FractalStats, FractalRetrievalResult,
-  DrilldownResult, TemporalEdge, SearchIntent,
+  TemporalEdge,
 } from "./MemoryStore";
-import type { RankWeights } from "../../application/ranking/weights";
 
 export interface NodeRepository {
   readonly projectName: string;
@@ -15,23 +14,8 @@ export interface NodeRepository {
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
   updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
   deleteNode(id: string): Promise<void>;
-  searchByEmbedding(query: number[], limit?: number | undefined, options?: {
-    minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined;
-    levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
-    queryText?: string | undefined; minUsefulness?: number | undefined;
-    rerank?: boolean | undefined; rerankMode?: "keyword" | "cross-encoder" | undefined;
-    bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined;
-    temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
-    temporalHops?: number | undefined;
-    categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined;
-    intent?: SearchIntent | undefined;
-    tagsFilter?: string[] | undefined;
-    featureWeights?: Partial<RankWeights> | undefined;
-  }): Promise<MemoryNode[]>;
   getFractalStats(scope: MemoryScope | "all", projectName?: string | undefined): Promise<FractalStats>;
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;
-  detectTopicBoundaries(scope: MemoryScope | "all", minSimilarity?: number, projectName?: string): Promise<MemoryNode[][]>;
-  drilldownQuery(query: string, maxResults?: number, projectName?: string): Promise<DrilldownResult[]>;
   verifyNode(id: string): Promise<MemoryNode>;
   calculateNodeConfidence(node: MemoryNode): number;
   storeLinks(scope: MemoryScope, sourceId: string, content: string): Promise<void>;
@@ -41,6 +25,4 @@ export interface NodeRepository {
   createTemporalEdge(sourceNodeId: string, targetNodeId: string, edgeType: string, scope?: string, confidence?: number, metadata?: Record<string, unknown> | null): Promise<TemporalEdge>;
   getTemporalEdges(nodeId: string, direction?: "outgoing" | "incoming" | "both", edgeType?: string, scope?: MemoryScope): Promise<TemporalEdge[]>;
   expandWithTemporalContext(nodeIds: string[], maxHops?: number, edgeType?: string): Promise<string[]>;
-  searchText(scope: MemoryScope | "all", query: string, limit?: number, projectName?: string): Promise<MemoryNode[]>;
-  searchBM25(scope: MemoryScope | "all", query: string, limit?: number, projectName?: string): Promise<MemoryNode[]>;
 }

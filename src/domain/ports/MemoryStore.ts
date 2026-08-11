@@ -124,6 +124,8 @@ import type { CompressionStore } from "./CompressionStore";
 import type { MaintenanceStore } from "./MaintenanceStore";
 import type { ConfigStore } from "./ConfigStore";
 import type { LiveFeedStore } from "./LiveFeedStore";
+import type { SearchStore } from "./SearchStore";
+import type { UnitOfWork } from "./UnitOfWork";
 
 export interface MemoryStore extends
   NodeRepository,
@@ -132,7 +134,9 @@ export interface MemoryStore extends
   CompressionStore,
   MaintenanceStore,
   ConfigStore,
-  LiveFeedStore
+  LiveFeedStore,
+  SearchStore,
+  UnitOfWork
 {
   readonly projectName: string;
 }

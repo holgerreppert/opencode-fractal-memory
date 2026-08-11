@@ -14,27 +14,27 @@ export class SqliteSessionTracker implements SessionTracker {
   constructor(private provider: DbProvider) {}
 
   async logToolCall(toolName: string, resultTokens: number, contextWarning: boolean, success: boolean, durationMs: number = 0): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await insertToolUsageLog(db, toolName, resultTokens, contextWarning, success, durationMs);
   }
 
   async getToolPatterns(_scope: "all" | "global" | "project"): Promise<Array<{ toolName: string; count: number; avgTokens: number; avgDurationMs: number; warningRate: number; successRate: number }>> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return queryToolPatterns(db);
   }
 
   async getFrequentSequences(_scope: "all" | "global" | "project", minCount: number = 3): Promise<Array<{ prev: string; next: string; count: number }>> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return queryFrequentSequences(db, minCount);
   }
 
   async pruneUsageLog(maxAgeMs?: number): Promise<number> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return deleteUsageLog(db, maxAgeMs);
   }
 
   async recordMemoryToolCall(sessionId: string, toolName: string, _args?: Record<string, unknown>): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await updateMemoryToolCall(db, sessionId, toolName);
   }
 
@@ -46,7 +46,7 @@ export class SqliteSessionTracker implements SessionTracker {
     success: boolean | null,
     durationMs: number | null
   ): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     const category = getToolCategory(toolName);
     await insertAgentToolCall(db, sessionId, toolName, args, output, success, durationMs, category);
 
@@ -56,7 +56,7 @@ export class SqliteSessionTracker implements SessionTracker {
   }
 
   async createSessionMetrics(sessionId: string, startedAt?: number): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await createSessionMetricsRow(db, sessionId, startedAt);
   }
 
@@ -71,7 +71,7 @@ export class SqliteSessionTracker implements SessionTracker {
       avgTokensPerCall?: number;
     }
   ): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await updateSessionMetricsRow(db, sessionId, updates as Parameters<typeof updateSessionMetricsRow>[2]);
   }
 
@@ -81,7 +81,7 @@ export class SqliteSessionTracker implements SessionTracker {
     success: boolean,
     filePath?: string | null
   ): Promise<void> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     await incrementSessionToolCallRow(db, sessionId, toolName, success, filePath);
   }
 
@@ -108,7 +108,7 @@ export class SqliteSessionTracker implements SessionTracker {
       success: boolean | null;
     }>;
   } | null> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return getSessionStatsForSession(db, sessionId);
   }
 
@@ -118,7 +118,7 @@ export class SqliteSessionTracker implements SessionTracker {
     memoryToolsUsed: string[];
     avgEffectiveness: number | null;
   } | null> {
-    const db = await this.provider.getGlobalDb();
+    const db = await this.provider.getDb();
     return querySessionMetrics(db, sessionId);
   }
 }

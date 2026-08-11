@@ -7,7 +7,7 @@ import type {
   MemoryScope,
   SearchIntent,
 } from "../domain/ports/MemoryStore";
-import type { MemoryStore } from "../domain/ports/MemoryStore";
+import type { SearchStore } from "../domain/ports/SearchStore";
 import type { RankWeights } from "./ranking/weights";
 
 /**
@@ -28,7 +28,7 @@ export type SearchMode = "hybrid" | "bm25" | "text";
  * layer free of infrastructure dependencies.
  */
 export async function searchNodes(
-  store: MemoryStore,
+  store: SearchStore,
   embed: (text: string) => Promise<number[]>,
   query: string,
   opts: {
