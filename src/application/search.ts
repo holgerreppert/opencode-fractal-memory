@@ -39,6 +39,7 @@ export async function searchNodes(
     minLevel?: MemoryNodeLevel | undefined;
     maxLevel?: MemoryNodeLevel | undefined;
     minUsefulness?: number | undefined;
+    rrfK?: number | undefined;
     rerank?: boolean | undefined;
     rerankMode?: "keyword" | "cross-encoder" | undefined;
     featureWeights?: Partial<RankWeights> | undefined;
@@ -76,6 +77,7 @@ export async function searchNodes(
     maxLevel?: MemoryNodeLevel;
     queryText?: string;
     minUsefulness?: number | undefined;
+    rrfK?: number | undefined;
     rerank?: boolean | undefined;
     rerankMode?: "keyword" | "cross-encoder" | undefined;
     featureWeights?: Partial<RankWeights> | undefined;
@@ -93,6 +95,7 @@ export async function searchNodes(
   if (opts.minLevel !== undefined) options.minLevel = opts.minLevel;
   if (opts.maxLevel !== undefined) options.maxLevel = opts.maxLevel;
   if (opts.minUsefulness !== undefined) options.minUsefulness = opts.minUsefulness;
+  if (opts.rrfK !== undefined) options.rrfK = opts.rrfK;
   if (opts.projectName !== undefined) options.projectName = projectName;
   if (opts.temporalHops !== undefined && opts.temporalHops > 0) options.temporalHops = opts.temporalHops;
   if (opts.intent !== undefined) options.intent = opts.intent;

@@ -88,6 +88,7 @@ export async function searchByEmbedding(
     levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
     queryText?: string | undefined;
     minUsefulness?: number | undefined;
+    rrfK?: number | undefined;
     rerank?: boolean | undefined;
     rerankMode?: "keyword" | "cross-encoder" | undefined;
     bm25Scores?: Map<string, number> | undefined;
@@ -287,11 +288,12 @@ export async function searchByEmbedding(
     }
   }
 
-  // Unified scoring: feature-weighted linear model, recency tiebreak only
+  // Unified scoring: feature-weighted linear model (or RRF when rrfK is set), recency tiebreak only
   let finalNodes = toRankedNodes(rankCandidates(candidates, {
     weights,
     levelWeights: options?.levelWeights,
     intent: options?.intent,
+    rrfK: options?.rrfK,
   }));
 
   // Multi-hop temporal expansion: expand top candidates along temporal edges with score decay
