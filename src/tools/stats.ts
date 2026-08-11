@@ -1,15 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { estimateTokens } from "../infrastructure/llm/embeddings";
-import { CONTEXT_LIMIT, WARN_THRESHOLD, wrapWithTracking } from "./shared";
+import { CONTEXT_LIMIT, WARN_THRESHOLD, wrapWithTracking, normalizeScope, boundedContentTokens } from "./shared";
 import { isDumpNode } from "../storage/queries/search-helpers";
-
-// Token accounting for context pressure is bounded to a content window — full
-// node content (esp. session-dump blobs) must never be materialized/counted.
-const TOKEN_CAP_CHARS = 2000;
-function boundedContentTokens(content: string | undefined, summary: string | null | undefined): number {
-  return estimateTokens(summary ?? (content ?? "").slice(0, TOKEN_CAP_CHARS));
-}
 
 export function MemoryStats(store: MemoryStore) {
   const t = tool({
@@ -19,7 +11,7 @@ export function MemoryStats(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = (args.scope ?? "all") as "all" | "global" | "project";
+      const scope = normalizeScope(args.scope);
       const stats = await store.getFractalStats(scope, args.project_name);
 
       const lines: string[] = [
@@ -260,7 +252,7 @@ export function MemoryCheckContext(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = args.scope ?? "all";
+      const scope = normalizeScope(args.scope);
       const threshold = args.threshold ?? WARN_THRESHOLD;
       let nodes: import("../memory").MemoryNode[] = [];
 

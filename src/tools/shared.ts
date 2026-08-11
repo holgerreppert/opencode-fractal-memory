@@ -5,10 +5,22 @@ import { estimateTokens } from "../infrastructure/llm/embeddings";
 export const CONTEXT_LIMIT = 128000;
 export const WARN_THRESHOLD = 0.8;
 export const MAX_RECENT_CALLS = 50;
+export const TOKEN_CAP_CHARS = 2000;
 
 export const recentCalls: string[] = [];
 export let pruneCallCounter = 0;
 export const lastSearchResults: Array<{ id: string; label: string | undefined; scope: MemoryScope }> = [];
+
+export function normalizeScope(
+  scope: string | undefined,
+  fallback: "all" | "global" | "project" = "all",
+): "all" | "global" | "project" {
+  return (scope ?? fallback) as "all" | "global" | "project";
+}
+
+export function boundedContentTokens(content: string | undefined, summary: string | null | undefined): number {
+  return estimateTokens(summary ?? (content ?? "").slice(0, TOKEN_CAP_CHARS));
+}
 
 export async function resolveNode(
   store: MemoryStore,

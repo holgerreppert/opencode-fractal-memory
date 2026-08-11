@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
 import { generateEmbeddingWithSegments } from "../infrastructure/llm/embeddings";
-import { resolveNode, wrapWithTracking } from "./shared";
+import { resolveNode, wrapWithTracking, normalizeScope } from "./shared";
 
 export function MemoryPrune(store: MemoryStore) {
   const t = tool({
@@ -17,7 +17,7 @@ export function MemoryPrune(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = (args.scope ?? "all") as "all" | "global" | "project";
+      const scope = normalizeScope(args.scope);
       const dryRun = args.dryRun ?? true;
       
       const result = await store.pruneNodes(scope, {
@@ -75,7 +75,7 @@ export function MemoryCompress(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = (args.scope ?? "all") as "all" | "global" | "project";
+      const scope = normalizeScope(args.scope);
       const level = (args.level ?? 0) as 0 | 1 | 2 | 3 | 4 | 5;
       if (args.dry_run) {
         const candidates = await store.getCompressionCandidates(scope, level, undefined, args.force, args.project_name);
@@ -107,7 +107,7 @@ export function MemoryExtractPatterns(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = (args.scope ?? "all") as "all" | "global" | "project";
+      const scope = normalizeScope(args.scope);
       if (args.dry_run) {
         const nodes = await store.listNodes(scope as "all" | "global" | "project", 0, undefined, undefined, undefined, args.project_name);
         const eligible = nodes.filter(n => n.content.length > 50 && !n.sticky && n.type !== "summary");
@@ -175,7 +175,7 @@ export function MemoryGenerateEmbeddings(store: MemoryStore) {
       dry_run: tool.schema.boolean().optional(),
     },
     async execute(args) {
-      const scope = (args.scope ?? "project") as "all" | "global" | "project";
+      const scope = normalizeScope(args.scope, "project");
       const level = args.level as 0 | 1 | 2 | 3 | 4 | 5 | undefined;
       
       const allNodes = await store.listNodes(scope, level);

@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { wrapWithTracking } from "./shared";
+import { wrapWithTracking, normalizeScope } from "./shared";
 
 export function MemoryDashboard(store: MemoryStore) {
   const t = tool({
@@ -13,7 +13,7 @@ export function MemoryDashboard(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = (args.scope ?? "all") as "all" | "global" | "project";
+      const scope = normalizeScope(args.scope);
       const limit = args.limit ?? 10;
       const showTreeDepth = args.show_tree_depth ?? true;
       const showEmbeddingCoverage = args.show_embedding_coverage ?? true;

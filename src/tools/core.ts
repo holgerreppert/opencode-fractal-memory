@@ -3,7 +3,7 @@ import type { MemoryScope, MemoryStore } from "../storage/sqlite";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { memLog, getSessionId } from "../logging";
 import { onNodeCreated } from "../storage/auto-edges";
-import { resolveNode, wrapWithContextWarning, wrapWithTracking } from "./shared";
+import { resolveNode, wrapWithContextWarning, wrapWithTracking, normalizeScope } from "./shared";
 
 // Try to generate embedding, returning null on failure instead of throwing
 async function tryGenerateEmbedding(
@@ -40,7 +40,7 @@ export function MemoryList(store: MemoryStore) {
       project_name: tool.schema.string().optional().describe("Filter to a specific project (if omitted, searches both global and project scopes)"),
     },
     async execute(args) {
-      const scope = (args.scope ?? "all") as MemoryScope | "all";
+      const scope = normalizeScope(args.scope);
       const level = args.level as import("../memory").MemoryNodeLevel | undefined;
       const projectName = args.project_name ?? (scope === "project" ? store.projectName : undefined);
       const nodes = await store.listNodes(scope, level, undefined, undefined, undefined, projectName);
@@ -81,7 +81,7 @@ export function MemorySet(store: MemoryStore) {
       metadata: tool.schema.string().optional(),
     },
     async execute(args) {
-      const scope = (args.scope ?? "project") as MemoryScope;
+      const scope = normalizeScope(args.scope, "project") as MemoryScope;
       const sticky = args.sticky ?? false;
       const ttlDays = args.ttl_days ?? undefined;
       let metadata: Record<string, unknown> | null = null;
@@ -165,7 +165,7 @@ export function MemoryRate(store: MemoryStore) {
       usefulness_score: tool.schema.number().min(0).max(5).optional(),
     },
     async execute(args) {
-      const scope = (args.scope ?? "project") as MemoryScope;
+      const scope = normalizeScope(args.scope, "project") as MemoryScope;
       let nodeId: string | undefined;
       if (args.id) {
         nodeId = args.id;
