@@ -1,7 +1,3 @@
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { createHash } from "node:crypto";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { recordInjection } from "../../application/injection-visibility";
@@ -9,115 +5,11 @@ import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, type FuzzyDedupConfig } from "../../application/command-compression";
 import { stashOriginal } from "../../application/tool-compression";
-import { SessionCache } from "../../application/session-cache";
+import {
+  DEDUP_CACHE, DELTA_CACHE, contentSnippet, contentPreview, offloadOutput, offloadPathFor,
+  purgeOldScratch, getSessionCache, trySessionCache, recordSessionCache, droppedIdentifiers,
+} from "../../application/command-compression/hook-support";
 import type { HookHandler } from "./types";
-
-const DEDUP_CACHE = new Map<string, { output: string; strategy: string }>();
-const DELTA_CACHE = new Map<string, { raw: string; strategy: string }>();
-const SCRATCH_DIR = path.join(os.homedir(), ".config", "opencode", "scratch");
-
-function ensureScratchDir(): void {
-  try { fs.mkdirSync(SCRATCH_DIR, { recursive: true }); } catch { /* best-effort */ }
-}
-
-function contentSnippet(text: string, maxChars = 120): string {
-  if (!text) return "";
-  const lines = text.split("\n");
-  let snippet = "";
-  for (let i = 0; i < Math.min(lines.length, 3); i++) {
-    const trimmed = lines[i]!.trim();
-    if (trimmed) snippet += (snippet ? "↵" : "") + trimmed.slice(0, Math.min(trimmed.length, 80));
-    if (trimmed.length > 80) snippet += "…";
-    if (snippet.length >= maxChars) break;
-  }
-  return snippet.slice(0, maxChars);
-}
-
-function contentPreview(text: string, maxChars = 2000): string {
-  if (!text || text.length <= maxChars) return text ?? "";
-  return text.slice(0, maxChars) + "\n… [truncated]";
-}
-
-function offloadOutput(output: string): string | null {
-  ensureScratchDir();
-  const hash = createHash("sha256").update(output).digest("hex").slice(0, 16);
-  const outPath = path.join(SCRATCH_DIR, `${hash}.out`);
-  try {
-    if (!fs.existsSync(outPath)) {
-      fs.writeFileSync(outPath, output, "utf-8");
-    }
-    const lines = output.split("\n").length;
-    return `[Output offloaded: ${output.length} chars, ${lines} lines — use \`cat ${outPath}\` to see full]\n`;
-  } catch {
-    return null;
-  }
-}
-
-// Extract identifiers (SHAs, UUIDs, versions, ticket codes) from dropped
-// content so lossy compression can never silently lose a hash or id.
-const ID_RE = /\b(?:[a-f0-9]{7,40}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Z]+-\d+|\d+\.\d+\.\d+)\b/gi;
-
-function extractIdentifiers(text: string, cap = 16): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const matches = text.match(ID_RE) ?? [];
-  for (const m of matches) {
-    const normalized = m.toLowerCase();
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    out.push(m);
-    if (out.length >= cap) break;
-  }
-  return out;
-}
-
-function droppedIdentifiers(raw: string, compressed: string, cap = 16): string[] {
-  const rawIds = extractIdentifiers(raw, 64);
-  const compressedLower = compressed.toLowerCase();
-  return rawIds.filter(id => !compressedLower.includes(id.toLowerCase())).slice(0, cap);
-}
-
-async function purgeOldScratch(): Promise<void> {
-  try {
-    const cutoff = Date.now() - 86400000;
-    const entries = await fs.promises.readdir(SCRATCH_DIR);
-    for (const f of entries) {
-      const fp = path.join(SCRATCH_DIR, f);
-      try {
-        const stat = await fs.promises.stat(fp);
-        if (stat.mtimeMs < cutoff) {
-          await fs.promises.unlink(fp);
-        }
-      } catch { /* best-effort per-file */ }
-    }
-  } catch { /* best-effort */ }
-}
-
-const SESSION_CACHES = new Map<string, SessionCache>();
-
-function getSessionCache(sessionId: string): SessionCache | null {
-  if (!sessionId) return null;
-  if (SESSION_CACHES.has(sessionId)) return SESSION_CACHES.get(sessionId)!;
-  try {
-    const cache = new SessionCache(sessionId, 60);
-    SESSION_CACHES.set(sessionId, cache);
-    return cache;
-  } catch { return null; }
-}
-
-function trySessionCache(cache: SessionCache | null, raw: string): { output: string; strategy: string } | null {
-  if (!cache) return null;
-  const hash = cache.getOutputHash(raw);
-  const entry = cache.get(hash);
-  if (entry) return { output: entry.output, strategy: entry.strategy };
-  return null;
-}
-
-function recordSessionCache(cache: SessionCache | null, raw: string, output: string, strategy: string): void {
-  if (!cache) return;
-  const hash = cache.getOutputHash(raw);
-  cache.set(hash, output, strategy);
-}
 
 export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
   purgeOldScratch().catch(() => { /* empty */ });
@@ -278,7 +170,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
           if (offloadConfig?.enabled && !deduped.dedup) {
             const threshold = offloadConfig.thresholdChars ?? 8000;
             if (finalOutput.length > threshold) {
-              const offloadPath = path.join(SCRATCH_DIR, `${createHash("sha256").update(finalOutput).digest("hex").slice(0, 16)}.out`);
+              const offloadPath = offloadPathFor(finalOutput);
               const refBanner = offloadOutput(finalOutput);
               if (refBanner) {
                 banner = `[Compressed via ${strategyLabel} — ${raw.length}→${finalOutput.length} chars, offloaded]\n`;
