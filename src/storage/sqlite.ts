@@ -38,6 +38,14 @@ const SEED_BLOCKS: Array<{ scope: MemoryScope; label: string }> = [
   { scope: "project", label: "project" },
 ];
 
+interface StoreDeps {
+  sessionTracker: SqliteSessionTracker;
+  compressionStore: SqliteCompressionStore;
+  configStore: SqliteConfigStore;
+  injectionStore: SqliteInjectionStore;
+  liveFeedStore: SqliteLiveFeedStore;
+}
+
 class SqliteMemoryStore implements MemoryStore {
   private dbProvider: DbProvider;
   private idScopeCache: Map<string, MemoryScope> = new Map();
@@ -53,15 +61,15 @@ class SqliteMemoryStore implements MemoryStore {
     return this._projectName;
   }
 
-  constructor(projectDirectory: string, globalDbPath?: string) {
+  constructor(projectDirectory: string, globalDbPath: string | undefined, deps: StoreDeps) {
     this.dbProvider = new DbProvider(projectDirectory, globalDbPath);
     this._projectName = path.basename(projectDirectory);
 
-    this.sessionTracker = new SqliteSessionTracker(() => this.dbProvider.getGlobalDb());
-    this.compressionStore = new SqliteCompressionStore(() => this.dbProvider.getGlobalDb());
-    this.configStore = new SqliteConfigStore((s) => this.dbProvider.getDb(s));
-    this.injectionStore = new SqliteInjectionStore(() => this.dbProvider.getGlobalDb());
-    this.liveFeedStore = new SqliteLiveFeedStore(() => this.dbProvider.getGlobalDb());
+    this.sessionTracker = deps.sessionTracker;
+    this.compressionStore = deps.compressionStore;
+    this.configStore = deps.configStore;
+    this.injectionStore = deps.injectionStore;
+    this.liveFeedStore = deps.liveFeedStore;
   }
 
   private async getDb(scope?: MemoryScope): Promise<Database> {
@@ -70,10 +78,6 @@ class SqliteMemoryStore implements MemoryStore {
 
   private async getGlobalDb(): Promise<Database> {
     return this.dbProvider.getGlobalDb();
-  }
-
-  withTransaction<T>(db: Database, operation: () => T | Promise<T>): Promise<T> {
-    return this.dbProvider.withTransaction(db, operation);
   }
 
   async close(): Promise<void> {
@@ -647,5 +651,17 @@ class SqliteMemoryStore implements MemoryStore {
 }
 
 export function createSqliteMemoryStore(projectDirectory: string, globalDbPath?: string): MemoryStore {
-  return new SqliteMemoryStore(projectDirectory, globalDbPath);
+  const dbProvider = new DbProvider(projectDirectory, globalDbPath);
+  const sessionTracker = new SqliteSessionTracker(dbProvider);
+  const compressionStore = new SqliteCompressionStore(dbProvider);
+  const configStore = new SqliteConfigStore(dbProvider);
+  const injectionStore = new SqliteInjectionStore(dbProvider);
+  const liveFeedStore = new SqliteLiveFeedStore(dbProvider);
+  return new SqliteMemoryStore(projectDirectory, globalDbPath, {
+    sessionTracker,
+    compressionStore,
+    configStore,
+    injectionStore,
+    liveFeedStore,
+  });
 }

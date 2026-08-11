@@ -1,9 +1,9 @@
-import type { Database } from "bun:sqlite";
+import { DbProvider } from "../../db/DbProvider";
 import type { CompressionStore, CompressionStatsResult, ContextDashboardResult, TokenTrackingEntry, TokenHistoryResult } from "../../../domain/ports/CompressionStore";
 import { queryInjectionMetrics } from "../../../storage/injection-events";
 
 export class SqliteCompressionStore implements CompressionStore {
-  constructor(private getDb: () => Promise<Database>) {}
+  constructor(private provider: DbProvider) {}
 
   async recordCompressionStat(stat: {
     sessionId?: string;
@@ -18,7 +18,7 @@ export class SqliteCompressionStore implements CompressionStore {
     compressedPreview?: string;
     durationMs?: number;
   }): Promise<void> {
-    const db = await this.getDb();
+    const db = await this.provider.getDb();
     db.run(
       `INSERT INTO compression_stats (session_id, timestamp, command, strategy, original_chars, compressed_chars, original_lines, compressed_lines, cmd_preview, original_preview, compressed_preview, savings_ratio, duration_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -41,7 +41,7 @@ export class SqliteCompressionStore implements CompressionStore {
   }
 
   async getCompressionStats(days: number = 7, limit: number = 100): Promise<CompressionStatsResult> {
-    const db = await this.getDb();
+    const db = await this.provider.getDb();
     const since = Date.now() - days * 86400000;
 
     const total = db.query(
@@ -104,7 +104,7 @@ export class SqliteCompressionStore implements CompressionStore {
   }
 
   async getContextDashboard(): Promise<ContextDashboardResult> {
-    const db = await this.getDb();
+    const db = await this.provider.getDb();
 
     const nodesByLevel = db.query(
       "SELECT level, COUNT(*) as count, SUM(LENGTH(content)) as total_chars FROM memory_nodes WHERE scope = 'global' GROUP BY level ORDER BY level"
@@ -199,7 +199,7 @@ export class SqliteCompressionStore implements CompressionStore {
   }
 
   async recordTokenUsage(entry: TokenTrackingEntry): Promise<void> {
-    const db = await this.getDb();
+    const db = await this.provider.getDb();
     db.run(
       `INSERT INTO token_tracking (session_id, timestamp, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens, cost, turn_index, agent, model)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -220,7 +220,7 @@ export class SqliteCompressionStore implements CompressionStore {
   }
 
   async getTokenHistory(days: number = 7, limit: number = 100): Promise<TokenHistoryResult> {
-    const db = await this.getDb();
+    const db = await this.provider.getDb();
     const since = Date.now() - days * 86400000;
 
     const totals = db.query(
