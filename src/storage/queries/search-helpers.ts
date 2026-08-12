@@ -65,7 +65,7 @@ export function computeQualityMultiplier(node: MemoryNode): number {
   // (ArcticMem Tier-2, Metis, LME-V2): distilled lessons, decisions with
   // rationale, confirmed conventions, and stable codebase facts.
   if (label.startsWith("lesson:") || label.startsWith("decision:") || label.startsWith("convention:") || label.startsWith("fact:")) return 1.3;
-  if (label.startsWith("knowledge:") || label.startsWith("rule:") || label.startsWith("skill:")) return 1.25;
+  if (label.startsWith("knowledge:") || label.startsWith("rule:") || label.startsWith("skill:") || label.startsWith("dot:")) return 1.25;
   if (label.startsWith("plan:") || label.startsWith("task:")) return 1.1;
   if (t === "skill" || t === "playbook" || t === "core") return 1.15;
   return 1.0;

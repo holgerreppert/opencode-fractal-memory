@@ -1356,6 +1356,11 @@ function setupEventListeners() {
     }
   });
 
+  document.getElementById("dot-modal-close").addEventListener("click", closeDotDiagram);
+  document.getElementById("dot-zoom-in").addEventListener("click", () => dotZoom(1.2));
+  document.getElementById("dot-zoom-out").addEventListener("click", () => dotZoom(1 / 1.2));
+  document.getElementById("dot-zoom-reset").addEventListener("click", dotZoomReset);
+
   document.getElementById("toggle-sidebar").addEventListener("click", () => {
     const sidebar = document.getElementById("sidebar");
     sidebar.classList.toggle("sidebar-collapsed");
@@ -1856,7 +1861,12 @@ function showDetailPanel(node) {
     `;
   }
 
+  const dotButtonHtml = node.type === "dot"
+    ? `<button class="dot-open-btn" id="open-dot-btn">◈ Open Diagram</button>`
+    : "";
+
   content.innerHTML = `
+    ${dotButtonHtml}
     <div class="detail-section">
       <h4>ID</h4>
       <div class="detail-value" style="font-family: monospace; font-size: 11px;">${node.id}</div>
@@ -1932,6 +1942,111 @@ function showDetailPanel(node) {
    `;
 
   panel.classList.add("open");
+  const openDotBtn = document.getElementById("open-dot-btn");
+  if (openDotBtn) {
+    openDotBtn.onclick = () => openDotDiagram(node);
+  }
+}
+
+// ==================== Dot Diagram Modal ====================
+
+let dotVizInstance = null;
+let dotRenderState = { scale: 1, tx: 0, ty: 0 };
+let dotDrag = null;
+let dotResizeObserver = null;
+
+function openDotDiagram(node) {
+  document.getElementById("dot-modal-title").textContent = `Diagram: ${node.label || node.id}`;
+  document.getElementById("dot-modal").classList.remove("hidden");
+  document.getElementById("detail-panel").classList.remove("open");
+  const body = document.getElementById("dot-modal-body");
+  body.onwheel = (e) => {
+    e.preventDefault();
+    dotZoom(Math.exp(-e.deltaY * 0.001));
+  };
+  body.onmousedown = (e) => {
+    dotDrag = { startX: e.clientX, startY: e.clientY, baseTx: dotRenderState.tx, baseTy: dotRenderState.ty };
+  };
+  body.onmousemove = (e) => {
+    if (!dotDrag) return;
+    dotRenderState.tx = dotDrag.baseTx + (e.clientX - dotDrag.startX);
+    dotRenderState.ty = dotDrag.baseTy + (e.clientY - dotDrag.startY);
+    applyDotTransform();
+  };
+  body.onmouseup = () => { dotDrag = null; };
+  body.onmouseleave = () => { dotDrag = null; };
+  if (!dotResizeObserver) {
+    dotResizeObserver = new ResizeObserver(() => {
+      if (!document.getElementById("dot-modal").classList.contains("hidden")) {
+        dotZoomReset();
+      }
+    });
+  }
+  dotResizeObserver.observe(body);
+  renderDotDiagram(node.content);
+}
+
+function closeDotDiagram() {
+  document.getElementById("dot-modal").classList.add("hidden");
+  const body = document.getElementById("dot-modal-body");
+  body.onwheel = null;
+  body.onmousedown = null;
+  body.onmousemove = null;
+  body.onmouseup = null;
+  body.onmouseleave = null;
+  dotDrag = null;
+  if (dotResizeObserver) {
+    dotResizeObserver.disconnect();
+    dotResizeObserver = null;
+  }
+}
+
+async function renderDotDiagram(dotSource) {
+  const svg = document.getElementById("dot-svg");
+  svg.innerHTML = "";
+  dotRenderState = { scale: 1, tx: 0, ty: 0 };
+  try {
+    if (!dotVizInstance) {
+      dotVizInstance = await Viz.instance();
+    }
+    const out = dotVizInstance.renderSVGElement(dotSource, { engine: "dot" });
+    const viewBox = out.getAttribute("viewBox");
+    const preserveAspectRatio = out.getAttribute("preserveAspectRatio");
+    if (viewBox) svg.setAttribute("viewBox", viewBox);
+    if (preserveAspectRatio) svg.setAttribute("preserveAspectRatio", preserveAspectRatio);
+    while (out.firstChild) {
+      svg.appendChild(out.firstChild);
+    }
+  } catch (e) {
+    svg.innerHTML = "";
+    svg.removeAttribute("viewBox");
+    svg.removeAttribute("preserveAspectRatio");
+    const err = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    err.setAttribute("x", "10");
+    err.setAttribute("y", "20");
+    err.setAttribute("fill", "#f44");
+    err.textContent = `Diagram render failed: ${e.message}`;
+    svg.appendChild(err);
+  }
+}
+
+function applyDotTransform() {
+  const svg = document.getElementById("dot-svg");
+  svg.style.transform = `translate(${dotRenderState.tx}px, ${dotRenderState.ty}px) scale(${dotRenderState.scale})`;
+}
+
+function fitDotToView() {
+  dotRenderState = { scale: 1, tx: 0, ty: 0 };
+  applyDotTransform();
+}
+
+function dotZoom(factor) {
+  dotRenderState.scale = Math.min(8, Math.max(0.1, dotRenderState.scale * factor));
+  applyDotTransform();
+}
+
+function dotZoomReset() {
+  fitDotToView();
 }
 
 function escapeHtml(text) {

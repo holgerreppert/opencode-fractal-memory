@@ -1,4 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin";
+import type { Provider, Model } from "@opencode-ai/sdk/v2";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createApplication, createAutoRetrieve, scheduleBackgroundEmbeddings } from "../infrastructure/composition-root";
@@ -154,10 +155,13 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     "experimental.chat.messages.transform": composedMessagesTransform,
     config: registerAgentsHandler,
     tool: toolMap,
-    "experimental.provider.small_model": async (input: { provider: string }, output: { model?: string }) => {
-      const configured = smallModelMap[input.provider];
+    "experimental.provider.small_model": async (input: { provider: Provider }, output: { model?: Model }) => {
+      const configured = smallModelMap[input.provider.id];
       if (configured) {
-        output.model = configured;
+        const model = input.provider.models[configured];
+        if (model) {
+          output.model = model;
+        }
       }
     },
     dispose: async () => {

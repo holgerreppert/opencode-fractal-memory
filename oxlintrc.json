@@ -33,6 +33,23 @@
         "no-empty": "off",
         "no-useless-escape": "off"
       }
+    },
+    {
+      "files": ["management/public/vendor/**"],
+      "rules": {
+        "no-unused-vars": "off",
+        "no-unused-expressions": "off",
+        "no-empty-function": "off",
+        "no-empty": "off",
+        "no-useless-escape": "off",
+        "no-constant-condition": "off",
+        "no-fallthrough": "off",
+        "no-case-declarations": "off",
+        "no-control-regex": "off",
+        "no-cond-assign": "off",
+        "no-useless-catch": "off",
+        "const-comparisons": "off"
+      }
     }
   ]
 }

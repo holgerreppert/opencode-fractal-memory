@@ -82,7 +82,9 @@ export function MemorySet(store: MemoryStore) {
     },
     async execute(args) {
       const scope = normalizeScope(args.scope, "project") as MemoryScope;
-      const sticky = args.sticky ?? false;
+      const isDotNode = args.type === "dot";
+      const sticky = isDotNode ? true : (args.sticky ?? false);
+      const noEmbedding = isDotNode ? true : (args.no_embedding ?? false);
       const ttlDays = args.ttl_days ?? undefined;
       let metadata: Record<string, unknown> | null = null;
       if (args.metadata) {
@@ -96,12 +98,12 @@ export function MemorySet(store: MemoryStore) {
       if (args.label) {
         try {
           const existing = await store.getNodeByLabel(scope, args.label);
-          const embedding = args.no_embedding ? null : await tryGenerateEmbedding(args.content, "Failed to regenerate embedding on update");
+          const embedding = noEmbedding ? null : await tryGenerateEmbedding(args.content, "Failed to regenerate embedding on update");
           const updates: Parameters<typeof store.updateNode>[1] = {
             content: normalizeContent(args.content),
             ...(args.summary !== undefined ? { summary: args.summary } : {}),
             ...(args.level !== undefined ? { level: args.level as 0 | 1 | 2 | 3 | 4 | 5 } : {}),
-            ...(args.type !== undefined ? { type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" } : {}),
+            ...(args.type !== undefined ? { type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "dot" } : {}),
             ...(args.domain !== undefined ? { domain: args.domain } : {}),
             sticky,
             ...(embedding !== null ? { embedding } : {}),
@@ -123,7 +125,7 @@ export function MemorySet(store: MemoryStore) {
       }
       
       const parentIds = args.parent_ids ? args.parent_ids.split(",").map(s => s.trim()).filter(Boolean) : null;
-      const embedding = args.no_embedding ? null : await tryGenerateEmbedding(args.content, "Failed to generate embedding");
+      const embedding = noEmbedding ? null : await tryGenerateEmbedding(args.content, "Failed to generate embedding");
       
       const node = await store.createNode({
         scope,
@@ -134,7 +136,7 @@ export function MemorySet(store: MemoryStore) {
         parentIds,
         embedding,
         importance: args.importance ?? 0.5,
-        type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | null,
+        type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "dot" | null,
         domain: args.domain as "architecture" | "operations" | "knowledge" | "rules" | "history" | "patterns" | "preferences" | null | undefined,
         metadata,
         sticky,
