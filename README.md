@@ -41,6 +41,7 @@ if you find bugs or if you just want to suggest improvements
 ## Features
 
 - **Memory nodes** — structured persistent memory with labels, content, metadata, and type system
+- **Dot nodes** — store Graphviz DOT source as a memory node (`type: "dot"`). Dot nodes are automatically sticky and skip embedding generation (diagram source isn't semantic text), so they survive compression and cost no vector storage. The management app renders them in-browser via the vendored `@viz-js/viz` WASM build (`management/public/vendor/viz-global.js`) — select a `dot:` node and click **◈ Open Diagram** for a pan/zoomable, fit-to-view rendering. `dot:` labels get the ×1.25 purpose-quality boost
 - **Semantic search** — ONNX-powered embeddings (all-MiniLM-L6-v2) with HNSW vector index for fast ANN retrieval
 - **Native ONNX runtime** — `onnxruntime-node` with multi-threaded CPU execution (`intraOpNumThreads: 0`), full graph optimization (`graphOptimizationLevel: "all"`), CPU memory arena, and denormal/GELU approximation flags. 12-15× faster embedding inference vs WASM
 - **BM25 hybrid search + dual retrieval** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching. BM25 runs independently across ALL scope nodes (not just HNSW candidates), catching keyword matches outside the vector neighborhood and covering nodes without embeddings
@@ -650,6 +651,7 @@ The app is organized into tab groups — **Monitor** (Dashboard, Settings), **Da
 - **Right-click drag** to pan
 - Nodes are color-coded by level and type (skill = gold icosahedron, playbook = orange torus, note = blue sphere)
 - Playbook nodes render as orange torus shapes with steps visible in the detail panel
+- **Dot nodes** — nodes of type `dot` show a full-width **◈ Open Diagram** button at the top of the detail panel; clicking renders the node's Graphviz DOT source in a modal (wheel zoom, drag pan, −/1:1/+ controls, resize re-fits)
 - **Temporal edges** render as colored lines: NEXT (green), DURING_SESSION (blue dashed), CAUSAL (red), REFERENCES (yellow dotted), RELATED_TO (magenta) — see the Legend panel for color mapping
 - Click a node to see its temporal connections in the detail panel with direction, edge type, and confidence score
 

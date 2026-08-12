@@ -1,0 +1,201 @@
+digraph ManagementAppDataFlow {
+  rankdir=LR;
+  splines=polyline;
+  fontname="Helvetica,Arial,sans-serif";
+  fontsize=11;
+  bgcolor="#0d1117";
+  labeljust=l;
+  label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="18" COLOR="#58a6ff">Management App  ⇄  Fractal Memory Plugin</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="11" COLOR="#8b949e">Data Flow — HTTP :8787 · ~30 API Routes · SSE Live Feed · SQLite via MemoryStore Port</FONT></TD></TR></TABLE>>;
+  pad=0.5;
+  dpi=200;
+  nodesep=0.6;
+  ranksep=1.2;
+
+  /* ─── Color Palette ─── */
+  /* Frontend: blue    #1f6feb */
+  /* Server:   purple  #bc8cff / #8957e5 */
+  /* Routes:   orange  #d29922 */
+  /* Store:    teal    #39c5cf */
+  /* DB/File:  green   #238636 */
+  /* System:   gray    #30363d */
+
+  /* ─── Node Styles ─── */
+  node [shape=box, style="filled,rounded", fontname="Helvetica,Arial,sans-serif", fontcolor="white", fontsize=10];
+
+  /* ─── CLUSTER: Frontend ─── */
+  subgraph cluster_frontend {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#58a6ff">Frontend (Browser)</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    Browser [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#1f6feb">
+        <TR><TD><B><FONT POINT-SIZE="13">SPA</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">index.html + app.js</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">vanilla JS, Three.js</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">brain mesh GLB</FONT></TD></TR>
+      </TABLE>>];
+  }
+
+  /* ─── CLUSTER: HTTP Server ─── */
+  subgraph cluster_server {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#bc8cff">HTTP Server (127.0.0.1:8787)</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    Static [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#8957e5">
+        <TR><TD><B><FONT POINT-SIZE="11">Static Files</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">serveFile()</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">management/public/</FONT></TD></TR>
+      </TABLE>>];
+
+    Routes [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#bc8cff">
+        <TR><TD><B><FONT POINT-SIZE="11">routes.ts</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">thin orchestrator</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">registerRoutes(router, store)</FONT></TD></TR>
+      </TABLE>>];
+
+    SSE [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#da3633">
+        <TR><TD><B><FONT POINT-SIZE="11">/api/live</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Server-Sent Events</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">getLiveFeedSnapshot + getTokenHistory</FONT></TD></TR>
+      </TABLE>>];
+  }
+
+  /* ─── CLUSTER: Route Handlers ─── */
+  subgraph cluster_handlers {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#d29922">Route Handlers (src/management/routes/*.ts)</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    Sys [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B><FONT POINT-SIZE="10">system.ts</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/scopes · /api/config</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/version · /api/shutdown</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/embeddings-status</FONT></TD></TR>
+      </TABLE>>];
+
+    Nodes [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B><FONT POINT-SIZE="10">nodes.ts</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/nodes · /api/links</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/stats · /api/search</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/nodes/:id (CRUD)</FONT></TD></TR>
+      </TABLE>>];
+
+    Backup [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B><FONT POINT-SIZE="10">backup.ts</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/backup-sources</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/backups · /api/backup</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/restore</FONT></TD></TR>
+      </TABLE>>];
+
+    Telemetry [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B><FONT POINT-SIZE="10">telemetry.ts</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/compress-stats</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/token-history</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/injection-quality</FONT></TD></TR>
+      </TABLE>>];
+
+    GraphR [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#d29922">
+        <TR><TD><B><FONT POINT-SIZE="10">graph.ts</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/graph/build</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/graph/search|path</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">/api/graph/explain|export</FONT></TD></TR>
+      </TABLE>>];
+
+    Common [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="3" CELLSPACING="2" BGCOLOR="#30363d">
+        <TR><TD><B><FONT POINT-SIZE="10">common.ts</FONT></B></TD></TR>
+        <TR><TD><FONT POINT-SIZE="8">jsonResponse helper</FONT></TD></TR>
+      </TABLE>>];
+  }
+
+  /* ─── CLUSTER: Store Port ─── */
+  subgraph cluster_store {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#39c5cf">MemoryStore Port (domain/ports)</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    Store [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#39c5cf">
+        <TR><TD><B><FONT POINT-SIZE="11">MemoryStore</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">listNodes · getLiveFeedSnapshot</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">getTokenHistory · searchByEmbedding</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">hexagonal boundary —</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">handlers never touch SQLite</FONT></TD></TR>
+      </TABLE>>];
+  }
+
+  /* ─── CLUSTER: Data Sources ─── */
+  subgraph cluster_data {
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#3fb950">Data Sources</FONT></B></TD></TR></TABLE>>;
+    style="filled,rounded,dashed";
+    color="#30363d";
+    fillcolor="#0d1117";
+    fontcolor="#8b949e";
+    fontname="Helvetica";
+    fontsize=11;
+
+    SQLite [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#238636">
+        <TR><TD><B><FONT POINT-SIZE="11">memory.db (SQLite)</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">nodes · links · temporal edges</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">injection_metrics</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">token history · compress stats</FONT></TD></TR>
+      </TABLE>>];
+
+    ConfigFile [label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#238636">
+        <TR><TD><B><FONT POINT-SIZE="11">opencode-mem.json</FONT></B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">on-disk config</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">read/write via</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">readProjectConfig /</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">writeProjectConfig</FONT></TD></TR>
+      </TABLE>>];
+  }
+
+  /* ─── Edges ─── */
+  Browser -> Static [label="GET /", color="#8b949e", fontcolor="#8b949e", fontsize=9];
+  Browser -> Routes [label="fetch('/api/...') JSON", color="#58a6ff", fontcolor="#58a6ff", fontsize=9];
+  Browser -> SSE [label="new EventSource('/api/live')\n(fallback: 30s fetch-poll)", color="#da3633", fontcolor="#da3633", fontsize=9];
+
+  Routes -> Sys [label="delegates", color="#8b949e", fontsize=9];
+  Routes -> Nodes [label="delegates", color="#8b949e", fontsize=9];
+  Routes -> Backup [label="delegates", color="#8b949e", fontsize=9];
+  Routes -> Telemetry [label="delegates", color="#8b949e", fontsize=9];
+  Routes -> GraphR [label="delegates", color="#8b949e", fontsize=9];
+
+  Sys -> Store [label="MemoryStore calls", color="#d29922", fontcolor="#d29922", fontsize=9];
+  Nodes -> Store [label="listNodes(...) → mapNode", color="#d29922", fontcolor="#d29922", fontsize=9];
+  Backup -> Store [label="backup/restore ops", color="#d29922", fontcolor="#d29922", fontsize=9];
+  Telemetry -> Store [label="stats queries", color="#d29922", fontcolor="#d29922", fontsize=9];
+  GraphR -> Store [label="graph queries", color="#d29922", fontcolor="#d29922", fontsize=9];
+  SSE -> Store [label="live snapshot", color="#da3633", fontcolor="#da3633", fontsize=9];
+
+  Sys -> ConfigFile [label="config JSON", color="#238636", fontcolor="#238636", fontsize=9];
+  Store -> SQLite [label="SQL", color="#39c5cf", fontcolor="#39c5cf", fontsize=9];
+}

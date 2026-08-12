@@ -143,7 +143,7 @@ export async function queryCreateNode(
   CreateNodeSchema.parse(node);
   const now = Date.now();
   const id = randomUUID();
-  const sticky = node.type === "skill" ? 1 : (node.sticky ? 1 : 0);
+  const sticky = node.type === "dot" ? 1 : (node.type === "skill" ? 1 : (node.sticky ? 1 : 0));
   const resolvedCategory = node.category !== undefined ? node.category : resolveNodeCategory(node.type ?? null);
   const resolvedSupertype = node.supertype !== undefined ? node.supertype : resolveNodeSupertype(node.type ?? null);
   const resolvedDomain = node.domain !== undefined ? node.domain : resolveNodeDomain(node.type ?? null);

@@ -343,6 +343,45 @@
     .restore-source { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ccc; padding: 4px 0; cursor: pointer; }
     .restore-source input[type="checkbox"] { accent-color: #6699ff; }
 
+    /* Dot diagram modal */
+    #dot-modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); z-index: 600; align-items: center; justify-content: center;
+    }
+    #dot-modal:not(.hidden) { display: flex; }
+    .dot-modal-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+    }
+    .dot-modal-header span { font-size: 14px; color: #fff; word-break: break-word; }
+    #dot-modal-close {
+      background: none; border: none; color: #888; font-size: 20px; cursor: pointer; padding: 0 4px;
+    }
+    #dot-modal-close:hover { color: #fff; }
+    #dot-modal-body {
+      background: rgba(20,20,35,0.98); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px; padding: 16px; width: 80%; max-width: 1100px; height: 80vh;
+      display: flex; flex-direction: column;
+      resize: both; overflow: auto; min-width: 420px; min-height: 320px;
+    }
+    #dot-svg {
+      flex: 1; width: 100%; height: 100%; overflow: hidden;
+      background: rgba(0,0,0,0.4); border-radius: 6px; cursor: grab;
+      transform-origin: center center; transition: transform 0.05s;
+    }
+    #dot-svg:active { cursor: grabbing; }
+    .dot-modal-footer { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+    .dot-modal-footer button {
+      background: rgba(255,255,255,0.1); color: #ccc; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 5px; font-size: 12px; padding: 4px 10px; cursor: pointer;
+    }
+    .dot-modal-footer button:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    #open-dot-btn {
+      width: 100%; background: rgba(100,150,255,0.25);
+      border: 1px solid rgba(100,150,255,0.4); color: #9ad0ff; font-size: 13px; cursor: pointer;
+      border-radius: 5px; padding: 8px; margin-bottom: 10px; font-weight: 600;
+    }
+    #open-dot-btn:hover { background: rgba(100,150,255,0.4); color: #fff; }
+
     #node-list {
       max-height: 25vh; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1);
       border-radius: 6px;
@@ -1729,6 +1768,21 @@
 
   <div id="tooltip"></div>
 
+  <div id="dot-modal" class="hidden">
+    <div class="dot-modal-header">
+      <span id="dot-modal-title">Diagram</span>
+      <button class="close-btn" id="dot-modal-close">×</button>
+    </div>
+    <div id="dot-modal-body">
+      <svg id="dot-svg" width="100%" height="100%"></svg>
+    </div>
+    <div class="dot-modal-footer">
+      <button id="dot-zoom-out">−</button>
+      <button id="dot-zoom-reset">1:1</button>
+      <button id="dot-zoom-in">+</button>
+    </div>
+  </div>
+
   <div id="graph-detail-panel">
     <button class="close-btn" id="graph-detail-close">&times;</button>
     <h2 id="graph-detail-title"></h2>
@@ -1739,6 +1793,7 @@
   <script src="d3.min.js"></script>
   <script src="graph-viz.js"></script>
   <script src="glb-loader.js"></script>
+  <script src="vendor/viz-global.js"></script>
   <script src="app.js"></script>
   <script src="alpine-components.js"></script>
 </body>
