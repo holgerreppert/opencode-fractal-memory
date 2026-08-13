@@ -16,6 +16,7 @@ export interface BuildResult {
   fileCount: number;
   symbolCount: number;
   edgeCount: number;
+  newFiles: number;
 }
 
 
@@ -74,6 +75,7 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
     fileCount: analysis.stats.files,
     symbolCount: analysis.stats.symbols,
     edgeCount: analysis.stats.edges,
+    newFiles: pending.length,
   };
 }
 
@@ -132,6 +134,7 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
     fileCount: analysis.stats.files,
     symbolCount: analysis.stats.symbols,
     edgeCount: analysis.stats.edges,
+    newFiles,
   };
 }
 
@@ -170,7 +173,7 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
   if (backgroundGraph) {
     try {
       const result = incrementalBuildGraph(backgroundGraph, root, maxFiles);
-      memLog("info", "graph", "Background incremental build", { newFiles: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
+      memLog("info", "graph", "Background incremental build", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
     } catch {
       // incremental build failed — fall back to full rebuild
     }
@@ -182,7 +185,7 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
     activeGraph = cached;
     try {
       const result = incrementalBuildGraph(cached, root, maxFiles);
-      memLog("info", "graph", "Background build from cache", { newFiles: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
+      memLog("info", "graph", "Background build from cache", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
     } catch {
       // cached incremental build failed — fall back to full rebuild
       backgroundGraph = null;
