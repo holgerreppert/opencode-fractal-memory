@@ -33,22 +33,33 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
       }
     } catch {
       try {
-        await store.createNode({
-          scope: "global",
-          label: seed.label,
+        const expired = await store.getNodeByLabel("global", seed.label, true);
+        await store.updateNode(expired.id, {
           content: seed.content,
-          summary: seed.summary ?? null,
-          type: (seed.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact" | "storedcontext" | null) ?? "note",
-          level: 0,
-          parentIds: null,
-          embedding: null,
-          importance: 1,
-          metadata: seed.metadata ?? null,
+          summary: seed.summary ?? undefined,
+          ttlDays: null,
+          sticky: true,
         });
-        created++;
-      } catch (err) {
-        errors++;
-        memLog("warn", "init", "Failed to create seed node", { label: seed.label, error: err instanceof Error ? err.message : err });
+        updated++;
+      } catch {
+        try {
+          await store.createNode({
+            scope: "global",
+            label: seed.label,
+            content: seed.content,
+            summary: seed.summary ?? null,
+            type: (seed.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact" | "storedcontext" | null) ?? "note",
+            level: 0,
+            parentIds: null,
+            embedding: null,
+            importance: 1,
+            metadata: seed.metadata ?? null,
+          });
+          created++;
+        } catch (err) {
+          errors++;
+          memLog("warn", "init", "Failed to create seed node", { label: seed.label, error: err instanceof Error ? err.message : err });
+        }
       }
     }
   }

@@ -10,7 +10,7 @@ export interface NodeRepository {
   listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string, category?: MemoryCategory): Promise<MemoryNode[]>;
   getNode(id: string): Promise<MemoryNode>;
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
-  getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode>;
+  getNodeByLabel(scope: MemoryScope, label: string, includeExpired?: boolean): Promise<MemoryNode>;
   createNode(node: CreateNodeInput): Promise<MemoryNode>;
   updateNode(id: string, updates: { [K in keyof Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">]?: MemoryNode[K] | undefined }): Promise<void>;
   deleteNode(id: string): Promise<void>;
