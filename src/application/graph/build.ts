@@ -7,6 +7,7 @@ import { generateReport } from "./report";
 import { trackBuild, trackBackgroundBuild } from "./usage";
 import { memLog, writeGraphLog } from "../../logging";
 import { extractInBatches } from "./batching";
+import { loadGraphCache, saveGraphCache } from "./persist";
 
 export interface BuildResult {
   graph: CodeGraph;
@@ -64,6 +65,7 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
     surprisingConnections: analysis.surprisingConnections.slice(0, 10).map(c => `${c.source.label}(${c.source.kind}) --${c.relation}-> ${c.target.label}(${c.target.kind})`),
   });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "buildGraph");
+  saveGraphCache(root, graph);
 
   return {
     graph,
@@ -121,6 +123,7 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
     godNodes: analysis.godNodes.slice(0, 10).map(n => `${n.node.label}(${n.node.kind}):${n.degree}`),
   });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "incrementalBuildGraph");
+  if (newFiles > 0) saveGraphCache(root, existingGraph);
 
   return {
     graph: existingGraph,
@@ -172,6 +175,20 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
       // incremental build failed — fall back to full rebuild
     }
     return;
+  }
+  const cached = loadGraphCache(root);
+  if (cached) {
+    backgroundGraph = cached;
+    activeGraph = cached;
+    try {
+      const result = incrementalBuildGraph(cached, root, maxFiles);
+      memLog("info", "graph", "Background build from cache", { newFiles: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
+    } catch {
+      // cached incremental build failed — fall back to full rebuild
+      backgroundGraph = null;
+      activeGraph = null;
+    }
+    if (backgroundGraph) return;
   }
   if (backgroundBuildPromise) return;
   backgroundBuildPromise = (async () => {
