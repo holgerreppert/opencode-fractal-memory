@@ -93,6 +93,7 @@ Then restart OpenCode.
 bun run lint              # oxlint — must stay at 0 errors, 0 warnings
 bun run lint:fix          # auto-fix (--fix-dangerously)
 bun test                  # full suite (36 files) — search.loco.test.ts self-seeds in ~30s, runs ~5min (1986 LoCoMo QAs), cleans up after; search.swecontext.test.ts self-seeds in ~2s, keyword portion ~40s + cross-encoder A/B ~4min (99 SWE-ContextBench Lite queries)
+bun test --path-ignore-patterns "search.loco.test.ts,search.swecontext.test.ts"   # fast suite — excludes the slow benchmark evals (LoCoMo ~5min, SWE-ContextBench ~4min); use this for day-to-day changes
 ```
 
 - **Only the cache `@latest` path is ever loaded by OpenCode** (`~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory`) — beacon-proven via the `PLUGIN_LOADED_FROM` startup log (see `memory-plugin.log`). The `~/.config/opencode/node_modules` copy is legacy and never read by OpenCode. Verify installs with `grep -q "<pattern>" "$CACHE/dist/..."`; never hand-copy with `cp -r` — use `bun run dev-install`
