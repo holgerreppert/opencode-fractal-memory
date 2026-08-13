@@ -129,8 +129,8 @@ export class CodeGraph {
       nodes.push(attrs as unknown as NodeData);
     });
     const edges: EdgeData[] = [];
-    this.graph.forEachEdge((_key, _attrs, source, target, srcAttrs) => {
-      const attrs = srcAttrs as unknown as EdgeData;
+    this.graph.forEachEdge((_key, edgeAttrs, source, target) => {
+      const attrs = edgeAttrs as unknown as EdgeData;
       edges.push({
         source,
         target,

@@ -40,7 +40,7 @@ interface WasmSpan {
   readonly endColumn: number;
 }
 
-type WasmModule = {
+export type WasmModule = {
   availableLanguages(): string[];
   process(source: string, config: Record<string, unknown>): WasmProcessResult;
 };
