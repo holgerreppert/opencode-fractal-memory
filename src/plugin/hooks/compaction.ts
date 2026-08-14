@@ -1,9 +1,18 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, appendSessionLog } from "../../logging";
-import { generateEmbeddingWithSegments } from "../../infrastructure/llm/embeddings";
 import { getWorkingCache, addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
+
+const MAX_CAPTURE_CHARS = 12_000;
+const MAX_CAPTURE_ENTRY_CHARS = 2_000;
+const MAX_MESSAGE_TEXT_CHARS = 2_000;
+const MAX_MESSAGES_FETCHED = 20;
+
+function isExcludedSnapshotLabel(label: string | null | undefined): boolean {
+  if (!label) return false;
+  return label.startsWith("middle-term:") || label.startsWith("storedcontext:");
+}
 
 function extractToolUse(entries: string[]): string[] {
   const tools = new Set<string>();
@@ -78,7 +87,7 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
           try {
             const allNodes = await store.listNodes("project");
             const recent = allNodes
-              .filter(n => n.createdAt)
+              .filter(n => n.createdAt && !isExcludedSnapshotLabel(n.label))
               .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
               .slice(0, 8);
             if (recent.length > 0) {
@@ -103,10 +112,21 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
         }
 
         const now = Date.now();
+        let captureBudget = MAX_CAPTURE_CHARS;
+        const captureCache = cache.map(n => {
+          let content = n.content.slice(0, MAX_CAPTURE_ENTRY_CHARS);
+          if (captureBudget > 0) {
+            captureBudget -= content.length;
+            if (captureBudget < 0) content = content.slice(0, MAX_CAPTURE_ENTRY_CHARS + captureBudget);
+          } else {
+            content = "";
+          }
+          return { id: n.id, label: n.label, importance: n.importance, content };
+        });
         const captureContent = JSON.stringify({
           timestamp: new Date(now).toISOString(),
           sessionId,
-          workingCache: cache.map(n => ({ id: n.id, label: n.label, importance: n.importance, content: n.content })),
+          workingCache: captureCache,
         });
 
         await store.createNode({
@@ -141,7 +161,7 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
         try {
           const typedClient = client as { session?: { messages: (opts: { path: { id: string }; query: { limit: number } }) => Promise<{ data?: Array<Record<string, unknown>>; [key: string]: unknown }> } };
           if (typedClient?.session?.messages) {
-            const msgResponse = await typedClient.session.messages({ path: { id: sessionId }, query: { limit: 50 } });
+            const msgResponse = await typedClient.session.messages({ path: { id: sessionId }, query: { limit: MAX_MESSAGES_FETCHED } });
             type ChatMessage = {
               info?: {
                 role?: string;
@@ -194,7 +214,7 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                 if (msg.parts && Array.isArray(msg.parts)) {
                   for (const part of msg.parts) {
                     if (part.type === "text" && part.text) {
-                      textContent += part.text + "\n";
+                      textContent += part.text.slice(0, MAX_MESSAGE_TEXT_CHARS) + "\n";
                     } else if (part.type === "reasoning" && part.text) {
                       textContent += `[reasoning] ${part.text.slice(0, 2000)}\n`;
                     } else if (part.type === "tool_use" && part.name) {
@@ -238,13 +258,6 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
 
                 const nodeLabel = `storedcontext:${sessionId}:${now}`;
                 const content = `--- storedcontext summary ---\n${structuredYaml}\n--- conversation history ---\n\n${entries.join("\n\n---\n\n")}`;
-                let embedding: number[] | null = null;
-                let embeddingSegments: number[][] | null = null;
-                try {
-                  const { primary, segments } = await generateEmbeddingWithSegments(content.slice(0, 8000));
-                  embedding = primary;
-                  embeddingSegments = segments;
-                } catch { embedding = null; }
                 await store.createNode({
                   scope: "project",
                   label: nodeLabel,
@@ -252,8 +265,8 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                   type: "storedcontext",
                   level: 0,
                   parentIds: null,
-                  embedding,
-                  embeddingSegments,
+                  embedding: null,
+                  embeddingSegments: null,
                   importance: 0.5,
                   usefulnessScore: 0.1,
                   source: "auto_extract",
