@@ -11,6 +11,7 @@ const workingMemoryCache: Map<string, CachedMemoryNode[]> = new Map();
 let CACHE_MAX_SIZE = 8;
 let CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_STALE_SESSIONS = 100;
+const MAX_CACHE_CONTENT_CHARS = 8_000;
 
 function pruneStaleSessions(): void {
   if (workingMemoryCache.size <= MAX_STALE_SESSIONS) return;
@@ -35,7 +36,7 @@ export function addToWorkingCache(sessionId: string, node: { id: string; label: 
   }
   const cache = workingMemoryCache.get(sessionId)!;
   const existingIdx = cache.findIndex(n => n.label === node.label || n.id === node.id);
-  const entry = { ...node, cachedAt: Date.now() };
+  const entry = { ...node, content: node.content.slice(0, MAX_CACHE_CONTENT_CHARS), cachedAt: Date.now() };
   if (existingIdx >= 0) {
     cache[existingIdx] = entry;
   } else {

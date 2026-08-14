@@ -1,15 +1,18 @@
 import { readFileSync } from "node:fs";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { ensureBackgroundGraph, refreshGraphFile } from "../../application/graph/build";
+import { setGraphCacheEnabled } from "../../application/graph/persist";
 import { trackFileRefresh, writePluginGraphUsage } from "../../application/graph/usage";
 import type { HookHandler } from "./types";
 import { writeGraphLog, writeFileSumLog } from "../../logging";
 
 export function createGraphRefreshHandler(config: MemConfig): HookHandler {
-  const graphConfig = config.graph ?? { enabled: false, maxFiles: 5000, refreshEnabled: true };
+  const graphConfig = config.graph ?? { enabled: false, maxFiles: 5000, refreshEnabled: true, cacheEnabled: true };
 
   if (!graphConfig.enabled) return {};
   if (!graphConfig.refreshEnabled) return {};
+
+  setGraphCacheEnabled(graphConfig.cacheEnabled !== false);
 
   const root = process.cwd();
   const maxFiles = graphConfig.maxFiles ?? 5000;

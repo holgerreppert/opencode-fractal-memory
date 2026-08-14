@@ -141,6 +141,7 @@ export interface MemConfig {
     maxFiles: number;
     refreshEnabled: boolean;
     autoSkeletonizeMinLines: number;
+    cacheEnabled: boolean;
   } | undefined;
   outputTokenControl?: {
     enabled: boolean;
@@ -550,6 +551,7 @@ const DEFAULT_CONFIG: MemConfig = {
     maxFiles: 5000,
     refreshEnabled: true,
     autoSkeletonizeMinLines: 300,
+    cacheEnabled: true,
   },
   injectionVisibility: {
     enabled: true,
@@ -606,6 +608,7 @@ const GraphSchema = z.object({
   maxFiles: z.number().positive().int().default(5000),
   refreshEnabled: z.boolean().default(true),
   autoSkeletonizeMinLines: z.number().int().min(0).default(300),
+  cacheEnabled: z.boolean().default(true),
 });
 
 const InjectionVisibilitySchema = z.object({

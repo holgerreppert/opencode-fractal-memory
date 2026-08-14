@@ -1,27 +1,13 @@
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { CodeGraph } from "./graph";
 import { findCodeFiles } from "./detect";
-import { extractFile, logExtractDiagnostics, resetExtractDiagnostics } from "./extract";
 import { detectCommunities } from "./cluster";
 import { analyze, type AnalysisResult } from "./analyze";
 import { generateReport } from "./report";
 import { trackBuild, trackBackgroundBuild } from "./usage";
 import { memLog, writeGraphLog } from "../../logging";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type WasmModule = any;
-
-let wasmMod: WasmModule | null = null;
-
-export function getWasm(): WasmModule {
-  if (!wasmMod) {
-    const req = createRequire(import.meta.url);
-    wasmMod = req("@kreuzberg/tree-sitter-language-pack-wasm");
-  }
-  return wasmMod;
-}
+import { extractInBatches } from "./batching";
+import { loadGraphCache, saveGraphCache } from "./persist";
 
 export interface BuildResult {
   graph: CodeGraph;
@@ -30,6 +16,7 @@ export interface BuildResult {
   fileCount: number;
   symbolCount: number;
   edgeCount: number;
+  newFiles: number;
 }
 
 
@@ -40,13 +27,11 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
   const files = findCodeFiles(root);
   memLog("info", "graph", "findCodeFiles result", { root, totalFound: files.length, sample: files.slice(0, 10).map(f => f.replace(root, "")).join(", "), rssMB: rssMB() });
   const toProcess = files.slice(0, maxFiles);
-  const mod = getWasm();
 
   let readErrors = 0;
   let tooSmall = 0;
-  let extractErrors = 0;
   let skippedUnchanged = 0;
-  resetExtractDiagnostics();
+  const pending: string[] = [];
   for (const file of toProcess) {
     let content: string;
     try {
@@ -60,16 +45,11 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
       skippedUnchanged++;
       continue;
     }
-    try {
-      extractFile(file, content, mod, graph);
-      graph.markExtracted(file, content);
-    } catch {
-      extractErrors++;
-      continue;
-    }
+    pending.push(file);
   }
-  logExtractDiagnostics();
-  memLog("info", "graph", "buildGraph after extract loop", { processed: toProcess.length, readErrors, tooSmall, extractErrors, skippedUnchanged, rssMB: rssMB() });
+  memLog("info", "graph", "buildGraph files selected", { total: toProcess.length, pending: pending.length, readErrors, tooSmall, skippedUnchanged, rssMB: rssMB() });
+  const extractErrors = extractInBatches(graph, pending);
+  memLog("info", "graph", "buildGraph after extract", { pending: pending.length, extractErrors, rssMB: rssMB() });
 
   if (skippedUnchanged > 0) {
     memLog("info", "graph", "Incremental build", { skippedUnchanged, processed: toProcess.length - skippedUnchanged, total: toProcess.length });
@@ -86,6 +66,7 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
     surprisingConnections: analysis.surprisingConnections.slice(0, 10).map(c => `${c.source.label}(${c.source.kind}) --${c.relation}-> ${c.target.label}(${c.target.kind})`),
   });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "buildGraph");
+  saveGraphCache(root, graph);
 
   return {
     graph,
@@ -94,20 +75,19 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
     fileCount: analysis.stats.files,
     symbolCount: analysis.stats.symbols,
     edgeCount: analysis.stats.edges,
+    newFiles: pending.length,
   };
 }
 
 export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, maxFiles = 5_000): BuildResult {
   const files = findCodeFiles(root);
   const toProcess = files.slice(0, maxFiles);
-  const mod = getWasm();
 
   let readErrors = 0;
   let tooSmall = 0;
-  let extractErrors = 0;
   let skippedUnchanged = 0;
   let newFiles = 0;
-  resetExtractDiagnostics();
+  const pending: string[] = [];
   for (const file of toProcess) {
     let content: string;
     try {
@@ -122,15 +102,9 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
       continue;
     }
     newFiles++;
-    try {
-      extractFile(file, content, mod, existingGraph);
-      existingGraph.markExtracted(file, content);
-    } catch {
-      extractErrors++;
-      continue;
-    }
+    pending.push(file);
   }
-  logExtractDiagnostics();
+  const extractErrors = extractInBatches(existingGraph, pending);
 
   if (skippedUnchanged > 0 || newFiles > 0) {
     memLog("info", "graph", "Incremental build", { newFiles, skippedUnchanged, total: toProcess.length });
@@ -151,6 +125,7 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
     godNodes: analysis.godNodes.slice(0, 10).map(n => `${n.node.label}(${n.node.kind}):${n.degree}`),
   });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "incrementalBuildGraph");
+  if (newFiles > 0) saveGraphCache(root, existingGraph);
 
   return {
     graph: existingGraph,
@@ -159,6 +134,7 @@ export function incrementalBuildGraph(existingGraph: CodeGraph, root: string, ma
     fileCount: analysis.stats.files,
     symbolCount: analysis.stats.symbols,
     edgeCount: analysis.stats.edges,
+    newFiles,
   };
 }
 
@@ -166,9 +142,9 @@ export function refreshGraphFile(filePath: string, content: string): void {
   const graph = getActiveGraph();
   if (!graph || content.length < 100) return;
   try {
-    const mod = getWasm();
-    extractFile(filePath, content, mod, graph);
-    graph.markExtracted(filePath, content);
+    // Route through a subprocess batch too: loading WASM in opencode's process even for
+    // single files recreates the accumulation bug across many distinct edits in a session.
+    extractInBatches(graph, [filePath]);
   } catch {
     // single-file re-extract failed silently — will be picked up by idle rebuild
   }
@@ -197,11 +173,25 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
   if (backgroundGraph) {
     try {
       const result = incrementalBuildGraph(backgroundGraph, root, maxFiles);
-      memLog("info", "graph", "Background incremental build", { newFiles: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
+      memLog("info", "graph", "Background incremental build", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
     } catch {
       // incremental build failed — fall back to full rebuild
     }
     return;
+  }
+  const cached = loadGraphCache(root);
+  if (cached) {
+    backgroundGraph = cached;
+    activeGraph = cached;
+    try {
+      const result = incrementalBuildGraph(cached, root, maxFiles);
+      memLog("info", "graph", "Background build from cache", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
+    } catch {
+      // cached incremental build failed — fall back to full rebuild
+      backgroundGraph = null;
+      activeGraph = null;
+    }
+    if (backgroundGraph) return;
   }
   if (backgroundBuildPromise) return;
   backgroundBuildPromise = (async () => {

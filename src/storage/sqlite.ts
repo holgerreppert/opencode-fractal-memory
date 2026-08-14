@@ -114,9 +114,9 @@ class SqliteMemoryStore implements MemoryStore {
     return getNodeFn((s) => this.getDb(s), id);
   }
 
-  async getNodeByLabel(scope: MemoryScope, label: string): Promise<MemoryNode> {
+  async getNodeByLabel(scope: MemoryScope, label: string, includeExpired = false): Promise<MemoryNode> {
     const db = await this.getDb(scope);
-    return queryGetNodeByLabelFull(db, scope, label, false);
+    return queryGetNodeByLabelFull(db, scope, label, includeExpired);
   }
 
   async getNodeByPrefix(prefix: string): Promise<MemoryNode | null> {
