@@ -1,0 +1,3 @@
+[test]
+pathIgnorePatterns = ["**/search.loco.test.ts", "**/search.swecontext.test.ts"]
+coverageSkipTestFiles = true

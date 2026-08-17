@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.19
+- **Test tiering via `bunfig.toml`** — the first config file for the test runner. `pathIgnorePatterns` now excludes the two slow benchmark evals (`search.loco.test.ts` ~5min, `search.swecontext.test.ts` ~4min) at discovery time, so plain `bun test` is the fast **essential** suite (~6s, 50 files) by default. Named tiers as npm scripts:
+  - `bun test` / `bun run test:essential` — fast suite, slow evals excluded via toml
+  - `bun run test:full` — everything (52 files, ~9min); uses `--path-ignore-patterns 'zz-none'` to clear the toml exclusion (CLI replaces the toml value entirely, no merge)
+  - `bun run test:slow` — the two benchmark evals only (also needs the `'zz-none'` override: positional filters can't re-include toml-pruned files)
+  - `bun run test:coverage` — coverage run
+  - The old fast-suite invocation (`bun test --path-ignore-patterns '**/search.loco.test.ts' --path-ignore-patterns '**/search.swecontext.test.ts'`) still works (CLI overrides toml), but AGENTS.md/README.md now document the scripts. Note: bun 1.3.14 has no named test groups/profiles in toml and no `--config` flag for `bun test` — scripts are the only naming mechanism.
+
 ## v0.7.18
 - **Compaction RSS/capture runaway fix** (`src/plugin/hooks/compaction.ts`): opencode compaction ballooned RSS to 9+ GB and took minutes because middle-term snapshots recursively re-captured prior snapshots — each `middle-term:` node embedded the full content of older `middle-term:` nodes (verified: one 195 MB node embedding 38.6 + 41 + 41 + 18.2 MB predecessors → exponential growth; DB was 354.5 MB across 1073 nodes). Root causes and fixes:
   - **Recursive snapshot growth**: the fallback fill (cache empty → `listNodes("project")` → 8 most recent) included prior `middle-term:`/`storedcontext:` nodes with full content, then `captureContent` JSON-stringified the entire working cache uncapped into a new middle-term node. Fixed: fallback now **excludes snapshot labels** (`middle-term:`/`storedcontext:`), and capture is capped at **12 KB total / 2 KB per entry** (`MAX_CAPTURE_CHARS`, `MAX_CAPTURE_ENTRY_CHARS`).

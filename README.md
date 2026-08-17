@@ -902,7 +902,10 @@ bun run typecheck
 ### Testing
 
 ```bash
-bun test
+bun test                # essential suite — fast by default (~6s). Slow benchmark evals (search.loco, search.swecontext) are excluded via bunfig.toml pathIgnorePatterns
+bun run test:full       # full suite — everything including slow benchmark evals (~9min)
+bun run test:slow       # benchmark evals only (LoCoMo ~5min, SWE-ContextBench ~4min)
+bun run test:coverage   # coverage run
 ```
 
 ### Installing locally (development)

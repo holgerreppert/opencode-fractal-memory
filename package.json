@@ -39,6 +39,10 @@
     "postinstall": "node scripts/postinstall.cjs",
     "dev-install": "bun run scripts/dev-install.ts",
     "test": "bun test",
+    "test:essential": "bun test",
+    "test:full": "bun test --path-ignore-patterns 'zz-none'",
+    "test:slow": "bun test --path-ignore-patterns 'zz-none' ./src/storage/search.loco.test.ts ./src/storage/search.swecontext.test.ts",
+    "test:coverage": "bun test --coverage",
     "typecheck": "tsc --noEmit",
     "view": "bun run dist/management-standalone.js",
     "mcp": "bun run dist/mcp-server.js"
