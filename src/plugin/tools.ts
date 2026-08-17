@@ -1,12 +1,14 @@
 import type { MemoryStore } from "../storage/sqlite";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { MemConfig } from "../infrastructure/config/config";
+import { memLog } from "../logging";
 import { createMemoryTool } from "../tools/consolidated/memory";
 import { createContextTool } from "../tools/consolidated/context";
 import { createLearnTool } from "../tools/consolidated/learn";
 import { createJournalTool } from "../tools/consolidated/journal";
 import { createGraphPluginTool } from "../tools/graph";
 import { createSkeletonizeTool } from "../tools/consolidated/skeletonize";
+import { createContextCompressTool } from "../tools/context-compress";
 import type { JournalStore, JournalContext } from "../application/journal";
 
 export function createToolMap(
@@ -18,7 +20,15 @@ export function createToolMap(
   memConfig: MemConfig,
 ) {
   const rerankMode = memConfig.ollama?.strategy === "cross-encoder" ? "cross-encoder" : memConfig.ollama?.strategy === "llm" ? "keyword" : undefined;
-  return {
+  const compressTool = createContextCompressTool(store, client, memConfig);
+  memLog("info", "tool-map", "CREATED archivecontext tool", {
+    toolID: "archivecontext",
+    hasExecute: typeof (compressTool as { execute?: unknown }).execute === "function",
+    argKeys: Object.keys(((compressTool as { args?: object }).args ?? {})),
+    description: ((compressTool as { description?: string }).description ?? "").slice(0, 80),
+  });
+  const map = {
+    archivecontext: compressTool,
     memory: createMemoryTool(store, rerankMode),
     context: createContextTool(store, client),
     learn: createLearnTool(store, client),
@@ -26,4 +36,6 @@ export function createToolMap(
     graph: createGraphPluginTool(),
     skeletonize: createSkeletonizeTool(),
   };
+  memLog("info", "tool-map", "TOOL-MAP-RETURNED", { keys: Object.keys(map) });
+  return map;
 }

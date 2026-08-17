@@ -12,6 +12,7 @@ export { MemoryDashboard } from "./dashboard";
 export { MemoryCacheStatus } from "./cache-status";
 export { MemoryHelp } from "./help";
 export { MemoryTemporalEdges } from "./temporal";
+export { createContextCompressTool } from "./context-compress";
 export { createGraphPluginTool, executeGraphTool } from "./graph";
 export type { GraphRelation, GraphToolParams, GraphToolResult } from "./graph";
 export type { MemoryScope, MemoryStore } from "../storage/sqlite";

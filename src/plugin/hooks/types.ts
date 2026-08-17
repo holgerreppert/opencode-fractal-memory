@@ -9,4 +9,5 @@ export interface HookHandler {
   "chat.messages.transform"?: (input: unknown, output: unknown) => Promise<void>;
   "chat.message"?: (input: unknown, output: unknown) => Promise<void>;
   "compaction.autocontinue"?: (input: unknown, output: { enabled: boolean }) => Promise<void>;
+  "text.complete"?: (input: unknown, output: { text?: string }) => Promise<void>;
 }

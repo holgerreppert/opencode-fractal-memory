@@ -8,6 +8,26 @@ interface ToolDefinitionInput {
 interface ToolDefinitionOutput {
   description: string;
   parameters: unknown;
+  jsonSchema?: unknown;
+}
+
+function describeParams(p: unknown): Record<string, unknown> {
+  if (p == null) return { kind: "null" };
+  const t = typeof p;
+  if (t !== "object") return { kind: t };
+  const o = p as Record<string, unknown>;
+  const std = o["~standard"] as Record<string, unknown> | undefined;
+  return {
+    kind: "object",
+    keys: Object.keys(o),
+    hasStandard: !!std,
+    stdVendor: std?.vendor,
+    stdHasJsonSchema: !!std?.jsonSchema,
+    stdHasValidate: typeof std?.validate === "function",
+    hasZod: "_zod" in o,
+    hasVerceAi: Symbol.for("vercel.ai.schema") in o,
+    ctor: (o as { constructor?: { name?: string } }).constructor?.name,
+  };
 }
 
 const TIPS: Record<string, string> = {
@@ -32,6 +52,16 @@ export function createToolDefinitionHandler(): HookHandler {
     "tool.definition": async (_input: unknown, output: unknown) => {
       const input = _input as ToolDefinitionInput;
       const out = output as ToolDefinitionOutput;
+
+      memLog("debug", "tool-definition", `TOOL-DEFINITION-CALLED ${input.toolID}`, {
+        toolID: input.toolID,
+        hasDescription: typeof out.description === "string",
+        descriptionLen: typeof out.description === "string" ? out.description.length : -1,
+        hasParams: out.parameters != null,
+        paramsShape: describeParams(out.parameters),
+        hasJsonSchema: out.jsonSchema != null,
+        jsonSchemaKind: out.jsonSchema == null ? "null" : typeof out.jsonSchema,
+      });
 
       const tip = TIPS[input.toolID];
       if (!tip) return;

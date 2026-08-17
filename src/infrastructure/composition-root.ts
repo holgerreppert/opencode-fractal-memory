@@ -7,7 +7,7 @@ import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-mo
 import { createAutoRetrieveHook } from "../application";
 import { startManagementServer } from "../management-server";
 import { SEED_NODES } from "../seed-nodes";
-import { memLog } from "../logging";
+import { memLog, setLogLevel } from "../logging";
 import { setCacheConfig } from "../application/cache";
 import { setHighContextThreshold, setCriticalContextThreshold, setMaxInjectionTokens, setCoreInjectionTokens, setAutoCompressThreshold, cleanupMiddleTermCaptures } from "../plugin/state";
 
@@ -117,6 +117,7 @@ async function ensureAssets(): Promise<void> {
 }
 
 async function initializeConfig(directory: string, memConfig: MemConfig): Promise<void> {
+  setLogLevel(memConfig.logLevel ?? "info");
   setHighContextThreshold(memConfig.highContextThreshold);
   setCriticalContextThreshold(memConfig.criticalContextThreshold);
   setMaxInjectionTokens(memConfig.maxInjectionTokens);

@@ -13,7 +13,15 @@ if (!fs.existsSync(LOG_DIR)) {
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 let currentSessionId: string | null = null;
-const logLevel: LogLevel = "info";
+let logLevel: LogLevel = "info";
+
+export function setLogLevel(level: LogLevel): void {
+  logLevel = level;
+}
+
+export function getLogLevel(): LogLevel {
+  return logLevel;
+}
 
 const SKIP_CATEGORIES = ["event"];
 

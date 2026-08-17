@@ -197,7 +197,8 @@ export function MemoryRate(store: MemoryStore) {
 
 export function MemoryGet(store: MemoryStore) {
   const t = tool({
-    description: "Get a memory node by ID or label.",
+    description:
+      "Get a memory node. Use `id` (UUID shown in search results — NOT the label) OR `label` (e.g. `fact:opencode-fractal-memory-hub`). Default scope: project. For labels, pass scope explicitly when the node is global.",
     args: {
       id: tool.schema.string().optional(),
       label: tool.schema.string().optional(),
@@ -226,13 +227,13 @@ ${node.content}${node.summary ? "\n\nSummary:\n" + node.summary : ""}`;
 
 export function MemoryFetch(store: MemoryStore) {
   const t = tool({
-    description: `Fetch a specific memory node by exact label. File summaries are stored with label prefix 'file:' — use memory(mode="search", query="file:<filename>") to find them.`,
+    description: `Fetch a specific memory node by exact label (default scope: project — pass scope="global" for global nodes). File summaries are stored with label prefix 'file:' — use memory(mode="search", query="file:<filename>") to find them.`,
     args: {
       label: tool.schema.string(),
       scope: tool.schema.enum(["global", "project"]).optional(),
     },
     async execute(args) {
-      const scope = args.scope ?? "global";
+      const scope = args.scope ?? "project";
       
       try {
         const node = await store.getNodeByLabel(scope, args.label);

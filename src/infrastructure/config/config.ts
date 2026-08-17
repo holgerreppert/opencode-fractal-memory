@@ -211,6 +211,14 @@ export interface MemConfig {
       halfLifeHours: number;
     };
   } | undefined;
+  contextCompression?: {
+    enabled: boolean;
+    permission: string;
+    maxHistoryNodesPerSession: number;
+    historyTtlDays: number;
+    nudgePressureThreshold: number;
+  } | undefined;
+  logLevel: "debug" | "info" | "warn" | "error";
 }
 
 const AutoRetrieveSchema = z.object({
@@ -393,6 +401,7 @@ const DEFAULT_CONFIG: MemConfig = {
   criticalContextThreshold: 0.8,
   enableMiddleTermCapture: true,
   defaultTtlDays: 0,
+  logLevel: "info",
   autoRetrieve: {
     enabled: false,
     candidateCount: 30,
@@ -579,6 +588,13 @@ const DEFAULT_CONFIG: MemConfig = {
       halfLifeHours: 24,
     },
   },
+  contextCompression: {
+    enabled: true,
+    permission: "compress",
+    maxHistoryNodesPerSession: 30,
+    historyTtlDays: 30,
+    nudgePressureThreshold: 0.6,
+  },
   smallModel: {},
 };
 
@@ -641,6 +657,14 @@ const RankingSchema = z.object({
 
 const SmallModelSchema = z.record(z.string(), z.string()).default({});
 
+const ContextCompressionSchema = z.object({
+  enabled: z.boolean().default(true),
+  permission: z.string().default("compress"),
+  maxHistoryNodesPerSession: z.number().positive().int().default(30),
+  historyTtlDays: z.number().positive().int().default(30),
+  nudgePressureThreshold: z.number().min(0).max(1).default(0.6),
+});
+
 const MemConfigSchema = z.object({
   maxInjectionTokens: z.number().positive().int().default(8000),
   coreInjectionTokens: z.number().positive().int().default(2000),
@@ -651,6 +675,7 @@ const MemConfigSchema = z.object({
   criticalContextThreshold: z.number().min(0).max(1).default(0.8),
   enableMiddleTermCapture: z.boolean().default(true),
   defaultTtlDays: z.number().int().min(0).default(0),
+  logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
   autoRetrieve: AutoRetrieveSchema.optional(),
   ollama: OllamaSchema.optional(),
   llmCompression: LlmCompressionSchema.optional(),
@@ -676,6 +701,7 @@ const MemConfigSchema = z.object({
   autoInjection: AutoInjectionSchema.optional(),
   injectionVisibility: InjectionVisibilitySchema.optional(),
   ranking: RankingSchema.optional(),
+  contextCompression: ContextCompressionSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {
@@ -684,7 +710,11 @@ export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {
   try {
     const raw = await fs.promises.readFile(configPath, "utf-8");
     const parsed = MemConfigSchema.parse(JSON.parse(raw)) as MemConfig;
-    return parsed;
+    // Optional sub-schemas parse absent keys as `undefined` (`.optional()`), so
+    // the DEFAULT_CONFIG fallback only applies when the whole parse fails.
+    // Shallow-merge over DEFAULT_CONFIG so absent keys get their defaults while
+    // present keys keep their parsed (field-level defaulted) values.
+    return { ...DEFAULT_CONFIG, ...parsed } as MemConfig;
   } catch (err) {
     memLog("warn", "config", "Failed to load config, using defaults", { error: String(err), configPath });
     return DEFAULT_CONFIG;

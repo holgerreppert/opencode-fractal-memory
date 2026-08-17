@@ -72,6 +72,9 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   const currentSessionId: { value: string } = { value: "" };
   const autoRetrieveHook = createAutoRetrieve(store, memConfig, client, currentSessionId);
+  // Shared per-session compress state is module-level in
+  // application/context-compression/state.ts — both the tool factory and the
+  // transform handler import it directly (no threading needed).
 
   const handlers = createHookHandlers(
     store, client, memConfig,
@@ -108,6 +111,22 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     const out = output as { messages?: Array<{ info: { role?: string; content?: string }; parts?: Array<{ type?: string; text?: string }> }> };
     const messages = out?.messages;
     const sid = currentSessionId.value;
+
+    if (sid && messages && messages.length > 0) {
+      const sysText = messages
+        .filter((m) => m.info?.role === "system")
+        .map((m) => `${m.info?.content ?? ""} ${(m.parts || []).map((p: any) => p.text || "").join(" ")}`)
+        .join("\n");
+      memLog("debug", "tool-map", "SYSTEM-PROMPT-TOOL-SCAN", {
+        sysLen: sysText.length,
+        roles: [...new Set(messages.map((m) => m.info?.role ?? "?"))].join(","),
+        sysHasArchivecontext: sysText.includes("archivecontext"),
+        sysHasCompress: sysText.includes("compress"),
+        sysHasMemory: sysText.includes("memory"),
+        sysHasSkeletonize: sysText.includes("skeletonize"),
+        sysHasGraph: sysText.includes("graph"),
+      });
+    }
 
     resetInjectionLedger();
 

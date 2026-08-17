@@ -102,12 +102,37 @@
       transition: transform 0.3s ease;
     }
     #detail-panel.open { transform: translateX(0); }
-    #detail-panel .close-btn {
-      position: absolute; top: 15px; right: 15px; background: none; border: none;
-      color: #888; font-size: 20px; cursor: pointer;
+    #detail-panel .resize-handle {
+      position: absolute; top: 0; left: -4px; width: 8px; height: 100vh;
+      cursor: col-resize; z-index: 101; transition: background 0.2s;
     }
-    #detail-panel .close-btn:hover { color: #fff; }
-    #detail-panel h2 { font-size: 16px; margin-bottom: 15px; color: #fff; word-break: break-word; }
+    #detail-panel .resize-handle:hover, #detail-panel .resize-handle.active { background: rgba(100, 150, 255, 0.4); }
+    #detail-panel.fullscreen { width: 100vw !important; }
+    #detail-panel.fullscreen .resize-handle { display: none; }
+    #detail-panel .detail-header {
+      display: flex; align-items: flex-start; gap: 10px; margin-bottom: 15px;
+    }
+    #detail-panel .detail-header h2 { flex: 1; font-size: 16px; margin: 0; color: #fff; word-break: break-word; }
+    #detail-panel .detail-actions {
+      display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+    }
+    #detail-panel .detail-actions button {
+      background: none; border: none; color: #888; cursor: pointer;
+      padding: 4px 6px; border-radius: 4px; line-height: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: color 0.2s, background 0.2s;
+    }
+    #detail-panel .detail-actions button:hover { color: #fff; background: rgba(255,255,255,0.08); }
+    #detail-panel .detail-actions .close-btn { font-size: 20px; }
+    #detail-panel .detail-actions .fullscreen-btn { font-size: 15px; }
+    #detail-panel .detail-actions .edit-btn { font-size: 14px; }
+    #detail-panel .detail-actions .delete-btn { font-size: 14px; color: #f44; }
+    #detail-panel .detail-actions .delete-btn:hover { color: #f66; }
+    #detail-panel .detail-actions .inject-btn { font-size: 12px; color: #4f4; white-space: nowrap; }
+    #detail-panel .detail-actions .inject-btn:hover { color: #6f6; }
+    #inject-status {
+      font-size: 11px; color: #4f4; display: none; pointer-events: none;
+    }
     #detail-panel .detail-section { margin-bottom: 15px; }
     #detail-panel .detail-section h4 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 6px; }
     #detail-panel .detail-value { font-size: 13px; color: #ccc; }
@@ -116,27 +141,6 @@
        font-size: 12px; line-height: 1.5; color: #aaa; max-height: 60vh;
        overflow-y: auto; white-space: pre-wrap; word-break: break-word;
      }
-
-    .edit-btn {
-      position: absolute; top: 15px; right: 45px; background: none; border: none;
-      color: #888; font-size: 14px; cursor: pointer;
-    }
-    .edit-btn:hover { color: #fff; }
-    .delete-btn {
-      position: absolute; top: 15px; right: 75px; background: none; border: none;
-      color: #f44; font-size: 14px; cursor: pointer;
-    }
-    .delete-btn:hover { color: #f66; }
-
-    .inject-btn {
-      position: absolute; top: 15px; right: 105px; background: none; border: none;
-      color: #4f4; font-size: 12px; cursor: pointer;
-    }
-    .inject-btn:hover { color: #6f6; }
-    #inject-status {
-      position: absolute; top: 40px; right: 105px; font-size: 11px; color: #4f4;
-      display: none; pointer-events: none;
-    }
 
     .edit-field { margin-bottom: 12px; }
     .edit-field label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; text-transform: uppercase; }
@@ -843,6 +847,15 @@
           <div class="config-field">
             <label>Default TTL (days, 0 = no expiry)</label>
             <input type="number" id="defaultTtlDays" min="0" max="3650">
+          </div>
+          <div class="config-field">
+            <label>Log Level</label>
+            <select id="logLevel">
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+            </select>
           </div>
           <div class="config-field">
             <label>Cache Size (max nodes)</label>
@@ -1757,12 +1770,18 @@
 
 
   <div id="detail-panel">
-    <button class="close-btn" id="close-detail">×</button>
-    <button class="delete-btn" id="delete-node" title="Delete node">🗑</button>
-    <button class="edit-btn" id="edit-node" title="Edit node">✎</button>
-    <button class="inject-btn" id="inject-node" title="Inject into agent context">→ Agent</button>
+    <div class="resize-handle" id="detail-resize-handle"></div>
+    <div class="detail-header">
+      <h2 id="detail-title"></h2>
+      <div class="detail-actions">
+        <button class="inject-btn" id="inject-node" title="Inject into agent context">→ Agent</button>
+        <button class="fullscreen-btn" id="detail-fullscreen" title="Enter fullscreen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+        <button class="edit-btn" id="edit-node" title="Edit node">✎</button>
+        <button class="delete-btn" id="delete-node" title="Delete node">🗑</button>
+        <button class="close-btn" id="close-detail" title="Close">×</button>
+      </div>
+    </div>
     <div id="inject-status"></div>
-    <h2 id="detail-title"></h2>
     <div id="detail-content"></div>
   </div>
 

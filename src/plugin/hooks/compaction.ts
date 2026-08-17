@@ -4,67 +4,11 @@ import { memLog, appendSessionLog } from "../../logging";
 import { getWorkingCache, addToWorkingCache } from "../../application/cache";
 import type { HookHandler } from "./types";
 
-const MAX_CAPTURE_CHARS = 12_000;
-const MAX_CAPTURE_ENTRY_CHARS = 2_000;
-const MAX_MESSAGE_TEXT_CHARS = 2_000;
 const MAX_MESSAGES_FETCHED = 20;
 
 function isExcludedSnapshotLabel(label: string | null | undefined): boolean {
   if (!label) return false;
   return label.startsWith("middle-term:") || label.startsWith("storedcontext:");
-}
-
-function extractToolUse(entries: string[]): string[] {
-  const tools = new Set<string>();
-  for (const entry of entries) {
-    const m = entry.match(/\[tool: (\w+)/);
-    if (m) tools.add(m[1]!);
-  }
-  return [...tools].sort();
-}
-
-function extractFilePaths(entries: string[], toolNames: string[]): string[] {
-  const files = new Set<string>();
-  for (const entry of entries) {
-    for (const tool of toolNames) {
-      const re = new RegExp(`\\[tool: ${tool}[^\\]]*?"(filePath|path)":"([^"]+)"`);
-      const m = entry.match(re);
-      if (m?.[2]) files.add(m[2]);
-    }
-  }
-  return [...files].sort();
-}
-
-function extractKeyErrors(entries: string[]): string[] {
-  const errors: string[] = [];
-  for (const entry of entries) {
-    if (entry.includes("error") || entry.includes("fail") || entry.includes("exception")) {
-      const lines = entry.split("\n").filter(l => /\b(error|fail|exception|cannot|not found)\b/i.test(l));
-      for (const line of lines.slice(0, 3)) {
-        const clean = line.replace(/^\[.*?\]\s*/, "").slice(0, 150);
-        if (clean && !errors.includes(clean)) errors.push(clean);
-      }
-    }
-  }
-  return errors.slice(0, 5);
-}
-
-function extractTokenSummary(messages: Array<Record<string, unknown>>): string {
-  let totalInput = 0;
-  let totalOutput = 0;
-  let totalCost = 0;
-  let agentCount = 0;
-  for (const msg of messages) {
-    const info = msg.info as Record<string, unknown> | undefined;
-    const tokens = info?.tokens as Record<string, unknown> | undefined;
-    if (tokens) {
-      totalInput += (tokens.input as number) ?? 0;
-      totalOutput += (tokens.output as number) ?? 0;
-    }
-    totalCost += (info?.cost as number) ?? 0;
-    if (info?.agent) agentCount++;
-  }
-  return `input=${totalInput} output=${totalOutput} cost=${totalCost.toFixed(4)} agents=${agentCount}`;
 }
 
 export function createCompactionHandler(store: MemoryStore, config: MemConfig, client: unknown): HookHandler {
@@ -111,53 +55,6 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
           summaries.push(`Top cache entries: ${topCache.map(n => `"${n.label}" (importance ${n.importance.toFixed(2)})`).join(", ")}.`);
         }
 
-        const now = Date.now();
-        let captureBudget = MAX_CAPTURE_CHARS;
-        const captureCache = cache.map(n => {
-          let content = n.content.slice(0, MAX_CAPTURE_ENTRY_CHARS);
-          if (captureBudget > 0) {
-            captureBudget -= content.length;
-            if (captureBudget < 0) content = content.slice(0, MAX_CAPTURE_ENTRY_CHARS + captureBudget);
-          } else {
-            content = "";
-          }
-          return { id: n.id, label: n.label, importance: n.importance, content };
-        });
-        const captureContent = JSON.stringify({
-          timestamp: new Date(now).toISOString(),
-          sessionId,
-          workingCache: captureCache,
-        });
-
-        await store.createNode({
-          scope: "project",
-          label: `middle-term:${sessionId}:${now}`,
-          content: captureContent,
-          type: "note",
-          level: 0,
-          parentIds: null,
-          embedding: null,
-          importance: 0.8,
-          usefulnessScore: 0,
-          source: "auto_extract",
-          tags: ["middle-term", "capture"],
-          metadata: { customType: "middle-term", sessionId, timestamp: now },
-        });
-
-        store.logInjectionMetrics(sessionId, {
-          injectedNodeCount: 1,
-          injectedTokens: 0,
-          injectionMode: "compaction_middle_term",
-          injectedNodeTypes: { note: 1 },
-          injectedContent: [{
-            label: `middle-term:${sessionId}`,
-            type: "note",
-            snippet: `Session snapshot stored (${(captureContent.length / 4).toLocaleString()} chars est.) — NOT injected into the model. Retrieve via memory_middle_term.`,
-          }],
-        }).catch((err: unknown) => memLog("warn", "compaction", `injection metric error: ${String(err)}`));
-
-        summaries.push(`Middle-term capture stored for session ${sessionId}.`);
-
         try {
           const typedClient = client as { session?: { messages: (opts: { path: { id: string }; query: { limit: number } }) => Promise<{ data?: Array<Record<string, unknown>>; [key: string]: unknown }> } };
           if (typedClient?.session?.messages) {
@@ -176,8 +73,6 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
             const messages: ChatMessage[] =
               ((msgResponse?.data ?? msgResponse) as unknown as ChatMessage[]) ?? [];
             if (Array.isArray(messages) && messages.length > 0) {
-              const entries: string[] = [];
-
               // Record per-turn token usage
               let turnIndex = 0;
               for (const msg of messages) {
@@ -201,79 +96,6 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
                   }).catch(() => { /* empty */ });
                   turnIndex++;
                 }
-              }
-              let totalSize = 0;
-              const MAX_STORED = 12000;
-
-              for (const msg of messages) {
-                const role = msg.info?.role ?? "unknown";
-                const agent = msg.info?.agent ?? "";
-                const time = msg.info?.time?.created ? new Date(msg.info.time.created).toISOString() : "";
-
-                let textContent = "";
-                if (msg.parts && Array.isArray(msg.parts)) {
-                  for (const part of msg.parts) {
-                    if (part.type === "text" && part.text) {
-                      textContent += part.text.slice(0, MAX_MESSAGE_TEXT_CHARS) + "\n";
-                    } else if (part.type === "reasoning" && part.text) {
-                      textContent += `[reasoning] ${part.text.slice(0, 2000)}\n`;
-                    } else if (part.type === "tool_use" && part.name) {
-                      textContent += `[tool: ${part.name}${part.input ? ` ${JSON.stringify(part.input).slice(0, 200)}` : ""}]\n`;
-                    } else if (part.type === "tool_result") {
-                      const resultText = part.text ? part.text.slice(0, 500) : "";
-                      textContent += `[result: ${part.isError ? "error" : "ok"}${resultText ? " " + resultText : ""}]\n`;
-                    }
-                  }
-                }
-
-                if (textContent) {
-                  const entry = `[${time} ${role === "user" ? "User" : "Assistant"}${agent ? ` (${agent})` : ""}]\n${textContent.trim()}`;
-                  if (totalSize + entry.length > MAX_STORED) {
-                    entries.push(`[... truncated at ${MAX_STORED} chars ...]`);
-                    break;
-                  }
-                  entries.push(entry);
-                  totalSize += entry.length;
-                }
-              }
-
-              if (entries.length > 0) {
-                // Generate structured summary
-                const structured: Record<string, unknown> = {
-                  session_id: sessionId,
-                  timestamp: new Date(now).toISOString(),
-                  turn_count: turnIndex,
-                  tools_used: extractToolUse(entries),
-                  files_modified: extractFilePaths(entries, ["edit", "write", "create"]),
-                  key_errors: extractKeyErrors(entries),
-                  token_usage: extractTokenSummary(messages),
-                };
-                const structuredYaml = Object.entries(structured)
-                  .filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))
-                  .map(([k, v]) => {
-                    if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${String(i).replace(/\n/g, "\\n")}`).join("\n")}`;
-                    return `${k}: ${String(v)}`;
-                  })
-                  .join("\n");
-
-                const nodeLabel = `storedcontext:${sessionId}:${now}`;
-                const content = `--- storedcontext summary ---\n${structuredYaml}\n--- conversation history ---\n\n${entries.join("\n\n---\n\n")}`;
-                await store.createNode({
-                  scope: "project",
-                  label: nodeLabel,
-                  content,
-                  type: "storedcontext",
-                  level: 0,
-                  parentIds: null,
-                  embedding: null,
-                  embeddingSegments: null,
-                  importance: 0.5,
-                  usefulnessScore: 0.1,
-                  source: "auto_extract",
-                  tags: ["storedcontext", "session-archive"],
-                  metadata: { customType: "storedcontext", sessionId, timestamp: now, turnCount: turnIndex },
-                });
-                summaries.push(`Conversation archived as storedcontext node with structured summary (label: ${nodeLabel}).`);
               }
             }
           }

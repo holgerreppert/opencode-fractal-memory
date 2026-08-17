@@ -37,15 +37,16 @@ export function computeRecencyScore(lastAccessed: Date | null): number {
   return Math.exp(-hoursSinceAccess / 24);
 }
 
-// Session-dump artifacts: storedcontext "session-log" dumps (raw [reasoning]
-// transcripts with key_errors summaries) and middle-term/history snapshot
-// blobs. They are low knowledge-density, chronically pollute retrieval with
-// strong cosine matches on generic phrasing, and their content can be huge
-// (up to hundreds of MB) — so they are excluded completely from search and
-// context-pressure accounting. They remain reachable via the dedicated
-// accessors: memory(mode=list) (metadata view) and context(mode=middle_term).
+// Session-dump artifacts: storedcontext/contexthistory "session-log" dumps
+// (raw [reasoning] transcripts with key_errors summaries) and
+// middle-term/history snapshot blobs. They are low knowledge-density,
+// chronically pollute retrieval with strong cosine matches on generic
+// phrasing, and their content can be huge (up to hundreds of MB) — so they
+// are excluded completely from search and context-pressure accounting. They
+// remain reachable via the dedicated accessors: memory(mode=list) (metadata
+// view), memory(mode=recall_context), and context(mode=middle_term).
 export function isDumpNode(node: Pick<MemoryNode, "type" | "label">): boolean {
-  if (node.type === "storedcontext") return true;
+  if (node.type === "storedcontext" || node.type === "contexthistory") return true;
   const label = (node.label ?? "").toLowerCase();
   return label.startsWith("middle-term:") || label.startsWith("[history]");
 }
@@ -59,7 +60,7 @@ export function isDumpNode(node: Pick<MemoryNode, "type" | "label">): boolean {
 // to pressure-aware injection (≥0.6/≥0.8), drilldown weights, and the UI.
 export function computeQualityMultiplier(node: MemoryNode): number {
   const t = node.type;
-  if (isDumpNode(node)) return t === "storedcontext" ? 0.5 : 0.6;
+  if (isDumpNode(node)) return t === "storedcontext" || t === "contexthistory" ? 0.5 : 0.6;
   const label = (node.label ?? "").toLowerCase();
   // Purpose-centric labels — the highest-value content for a coding agent
   // (ArcticMem Tier-2, Metis, LME-V2): distilled lessons, decisions with

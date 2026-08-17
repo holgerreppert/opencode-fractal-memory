@@ -2,15 +2,19 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as http from "node:http";
-import { memLog } from "./logging";
+import { memLog, setLogLevel } from "./logging";
 import { Router } from "./management/router";
 import { registerRoutes } from "./management/routes";
 import { serveFile } from "./management/helpers";
 import { createSqliteMemoryStore } from "./storage/sqlite";
+import { loadMemConfig } from "./infrastructure/config/config";
 
 const port = parseInt(process.env.MGMT_PORT || "8787");
 const projectDir = process.env.MGMT_PROJECT_DIR || process.cwd();
 const publicDir = path.join(__dirname, "..", "management", "public");
+
+// Apply the configured log level (defaults to "info" when unset).
+loadMemConfig(projectDir).then((cfg) => setLogLevel(cfg.logLevel ?? "info")).catch(() => { /* keep default */ });
 
 // Write PID file so the next session can kill this orphaned server
 const pidFile = process.env.MGMT_PID_FILE || "";

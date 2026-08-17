@@ -5,7 +5,7 @@ export type MemoryScope = "global" | "project";
 
 export type MemoryNodeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact" | "lesson" | "knowledge" | "storedcontext" | "dot";
+export type MemoryNodeType = "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "playbook" | "fact" | "lesson" | "knowledge" | "storedcontext" | "contexthistory" | "dot";
 
 export type MemoryCategory = "episodic" | "semantic";
 export type MemorySupertype = "declarative" | "procedural" | "experiential" | "meta";

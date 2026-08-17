@@ -33,14 +33,18 @@ export function createMemoryTool(store: MemoryStore, defaultRerankMode?: "keywor
 
 MODES:
   search    — Find relevant memories by keyword. ALWAYS FIRST before reading files or editing
-  get       — Get a specific node by ID or label (use after search)
+  get       — Get a node by UUID id (from search results) OR by exact label; scope defaults to project
   set       — Store new information as a memory node. Use AFTER every significant tool result
-  delete    — Remove a memory node by ID or label
+  delete    — Remove a memory node by UUID id or label
   list      — Survey available nodes (scope, level, importance)
   drilldown — Get full context with fractal source chain (use after search)
   drilldown_query — Top-down drilldown by keyword
-  fetch     — Quick lookup by exact label
-  replace   — Fix outdated content in a node
+  fetch     — Quick lookup by exact label (scope defaults to project)
+  replace   — Fix outdated content in a node (by UUID id or label)
+
+NOTE: the 'id' param is the UUID shown in search/list results (e.g. 6fb185e2-...), NOT the label.
+Labels (e.g. 'fact:opencode-fractal-memory-hub') go in the 'label' param.
+Both get/replace/delete accept either; fetch and drilldown use label.
 
 WORKFLOW:
   search → drilldown/get → set/verify/replace

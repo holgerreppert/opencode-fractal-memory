@@ -22,6 +22,8 @@ import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
 import { createToolDefinitionHandler } from "./hooks/tool-definition";
 import { createToolBeforeGuardHandler } from "./hooks/tool-before-guard";
+import { createContextCompressTransformHandler } from "./hooks/context-compress-transform";
+import { createTextCompleteHandler } from "./hooks/text-complete";
 import type { HookHandler } from "./hooks/types";
 
 const TURN_COUNTERS = new Map<string, number>();
@@ -50,6 +52,7 @@ export function createHookHandlers(
     createErrorPruneHandler(memConfig),
     toolBeforeGuard,
     createToolDefinitionHandler(),
+    createTextCompleteHandler(),
     createRecordingHandler(store, memConfig),
     createWorkingCacheHandler(store),
     createCompressionHandler(store, memConfig),
@@ -62,6 +65,7 @@ export function createHookHandlers(
     createOutputTokenControlHandler(memConfig),
     createChatParamsHandler(memConfig),
     createMessagesTransformHandler(store, memConfig, currentSessionId),
+    createContextCompressTransformHandler(store, memConfig, currentSessionId),
     createGraphRefreshHandler(memConfig),
     createGraphContextHandler(memConfig),
     createGraphEditCheckHandler(memConfig),
@@ -136,6 +140,8 @@ export function createHookHandlers(
     "chat.message": async (input: unknown, output: unknown) => {
       await callHooks("chat.message", input, output);
     },
+    "experimental.text.complete": (input: unknown, output: unknown) =>
+      callHooks("text.complete", input, output),
     event: (input: unknown) => (callHooks as (...args: unknown[]) => Promise<void>)("event", input),
   };
 }

@@ -2421,6 +2421,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Resizable detail panel (right sidebar)
+  const detailPanel = document.getElementById("detail-panel");
+  const detailHandle = document.getElementById("detail-resize-handle");
+  const detailFullscreenBtn = document.getElementById("detail-fullscreen");
+  const DETAIL_MIN_WIDTH = 240;
+  let detailResizing = false;
+
+  const savedDetailWidth = localStorage.getItem("detail-panel-width");
+  if (savedDetailWidth) detailPanel.style.width = savedDetailWidth + "px";
+
+  detailHandle.addEventListener("mousedown", (e) => {
+    detailResizing = true;
+    detailHandle.classList.add("active");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!detailResizing) return;
+    const maxW = window.innerWidth - 60;
+    const w = Math.max(DETAIL_MIN_WIDTH, Math.min(maxW, window.innerWidth - e.clientX));
+    detailPanel.style.width = w + "px";
+    localStorage.setItem("detail-panel-width", String(w));
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (detailResizing) {
+      detailResizing = false;
+      detailHandle.classList.remove("active");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
+  const FS_ICONS = {
+    expand:
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+    restore:
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>',
+  };
+
+  detailFullscreenBtn.addEventListener("click", () => {
+    const isFs = detailPanel.classList.toggle("fullscreen");
+    detailFullscreenBtn.innerHTML = isFs ? FS_ICONS.restore : FS_ICONS.expand;
+    detailFullscreenBtn.title = isFs ? "Exit fullscreen" : "Enter fullscreen";
+  });
+
   // Backup / Restore event listeners
   document.getElementById("create-backup").addEventListener("click", handleCreateBackup);
   document.getElementById("confirm-yes").addEventListener("click", handleConfirmYes);
@@ -2638,6 +2686,7 @@ async function loadSettings() {
     const res = await fetch('/api/config');
     const config = await res.json();
     document.getElementById('defaultTtlDays').value = config.defaultTtlDays ?? 0;
+    document.getElementById('logLevel').value = config.logLevel ?? 'info';
     document.getElementById('maxInjectionTokens').value = config.maxInjectionTokens ?? 8000;
     document.getElementById('coreInjectionTokens').value = config.coreInjectionTokens ?? 2000;
     document.getElementById('cacheSize').value = config.cacheSize ?? 8;
@@ -2788,6 +2837,7 @@ async function loadSettings() {
 async function saveSettings() {
   const config = {
     defaultTtlDays: parseInt(document.getElementById('defaultTtlDays').value) || 0,
+    logLevel: document.getElementById('logLevel').value,
     maxInjectionTokens: parseInt(document.getElementById('maxInjectionTokens').value) || 8000,
     coreInjectionTokens: parseInt(document.getElementById('coreInjectionTokens').value) || 2000,
     cacheSize: parseInt(document.getElementById('cacheSize').value) || 8,
