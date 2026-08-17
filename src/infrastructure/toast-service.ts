@@ -27,6 +27,53 @@ function truncateToastBody(message: string, maxChars: number = TOAST_BODY_MAX_CH
   return message.slice(0, maxChars - 3) + "...";
 }
 
+// --- formatting helpers (mirror DCP lib/ui/utils.ts) -------------------------
+
+const PROGRESS_BAR_WIDTH = 40;
+
+export function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
+  return String(Math.round(tokens));
+}
+
+// Simple chars/4 estimate — good enough for a notification footer.
+export function estimateTokens(chars: number): number {
+  return Math.round(chars / 4);
+}
+
+// │▓▓▓▓▓▓░░░░░░│ — archived portion shown as ░, remaining as ▓.
+export function formatProgressBar(archivedCount: number, totalCount: number, width: number = PROGRESS_BAR_WIDTH): string {
+  if (totalCount <= 0) return `│${"▓".repeat(width)}│`;
+  const archived = Math.min(archivedCount, totalCount);
+  const filled = Math.round((archived / totalCount) * width);
+  const bar = "▓".repeat(Math.max(0, width - filled)) + "░".repeat(Math.min(filled, width));
+  return `│${bar}│`;
+}
+
+export interface CompressionEntry {
+  msgRef: string;
+  description: string;
+  nodeLabel?: string;
+}
+
+export interface CompressionNotification {
+  sessionId: string;
+  messageCount: number;
+  topic?: string;
+  registryLabel?: string;
+  agent?: string;
+  variant?: ToastVariant;
+  /** Per-message entries, rendered as an itemized list. */
+  entries?: CompressionEntry[];
+  /** Sum of archived message text (chars) — used for the token-savings line. */
+  removedChars?: number;
+  /** Sum of summary/placeholder text (chars) — the replacement size. */
+  summaryChars?: number;
+  /** Total session messages — used for the archive-progress bar. */
+  totalMessages?: number;
+}
+
 export interface ToastServiceOptions {
   enabled?: boolean;
   defaultDurationMs?: number;
@@ -132,25 +179,52 @@ export class ToastService {
     }
   }
 
+  // Build the DCP-style notification body.
+  buildCompressionMessage(opts: CompressionNotification): string {
+    const { messageCount, topic, registryLabel, entries, removedChars, summaryChars, totalMessages } = opts;
+
+    const lines: string[] = [];
+
+    // Header with token math.
+    let header = `▣ archivecontext | ${messageCount} message${messageCount === 1 ? "" : "s"} archived`;
+    if (removedChars !== undefined) {
+      const removed = estimateTokens(removedChars);
+      const summary = summaryChars !== undefined ? estimateTokens(summaryChars) : 0;
+      const savings = Math.max(0, removed - summary);
+      header += `  (−${formatTokenCount(removed)} tok, saved ${formatTokenCount(savings)})`;
+    }
+    lines.push(header);
+
+    if (topic) lines.push(`  Topic: ${topic}`);
+
+    // Archive-progress bar.
+    if (totalMessages !== undefined && totalMessages > 0) {
+      lines.push(`  ${formatProgressBar(messageCount, totalMessages)}  ${messageCount}/${totalMessages} messages archived`);
+    }
+
+    // Per-message itemized list.
+    if (entries && entries.length > 0) {
+      lines.push("");
+      for (const entry of entries) {
+        const target = entry.nodeLabel ? ` → ${entry.nodeLabel}` : "";
+        lines.push(`  [${entry.msgRef}] "${entry.description}"${target}`);
+      }
+    }
+
+    // Footer.
+    lines.push("");
+    lines.push(`  Archive: ${registryLabel ?? "contexthistory registry"}`);
+    lines.push(`  Originals preserved — memory(mode="fetch", label=...)`);
+
+    return lines.join("\n");
+  }
+
   // Route a compression notification through the configured mode.
-  async notifyCompression(opts: {
-    sessionId: string;
-    messageCount: number;
-    topic?: string;
-    registryLabel?: string;
-    agent?: string;
-    variant?: ToastVariant;
-  }): Promise<boolean> {
-    const { sessionId, messageCount, topic, registryLabel, agent, variant } = opts;
+  async notifyCompression(opts: CompressionNotification): Promise<boolean> {
+    const { sessionId, agent, variant } = opts;
     if (this._mode === "off") return false;
 
-    const lines = [
-      `▣ archivecontext | ${messageCount} message(s) archived`,
-      `→ Topic: ${topic ?? "(batch)"}`,
-      `→ Archive: ${registryLabel ?? "contexthistory registry"}`,
-      `→ Originals preserved — fetch via memory(mode="fetch", label=...)`,
-    ];
-    const message = lines.join("\n");
+    const message = this.buildCompressionMessage(opts);
 
     if (this._mode === "toast") {
       return this.showToast({

@@ -103,6 +103,8 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
       const done: string[] = [];
       const skipped: string[] = [];
       const perMsg: Array<{ msgRef: string; nodeLabel: string; description: string }> = [];
+      let removedChars = 0;
+      let summaryChars = 0;
 
       for (const target of targets) {
         const msg = byId.get(target.messageId);
@@ -120,6 +122,8 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
           skipped.push(`${target.messageId} (no text content)`);
           continue;
         }
+        removedChars += messageEntry.length;
+        summaryChars += (target.description ?? "").length;
 
         // Merged per-session history chain: append to the current history node,
         // rotate to a new node when it would exceed the cap.
@@ -164,11 +168,19 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
             topic: string;
             registryLabel: string;
             agent?: string;
+            entries: Array<{ msgRef: string; nodeLabel: string; description: string }>;
+            removedChars: number;
+            summaryChars: number;
+            totalMessages: number;
           } = {
             sessionId,
             messageCount: done.length,
             topic: args.topic,
             registryLabel,
+            entries: perMsg,
+            removedChars,
+            summaryChars,
+            totalMessages: messages.length,
           };
           if (agent) notif.agent = agent;
           await toast.notifyCompression(notif);

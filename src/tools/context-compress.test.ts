@@ -150,7 +150,7 @@ describe("createContextCompressTool", () => {
       expect(result).toContain("Compressed 1 message(s)");
       expect(shown).toHaveLength(1);
       expect(shown[0]!.title).toBe("archivecontext: Compression");
-      expect(shown[0]!.message).toContain("1 message(s) archived");
+      expect(shown[0]!.message).toContain("1 message archived");
       expect(shown[0]!.message).toContain("contexthistory:index:ses-tool-test");
     } finally {
       await store.close();
@@ -184,7 +184,8 @@ describe("createContextCompressTool", () => {
       const part = prompts[0]!.body.parts![0]!;
       expect(part.type).toBe("text");
       expect(part.ignored).toBe(true);
-      expect(part.text).toContain("1 message(s) archived");
+      expect(part.text).toContain("1 message archived");
+      expect(part.text).toContain("saved");
       expect(part.text).toContain("contexthistory:index:ses-tool-test");
     } finally {
       await store.close();
