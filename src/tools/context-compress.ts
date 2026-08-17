@@ -157,14 +157,24 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
       if (toast?.isEnabled) {
         const registryLabel = `contexthistory:index:${sessionId}`;
         try {
-          await toast.notifyCompression({
+          const agent = (toolCtx as { agent?: string }).agent;
+          const notif: {
+            sessionId: string;
+            messageCount: number;
+            topic: string;
+            registryLabel: string;
+            agent?: string;
+          } = {
+            sessionId,
             messageCount: done.length,
             topic: args.topic,
             registryLabel,
-          });
-          memLog("debug", "context-compress", "Compression toast sent", { count: done.length, sessionId });
+          };
+          if (agent) notif.agent = agent;
+          await toast.notifyCompression(notif);
+          memLog("debug", "context-compress", "Compression notification sent", { count: done.length, sessionId, mode: toast.mode });
         } catch (err) {
-          memLog("warn", "context-compress", "Compression toast failed", { error: String(err) });
+          memLog("warn", "context-compress", "Compression notification failed", { error: String(err) });
         }
       }
 

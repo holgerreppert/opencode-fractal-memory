@@ -10,7 +10,7 @@ import type { MemConfig } from "../infrastructure/config/config";
 
 function makeConfig(): MemConfig {
   return {
-    contextCompression: { enabled: true, permission: "compress", maxHistoryNodesPerSession: 30, historyTtlDays: 30, nudgePressureThreshold: 0.6, toastEnabled: true },
+    contextCompression: { enabled: true, permission: "compress", maxHistoryNodesPerSession: 30, historyTtlDays: 30, nudgePressureThreshold: 0.6, notificationMode: "chat" },
     injectionVisibility: { enabled: true, markers: true, digest: true },
   } as unknown as MemConfig;
 }
@@ -127,14 +127,14 @@ describe("createContextCompressTool", () => {
     expect(result).toContain("disabled");
   });
 
-  test("fires toast notification after successful compression", async () => {
+  test("fires toast notification after successful compression (toast mode)", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
     const dbPath = path.join(tmp, "memory.db");
     const store = createSqliteMemoryStore(tmp, dbPath);
     const shown: Array<{ title?: string; message: string; variant?: string }> = [];
     const toast = new ToastService(
       { tui: { showToast: async (opts: { body: { title?: string; message: string; variant?: string } }) => { shown.push(opts.body); } } },
-      { enabled: true },
+      { enabled: true, mode: "toast" },
     );
     try {
       const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig(), toast);
@@ -158,13 +158,55 @@ describe("createContextCompressTool", () => {
     }
   });
 
+  test("sends chat notification (DCP-style ignored message) by default", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const prompts: Array<{ path: { id: string }; body: { noReply?: boolean; parts?: Array<{ type: string; text: string; ignored?: boolean }> } }> = [];
+    const client = {
+      ...makeClient(SESSION),
+      session: {
+        ...makeClient(SESSION).session,
+        prompt: async (opts: { path: { id: string }; body: { noReply?: boolean; parts?: Array<{ type: string; text: string; ignored?: boolean }> } }) => { prompts.push(opts); },
+      },
+    };
+    const toast = new ToastService(client, { enabled: true, mode: "chat" });
+    try {
+      const tool = createContextCompressTool(store, client, makeConfig(), toast);
+      await tool.execute(
+        { topic: "t", content: JSON.stringify([{ messageId: "msg-2", topic: "t1", description: "d1" }]) },
+        { sessionID: SESSION, agent: "main" } as never,
+      );
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]!.path.id).toBe(SESSION);
+      expect(prompts[0]!.body.noReply).toBe(true);
+      expect(prompts[0]!.body.agent).toBe("main");
+      const part = prompts[0]!.body.parts![0]!;
+      expect(part.type).toBe("text");
+      expect(part.ignored).toBe(true);
+      expect(part.text).toContain("1 message(s) archived");
+      expect(part.text).toContain("contexthistory:index:ses-tool-test");
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("no toast when toast service disabled", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
     const dbPath = path.join(tmp, "memory.db");
     const store = createSqliteMemoryStore(tmp, dbPath);
     const shown: Array<{ title?: string; message: string; variant?: string }> = [];
+    const prompts: Array<unknown> = [];
+    const client = {
+      ...makeClient(SESSION),
+      session: {
+        ...makeClient(SESSION).session,
+        prompt: async (opts: unknown) => { prompts.push(opts); },
+      },
+    };
     const toast = new ToastService(
-      { tui: { showToast: async (opts: { body: { title?: string; message: string; variant?: string } }) => { shown.push(opts.body); } } },
+      client,
       { enabled: false },
     );
     try {
@@ -174,6 +216,7 @@ describe("createContextCompressTool", () => {
         { sessionID: SESSION } as never,
       );
       expect(shown).toHaveLength(0);
+      expect(prompts).toHaveLength(0);
     } finally {
       await store.close();
       fs.rmSync(tmp, { recursive: true, force: true });

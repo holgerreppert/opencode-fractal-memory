@@ -76,7 +76,8 @@ export const MemoryPlugin: Plugin = async (ctx) => {
   // Shared ToastService — callable from the tool factory, hooks, and any other
   // component that needs to surface a UI notification.
   const toastService = new ToastService(client, {
-    enabled: memConfig.contextCompression?.toastEnabled ?? true,
+    enabled: memConfig.contextCompression?.enabled ?? true,
+    mode: memConfig.contextCompression?.notificationMode ?? "chat",
   });
   // Shared per-session compress state is module-level in
   // application/context-compression/state.ts — both the tool factory and the
