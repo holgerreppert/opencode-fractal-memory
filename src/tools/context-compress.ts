@@ -1,6 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
 import type { MemConfig } from "../infrastructure/config/config";
+import type { ToastService } from "../infrastructure/toast-service";
 import { memLog } from "../logging";
 import { recordCompressBlock, nextMsgRef, getCompressState, rebuildCompressState } from "../application/context-compression/state";
 
@@ -48,7 +49,7 @@ function formatArchivedSlice(entry: { msgRef: string; topic: string; description
   return lines.join("\n");
 }
 
-export function createContextCompressTool(store: MemoryStore, client: unknown, config: MemConfig) {
+export function createContextCompressTool(store: MemoryStore, client: unknown, config: MemConfig, toast?: ToastService) {
   return tool({
     description: `Compress (prune) conversation messages to free context, while PERMANENTLY SAVING the full original content as a memory node. Unlike plain pruning, nothing is lost — every pruned message is archived as a contexthistory node you can retrieve later with memory(mode="fetch", label="LABEL"). Use this when the conversation is getting long and earlier messages can be condensed to a short summary.
 
@@ -151,6 +152,20 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
 
       if (done.length === 0) {
         return `No messages compressed. Skipped: ${skipped.join(", ") || "none"}.`;
+      }
+
+      if (toast?.isEnabled) {
+        const registryLabel = `contexthistory:index:${sessionId}`;
+        try {
+          await toast.notifyCompression({
+            messageCount: done.length,
+            topic: args.topic,
+            registryLabel,
+          });
+          memLog("debug", "context-compress", "Compression toast sent", { count: done.length, sessionId });
+        } catch (err) {
+          memLog("warn", "context-compress", "Compression toast failed", { error: String(err) });
+        }
       }
 
       const lines = [

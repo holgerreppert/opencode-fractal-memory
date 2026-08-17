@@ -11,6 +11,7 @@ import { stopManagementServer, ensureManagementServer } from "../management-serv
 import { setupJournal } from "./init";
 import { createRegisterAgentsHandler } from "./hooks/register-agents";
 import { createJournalStore } from "../application/journal";
+import { ToastService } from "../infrastructure/toast-service";
 import { incrementTurn } from "../application/re-read-elimination";
 
 // Read the plugin version from the installed package.json next to dist/ (covers
@@ -72,6 +73,11 @@ export const MemoryPlugin: Plugin = async (ctx) => {
 
   const currentSessionId: { value: string } = { value: "" };
   const autoRetrieveHook = createAutoRetrieve(store, memConfig, client, currentSessionId);
+  // Shared ToastService — callable from the tool factory, hooks, and any other
+  // component that needs to surface a UI notification.
+  const toastService = new ToastService(client, {
+    enabled: memConfig.contextCompression?.toastEnabled ?? true,
+  });
   // Shared per-session compress state is module-level in
   // application/context-compression/state.ts — both the tool factory and the
   // transform handler import it directly (no threading needed).
@@ -82,7 +88,7 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     { start: ensureManagementServer, stop: stopManagementServer },
     currentSessionId,
   );
-  const toolMap = createToolMap(store, journalTools, client, journalStore, journalCtx, memConfig);
+  const toolMap = createToolMap(store, journalTools, client, journalStore, journalCtx, memConfig, toastService);
 
   memLog("info", "init", "Plugin initialization completed", { totalDurationMs: perfNow() - t0 });
 

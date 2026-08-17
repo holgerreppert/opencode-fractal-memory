@@ -5,11 +5,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getCompressState, forgetCompressSession } from "../application/context-compression/state";
+import { ToastService } from "../infrastructure/toast-service";
 import type { MemConfig } from "../infrastructure/config/config";
 
 function makeConfig(): MemConfig {
   return {
-    contextCompression: { enabled: true, permission: "compress", maxHistoryNodesPerSession: 30, historyTtlDays: 30 },
+    contextCompression: { enabled: true, permission: "compress", maxHistoryNodesPerSession: 30, historyTtlDays: 30, nudgePressureThreshold: 0.6, toastEnabled: true },
     injectionVisibility: { enabled: true, markers: true, digest: true },
   } as unknown as MemConfig;
 }
@@ -124,5 +125,58 @@ describe("createContextCompressTool", () => {
     const tool = createContextCompressTool(store, {}, config);
     const result = await tool.execute({ topic: "t", content: "[]" }, { sessionID: SESSION } as never);
     expect(result).toContain("disabled");
+  });
+
+  test("fires toast notification after successful compression", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const shown: Array<{ title?: string; message: string; variant?: string }> = [];
+    const toast = new ToastService(
+      { tui: { showToast: async (opts: { body: { title?: string; message: string; variant?: string } }) => { shown.push(opts.body); } } },
+      { enabled: true },
+    );
+    try {
+      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig(), toast);
+      const result = await tool.execute(
+        {
+          topic: "ranking module explanation",
+          content: JSON.stringify([
+            { messageId: "msg-2", topic: "ranking module internals", description: "explains linear model features" },
+          ]),
+        },
+        { sessionID: SESSION } as never,
+      );
+      expect(result).toContain("Compressed 1 message(s)");
+      expect(shown).toHaveLength(1);
+      expect(shown[0]!.title).toBe("archivecontext: Compression");
+      expect(shown[0]!.message).toContain("1 message(s) archived");
+      expect(shown[0]!.message).toContain("contexthistory:index:ses-tool-test");
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("no toast when toast service disabled", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const shown: Array<{ title?: string; message: string; variant?: string }> = [];
+    const toast = new ToastService(
+      { tui: { showToast: async (opts: { body: { title?: string; message: string; variant?: string } }) => { shown.push(opts.body); } } },
+      { enabled: false },
+    );
+    try {
+      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig(), toast);
+      await tool.execute(
+        { topic: "t", content: JSON.stringify([{ messageId: "msg-2", topic: "t1", description: "d1" }]) },
+        { sessionID: SESSION } as never,
+      );
+      expect(shown).toHaveLength(0);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

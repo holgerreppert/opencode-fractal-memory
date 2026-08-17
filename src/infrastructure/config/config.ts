@@ -217,6 +217,7 @@ export interface MemConfig {
     maxHistoryNodesPerSession: number;
     historyTtlDays: number;
     nudgePressureThreshold: number;
+    toastEnabled: boolean;
   } | undefined;
   logLevel: "debug" | "info" | "warn" | "error";
 }
@@ -594,6 +595,7 @@ const DEFAULT_CONFIG: MemConfig = {
     maxHistoryNodesPerSession: 30,
     historyTtlDays: 30,
     nudgePressureThreshold: 0.6,
+    toastEnabled: true,
   },
   smallModel: {},
 };
@@ -663,6 +665,7 @@ const ContextCompressionSchema = z.object({
   maxHistoryNodesPerSession: z.number().positive().int().default(30),
   historyTtlDays: z.number().positive().int().default(30),
   nudgePressureThreshold: z.number().min(0).max(1).default(0.6),
+  toastEnabled: z.boolean().default(true),
 });
 
 const MemConfigSchema = z.object({

@@ -9,6 +9,7 @@ import { createJournalTool } from "../tools/consolidated/journal";
 import { createGraphPluginTool } from "../tools/graph";
 import { createSkeletonizeTool } from "../tools/consolidated/skeletonize";
 import { createContextCompressTool } from "../tools/context-compress";
+import { ToastService } from "../infrastructure/toast-service";
 import type { JournalStore, JournalContext } from "../application/journal";
 
 export function createToolMap(
@@ -18,9 +19,10 @@ export function createToolMap(
   journalStore: JournalStore | null,
   journalCtx: JournalContext,
   memConfig: MemConfig,
+  toastService: ToastService,
 ) {
   const rerankMode = memConfig.ollama?.strategy === "cross-encoder" ? "cross-encoder" : memConfig.ollama?.strategy === "llm" ? "keyword" : undefined;
-  const compressTool = createContextCompressTool(store, client, memConfig);
+  const compressTool = createContextCompressTool(store, client, memConfig, toastService);
   memLog("info", "tool-map", "CREATED archivecontext tool", {
     toolID: "archivecontext",
     hasExecute: typeof (compressTool as { execute?: unknown }).execute === "function",
