@@ -8,7 +8,7 @@ import { registerGraphRoutes } from "./routes/graph";
 import { registerLiveRoutes } from "./routes/live";
 
 export function registerRoutes(router: Router, store: MemoryStore): void {
-  registerSystemRoutes(router);
+  registerSystemRoutes(router, store);
   registerNodeRoutes(router, store);
   registerTelemetryRoutes(router, store);
   registerBackupRoutes(router);

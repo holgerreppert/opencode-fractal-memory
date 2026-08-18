@@ -1298,12 +1298,25 @@ let temporalEdgeData = [];
 let statsData = null;
 let editingNode = null;
 let currentScope = "project";
+let currentProjectName = null;
 let availableScopes = [];
 let currentLayoutMode = "shell";
 
 let graphViz = null;
 let graphData = null;
 let _graphAnalysis = null;
+let graphProject = "";
+
+// Scope dropdown helpers (module scope — used by loadData/buildScopeButtons)
+function scopeQuery() {
+  const p = currentProjectName ? `&project_name=${encodeURIComponent(currentProjectName)}` : "";
+  return `?scope=${currentScope}${p}`;
+}
+
+function scopeLabel(scope, projectName) {
+  if (projectName) return projectName;
+  return scope === "global" ? "global" : "project (all)";
+}
 
 // ==================== Init ====================
 
@@ -1366,17 +1379,41 @@ function setupEventListeners() {
     sidebar.classList.toggle("sidebar-collapsed");
   });
 
-  // Scope buttons
+// Scope dropdown
+  const scopeTrigger = document.getElementById("scope-dropdown-trigger");
+  const scopeMenu = document.getElementById("scope-filters");
+  function openScopeDropdown() {
+    if (scopeMenu) scopeMenu.style.display = "block";
+  }
+  function closeScopeDropdown() {
+    if (scopeMenu) scopeMenu.style.display = "none";
+  }
+  if (scopeTrigger) {
+    scopeTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (scopeMenu && scopeMenu.style.display === "block") closeScopeDropdown();
+      else openScopeDropdown();
+    });
+  }
+  document.addEventListener("click", () => closeScopeDropdown());
+
+  // Scope items
   document.getElementById("sidebar").addEventListener("click", (e) => {
-    const btn = e.target.closest(".filter-btn");
+    const btn = e.target.closest(".scope-item");
     if (!btn) return;
     if (btn.dataset.scope === undefined) return;
     const scope = btn.dataset.scope;
-    if (scope === currentScope) return;
+    const projectName = btn.dataset.projectName || null;
+    if (scope === currentScope && projectName === currentProjectName) return;
     currentScope = scope;
+    currentProjectName = projectName;
     window.currentScope = currentScope;
-    document.querySelectorAll("#scope-filters .filter-btn").forEach(b => b.classList.remove("active"));
+    window.currentProjectName = currentProjectName;
+    document.querySelectorAll("#scope-filters .scope-item").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
+    const labelEl = document.getElementById("scope-dropdown-label");
+    if (labelEl) labelEl.textContent = scopeLabel(scope, projectName);
+    closeScopeDropdown();
     filterEngine.clearAll();
     loadData();
   });
@@ -1519,10 +1556,10 @@ async function loadData() {
   try {
     const [scopesRes, nodesRes, linksRes, temporalRes, statsRes, versionRes] = await Promise.all([
       fetch("/api/scopes"),
-      fetch(`/api/nodes?scope=${currentScope}`),
-      fetch(`/api/links?scope=${currentScope}`),
-      fetch(`/api/temporal-edges?scope=${currentScope}`),
-      fetch(`/api/stats?scope=${currentScope}`),
+      fetch(`/api/nodes${scopeQuery()}`),
+      fetch(`/api/links${scopeQuery()}`),
+      fetch(`/api/temporal-edges${scopeQuery()}`),
+      fetch(`/api/stats${scopeQuery()}`),
       fetch("/api/version"),
     ]);
 
@@ -1667,9 +1704,15 @@ function createTextSprite(text, color, big = false) {
 
 function buildScopeButtons() {
   const container = document.getElementById("scope-filters");
-  container.innerHTML = availableScopes.map(s =>
-    `<button class="filter-btn ${s.scope === currentScope ? 'active' : ''}" data-scope="${s.scope}">${s.scope}</button>`
-  ).join("");
+  const labelEl = document.getElementById("scope-dropdown-label");
+  if (!container) return;
+  container.innerHTML = availableScopes.map(s => {
+    const projectName = s.projectName || null;
+    const active = s.scope === currentScope && projectName === currentProjectName;
+    const name = projectName || (s.scope === "global" ? "global" : "project (all)");
+    return `<button class="filter-btn scope-item ${active ? 'active' : ''}" data-scope="${s.scope}" data-project-name="${projectName || ''}">${escHtml(name)}</button>`;
+  }).join("");
+  if (labelEl) labelEl.textContent = scopeLabel(currentScope, currentProjectName);
 }
 
 
@@ -2143,7 +2186,7 @@ async function saveNode() {
   if (summaryEl) body.summary = summaryEl.value;
 
   try {
-    const res = await fetch(`/api/nodes/${editingNode.id}?scope=${currentScope}`, {
+    const res = await fetch(`/api/nodes/${editingNode.id}${scopeQuery()}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -2184,7 +2227,7 @@ async function deleteNode(node) {
   if (!confirm(`Delete node "${node.label || node.id}"? This cannot be undone.`)) return;
 
   try {
-    const res = await fetch(`/api/nodes/${node.id}?scope=${currentScope}`, {
+    const res = await fetch(`/api/nodes/${node.id}${scopeQuery()}`, {
       method: "DELETE",
     });
     const result = await res.json();
@@ -2205,7 +2248,7 @@ async function deleteNode(node) {
 // eslint-disable-next-line no-unused-vars
 async function verifyNode(nodeId) {
   try {
-    const res = await fetch(`/api/nodes/${nodeId}/verify?scope=${currentScope}`, { method: "POST" });
+    const res = await fetch(`/api/nodes/${nodeId}/verify${scopeQuery()}`, { method: "POST" });
     const result = await res.json();
     if (result.success) {
       const el = document.getElementById(`confidence-value-${nodeId}`);
@@ -2245,7 +2288,7 @@ async function addTag(nodeId) {
 
 async function saveTagsAndRefresh(nodeId, tags) {
   try {
-    await fetch(`/api/nodes/${nodeId}?scope=${currentScope}`, {
+    await fetch(`/api/nodes/${nodeId}${scopeQuery()}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tags }),
@@ -2258,7 +2301,7 @@ async function saveTagsAndRefresh(nodeId, tags) {
 
 async function updateNodeSource(nodeId, source) {
   try {
-    await fetch(`/api/nodes/${nodeId}?scope=${currentScope}`, {
+    await fetch(`/api/nodes/${nodeId}${scopeQuery()}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source }),
@@ -2324,7 +2367,7 @@ async function performServerSearch(query) {
   info.style.color = "#888";
 
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${filterEngine.searchMode}&scope=${currentScope}`);
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${filterEngine.searchMode}&${scopeQuery().slice(1)}`);
     if (!res.ok) {
       filterEngine.setServerSearchIds(null);
       info.textContent = "Search error: server returned " + res.status;
@@ -3939,11 +3982,30 @@ function renderTokenHistory(summaryEl, breakdownEl, recentEl, data) {
 async function loadGraphData() {
   const statusEl = document.getElementById("graph-status");
   const statsEl = document.getElementById("graph-stats");
+  const projectSelect = document.getElementById("graph-project-select");
   try {
-    const res = await fetch("/api/graph");
+    const projRes = await fetch("/api/graph/projects");
+    if (projRes.ok) {
+      const projects = await projRes.json();
+      if (projectSelect) {
+        const current = projectSelect.value;
+        projectSelect.innerHTML = projects.map(p =>
+          `<option value="${escHtml(p.projectName)}" ${p.projectName === graphProject ? "selected" : ""}>${escHtml(p.projectName)}${p.built ? "" : " (not built)"}</option>`
+        ).join("");
+        if (current && projects.some(p => p.projectName === current)) {
+          graphProject = current;
+          projectSelect.value = current;
+        } else if (!graphProject && projects.length > 0) {
+          graphProject = projects[0].projectName;
+          projectSelect.value = projects[0].projectName;
+        }
+      }
+    }
+    const projQuery = graphProject ? `?project=${encodeURIComponent(graphProject)}` : "";
+    const res = await fetch(`/api/graph${projQuery}`);
     const data = await res.json();
     if (!data.built) {
-      statusEl.textContent = data.message || "No graph built yet. Click \"Build Code Graph\" to start.";
+      statusEl.textContent = data.message || `No graph built yet for ${graphProject || "this project"}. Click "Build Code Graph" to start.`;
       statsEl.innerHTML = "";
       graphData = null;
       _graphAnalysis = null;
@@ -3952,12 +4014,12 @@ async function loadGraphData() {
     }
     _graphAnalysis = data;
     renderGraphStats(data);
-    const exportRes = await fetch("/api/graph/export");
+    const exportRes = await fetch(`/api/graph/export${projQuery}`);
     if (exportRes.ok) {
       graphData = await exportRes.json();
       graphViz.loadFromJSON(graphData);
     }
-    statusEl.textContent = `Graph built: ${data.stats.symbols} symbols, ${data.stats.edges} edges, ${data.stats.communities} communities`;
+    statusEl.textContent = `${data.projectName || graphProject}: ${data.stats.symbols} symbols, ${data.stats.edges} edges, ${data.stats.communities} communities`;
   } catch (e) {
     statusEl.textContent = "Error: " + e.message;
   }
@@ -3970,7 +4032,8 @@ async function buildGraph() {
   btn.textContent = "Building...";
   statusEl.textContent = "Building code graph...";
   try {
-    const res = await fetch("/api/graph/build", { method: "POST" });
+    const projQuery = graphProject ? `?project=${encodeURIComponent(graphProject)}` : "";
+    const res = await fetch(`/api/graph/build${projQuery}`, { method: "POST" });
     const data = await res.json();
     if (data.success) {
       statusEl.textContent = `Graph built: ${data.stats.symbols} symbols, ${data.stats.edges} edges`;
@@ -4140,7 +4203,8 @@ async function showGraphNodeDetail(node) {
   html += '<div class="graph-detail-section"><h4>Neighbors</h4>';
 
   try {
-    const res = await fetch("/api/graph/explain", {
+    const projQuery = graphProject ? `?project=${encodeURIComponent(graphProject)}` : "";
+    const res = await fetch(`/api/graph/explain${projQuery}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: node.id }),
@@ -4237,6 +4301,14 @@ function setupGraphSearchResults() {
 
 function setupGraphListeners() {
   document.getElementById("graph-build-btn").addEventListener("click", buildGraph);
+
+  const projectSelect = document.getElementById("graph-project-select");
+  if (projectSelect) {
+    projectSelect.addEventListener("change", () => {
+      graphProject = projectSelect.value;
+      loadGraphData();
+    });
+  }
 
   const searchInput = document.getElementById("graph-search-input");
   let searchTimer;

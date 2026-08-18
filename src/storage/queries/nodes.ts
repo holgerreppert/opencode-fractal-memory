@@ -37,6 +37,13 @@ const CreateNodeSchema = z.object({
   projectName: z.string().nullable().optional(),
 });
 
+export function queryListProjectNames(db: Database, scope: MemoryScope): string[] {
+  const rows = db.prepare(
+    "SELECT DISTINCT project_name FROM memory_nodes WHERE scope = ? AND project_name IS NOT NULL AND project_name != '' ORDER BY project_name COLLATE NOCASE"
+  ).all(scope) as Array<{ project_name: string }>;
+  return rows.map((r) => r.project_name);
+}
+
 export async function queryListNodes(
   db: Database,
   scope: MemoryScope,

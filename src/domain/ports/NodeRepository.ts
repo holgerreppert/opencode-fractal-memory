@@ -8,6 +8,7 @@ export interface NodeRepository {
   readonly projectName: string;
   ensureSeed(): Promise<void>;
   listNodes(scope: MemoryScope | "all", level?: MemoryNodeLevel, limit?: number, offset?: number, includeExpired?: boolean, projectName?: string, category?: MemoryCategory): Promise<MemoryNode[]>;
+  listProjects(scope: MemoryScope): Promise<string[]>;
   getNode(id: string): Promise<MemoryNode>;
   getNodeByPrefix(prefix: string): Promise<MemoryNode | null>;
   getNodeByLabel(scope: MemoryScope, label: string, includeExpired?: boolean): Promise<MemoryNode>;

@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { CodeGraph, type GraphJSON } from "./graph";
 import { memLog, writeGraphLog } from "../../logging";
 
-const CACHE_DIR = join(homedir(), ".config", "opencode", "graph-cache");
+export const GRAPH_CACHE_DIR = join(homedir(), ".config", "opencode", "graph-cache");
 
 let cacheEnabled = true;
 
@@ -15,7 +15,7 @@ export function setGraphCacheEnabled(enabled: boolean): void {
 
 function cachePathFor(root: string): string {
   const hash = createHash("sha256").update(root).digest("hex").slice(0, 16);
-  return join(CACHE_DIR, `${hash}.json`);
+  return join(GRAPH_CACHE_DIR, `${hash}.json`);
 }
 
 interface GraphCacheFile {
@@ -25,10 +25,47 @@ interface GraphCacheFile {
   graph: GraphJSON;
 }
 
+export interface CachedGraphInfo {
+  root: string;
+  savedAt: number;
+  nodes: number;
+  edges: number;
+}
+
+// Inventory of every persisted graph (one per project root) — used by the
+// management app's graph tab to offer a per-project dropdown that reuses the
+// graphs the plugin already builds/maintains during opencode sessions.
+export function listCachedGraphs(): CachedGraphInfo[] {
+  if (!cacheEnabled) return [];
+  try {
+    if (!existsSync(GRAPH_CACHE_DIR)) return [];
+    const out: CachedGraphInfo[] = [];
+    for (const f of readdirSync(GRAPH_CACHE_DIR)) {
+      if (!f.endsWith(".json") || f.endsWith(".tmp")) continue;
+      try {
+        const payload = JSON.parse(readFileSync(join(GRAPH_CACHE_DIR, f), "utf-8")) as GraphCacheFile;
+        if (payload.version !== 1 || !payload.root) continue;
+        const graph = CodeGraph.fromJSON(payload.graph);
+        out.push({
+          root: payload.root,
+          savedAt: payload.savedAt,
+          nodes: graph.nodeCount(),
+          edges: graph.edgeCount(),
+        });
+      } catch {
+        // skip corrupt/partial cache files
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export function saveGraphCache(root: string, graph: CodeGraph): boolean {
   if (!cacheEnabled) return false;
   try {
-    if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+    if (!existsSync(GRAPH_CACHE_DIR)) mkdirSync(GRAPH_CACHE_DIR, { recursive: true });
     const target = cachePathFor(root);
     const tmp = `${target}.tmp`;
     const payload: GraphCacheFile = {
