@@ -1454,9 +1454,8 @@ function setupEventListeners() {
       const isVisualize = tab === "visualize";
       const isGraph = tab === "graph";
       const isLiveAgent = tab === "live-agent";
-      const isLiveMetrics = tab === "live-metrics";
       const isFullscreenTab = isVisualize || isGraph;
-      const isLiveTab = isLiveAgent || isLiveMetrics;
+      const isLiveTab = isLiveAgent;
       const sidebar = document.getElementById("sidebar");
       const mainContent = document.getElementById("main-content");
       const visualizePanel = document.getElementById("visualize-panel");
@@ -1466,8 +1465,6 @@ function setupEventListeners() {
       const contextPanel = document.getElementById("context-panel");
       const backupPanel = document.getElementById("backup-panel");
       const qualityPanel = document.getElementById("quality-panel");
-      const compressPanel = document.getElementById("compress-panel");
-      const tokensPanel = document.getElementById("tokens-panel");
       const graphPanel = document.getElementById("graph-panel");
       const canvasContainer = document.getElementById("canvas-container");
       const graphVizContainer = document.getElementById("graph-viz-container");
@@ -1481,7 +1478,7 @@ function setupEventListeners() {
       if (graphSidebarPanel) graphSidebarPanel.style.display = isGraph ? "block" : "none";
 
       // Main-content panels (hidden for fullscreen tabs)
-      const panelMap = { settings: settingsPanel, dashboard: dashboardPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, compress: compressPanel, tokens: tokensPanel, graph: graphPanel, "live-agent": document.getElementById("live-agent-panel"), "live-metrics": document.getElementById("live-metrics-panel") };
+      const panelMap = { settings: settingsPanel, dashboard: dashboardPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, graph: graphPanel, "live-agent": document.getElementById("live-agent-panel") };
       for (const [key, p] of Object.entries(panelMap)) {
         if (p) p.classList.toggle("active", key === tab && (isLiveTab || !isFullscreenTab));
       }
@@ -1497,12 +1494,9 @@ function setupEventListeners() {
       if (tab === "backup") { loadBackupSources(); loadBackupList(); }
       if (tab === "context") loadContextDashboard();
       if (tab === "quality") loadQuality();
-      if (tab === "compress") loadCompressStats();
-      if (tab === "tokens") loadTokenHistory();
       if (tab === "graph") loadGraphData();
       if (tab === "live-agent") { startLiveAgentPolling(); }
-      if (tab === "live-metrics") { startLiveMetricsPolling(); }
-      if (!isLiveTab && !isFullscreenTab) { stopLiveAgentPolling(); stopLiveMetricsPolling(); }
+      if (!isLiveTab && !isFullscreenTab) { stopLiveAgentPolling(); }
     });
   });
 }
@@ -3178,6 +3172,105 @@ async function loadContextDashboard() {
     summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading context data</span></div>`;
     console.error("Context dashboard load failed:", e);
   }
+
+  loadPressureChart();
+  loadArchiveRegistry();
+  loadCompressStats();
+  loadTokenHistory();
+  loadLiveMetricsSections();
+}
+
+async function loadPressureChart() {
+  const canvas = document.getElementById("pressure-chart");
+  const summaryEl = document.getElementById("pressure-summary");
+  if (!canvas || !summaryEl) return;
+  try {
+    const res = await fetch("/api/context-pressure?days=30&limit=500");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const entries = data.entries || [];
+    if (entries.length === 0) {
+      summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label">No pressure samples yet. They are recorded each turn by the context-compress hook.</span></div>`;
+      canvas.style.display = "none";
+      return;
+    }
+    canvas.style.display = "";
+    const last = entries[entries.length - 1];
+    const avg = Math.round(entries.reduce((s, e) => s + e.pressurePct, 0) / entries.length);
+    summaryEl.innerHTML = `
+      <div class="stat-row"><span class="stat-label">Samples</span><span class="stat-value">${entries.length}</span></div>
+      <div class="stat-row"><span class="stat-label">Current Pressure</span><span class="stat-value">${last.pressurePct}%</span></div>
+      <div class="stat-row"><span class="stat-label">Avg Pressure</span><span class="stat-value">${avg}%</span></div>
+      <div class="stat-row"><span class="stat-label">Last Sample</span><span class="stat-value" style="font-size:10px">${new Date(last.timestamp).toLocaleString()}</span></div>`;
+    canvas.width = canvas.clientWidth || 600;
+    canvas.height = 200;
+    const dates = entries.map(e => new Date(e.timestamp));
+    const counts = entries.map(e => e.pressurePct);
+    renderTimelineChart(canvas, dates, counts, "Context Pressure % (per turn)");
+  } catch (e) {
+    summaryEl.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading pressure data</span></div>`;
+    console.error("Pressure chart load failed:", e);
+  }
+}
+
+async function loadArchiveRegistry() {
+  const el = document.getElementById("archive-registry");
+  if (!el) return;
+  try {
+    const res = await fetch("/api/context-archive");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const entries = data.entries || [];
+    if (entries.length === 0 && data.totalIndexes === 0) {
+      el.innerHTML = `<div class="stat-row"><span class="stat-label">No archived context yet. Use <code>archivecontext(topic, content)</code> to archive conversation messages.</span></div>`;
+      return;
+    }
+    let html = `
+      <div class="stat-row"><span class="stat-label">Archive Indexes</span><span class="stat-value">${data.totalIndexes}</span></div>
+      <div class="stat-row"><span class="stat-label">History Nodes</span><span class="stat-value">${data.totalChains}</span></div>
+      <div style="overflow-x:auto;margin-top:8px;"><table class="quality-table" style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Ref</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Status</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Topic</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Description</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #333;color:#888">Node Label</th>
+      </tr></thead><tbody>`;
+    const shown = entries.slice(0, 200);
+    for (const e of shown) {
+      const topic = e.topic || "—";
+      const desc = (e.summary || e.description || "").slice(0, 160);
+      html += `<tr>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;font-family:monospace;font-size:10px;color:#aaa">${escHtml(e.ref || "—")}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222">${escHtml(e.status || "archived")}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222">${escHtml(topic)}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;color:#bbb">${escHtml(desc)}${desc.length >= 160 ? "…" : ""}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid #222;font-family:monospace;font-size:10px;color:#6af">${escHtml(e.label || "—")}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+    if (entries.length > shown.length) html += `<div class="stat-row" style="margin-top:8px;"><span class="stat-label">+${entries.length - shown.length} more entries (full list via label <code>contexthistory:index:&lt;sessionId&gt;</code>)</span></div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="stat-row"><span class="stat-label" style="color:#f44">Error loading archive registry</span></div>`;
+    console.error("Archive registry load failed:", e);
+  }
+}
+
+async function loadLiveMetricsSections() {
+  try {
+    const resp = await fetch("/api/live");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.error) return;
+    renderLiveInjections(data);
+    renderLiveCompressions(data);
+  } catch {
+    const inj = document.getElementById("live-injections");
+    const comp = document.getElementById("live-compressions");
+    if (inj) inj.textContent = "No live data.";
+    if (comp) comp.textContent = "No live data.";
+  }
 }
 
 // ==================== Injection Quality ====================
@@ -4177,19 +4270,11 @@ function setupGraphListeners() {
 // ==================== Live Agent Polling ====================
 
 let liveAgentInterval = null;
-let liveMetricsInterval = null;
 
 function stopLiveAgentPolling() {
   if (liveAgentInterval) {
     clearInterval(liveAgentInterval);
     liveAgentInterval = null;
-  }
-}
-
-function stopLiveMetricsPolling() {
-  if (liveMetricsInterval) {
-    clearInterval(liveMetricsInterval);
-    liveMetricsInterval = null;
   }
 }
 
@@ -4336,23 +4421,6 @@ function startLiveAgentPolling() {
   pollLiveFeed();
 }
 
-// ==================== Live Metrics Polling ====================
-
-async function pollLiveMetrics() {
-  try {
-    const resp = await fetch("/api/live");
-    if (!resp.ok) return;
-    const data = await resp.json();
-    if (data.error) return;
-    renderLiveInjections(data);
-    renderLiveCompressions(data);
-    renderLiveToolCalls(data);
-    renderLiveTokenChart(data);
-  } catch {
-    // silently retry
-  }
-}
-
 function renderLiveInjections(data) {
   const el = document.getElementById("live-injections");
   if (!el) return;
@@ -4377,91 +4445,6 @@ function renderLiveCompressions(data) {
     const cmd = c.cmd_preview || c.command || "—";
     return `<div class="metric-row"><span class="mt">${ts}</span> ${escHtml(cmd)} / ${c.strategy || "—"} / ${(c.original_chars || 0).toLocaleString()}→${(c.compressed_chars || 0).toLocaleString()} (-${savings}%)</div>`;
   }).join("");
-}
-
-function renderLiveToolCalls(data) {
-  const el = document.getElementById("live-toolcalls");
-  if (!el) return;
-  const items = (data.toolCalls || []).slice(0, 30);
-  if (items.length === 0) { el.textContent = "No tool call data yet."; return; }
-  el.innerHTML = items.map(t => {
-    const ts = new Date(t.timestamp).toLocaleTimeString();
-    const name = t.tool_name || "—";
-    const status = t.success ? "✓" : t.success === 0 ? "✗" : "…";
-    const dur = t.duration_ms ? `${t.duration_ms}ms` : "—";
-    return `<div class="metric-row"><span class="mt">${ts}</span> ${status} ${escHtml(name)} / ${dur}</div>`;
-  }).join("");
-}
-
-function renderLiveTokenChart(data) {
-  const canvas = document.getElementById("live-token-chart");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const w = canvas.width;
-  const h = canvas.height;
-  const pad = { top: 20, bottom: 20, left: 10, right: 10 };
-  const chartW = w - pad.left - pad.right;
-  const chartH = h - pad.top - pad.bottom;
-
-  const recent = (data.tokenHistory?.recentTurns || []).slice(-30);
-  if (recent.length < 2) {
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#555";
-    ctx.font = "11px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("Need at least 2 data points", w / 2, h / 2);
-    return;
-  }
-
-  const inputVals = recent.map(t => t.inputTokens || 0);
-  const outputVals = recent.map(t => t.outputTokens || 0);
-  const reasonVals = recent.map(t => t.reasoningTokens || 0);
-  const maxVal = Math.max(1, ...inputVals, ...outputVals, ...reasonVals);
-
-  ctx.clearRect(0, 0, w, h);
-
-  ctx.fillStyle = "#aaa";
-  ctx.font = "11px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText("Tokens per Turn (last 30)", w / 2, 14);
-
-  const step = chartW / (recent.length - 1);
-
-  function drawLine(vals, color) {
-    ctx.beginPath();
-    for (let i = 0; i < vals.length; i++) {
-      const x = pad.left + i * step;
-      const y = pad.top + chartH - (vals[i] / maxVal) * chartH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-
-  drawLine(inputVals, "#4a9eff");
-  drawLine(outputVals, "#34d399");
-  drawLine(reasonVals, "#a78bfa");
-
-  ctx.fillStyle = "#555";
-  ctx.font = "9px monospace";
-  ctx.textAlign = "left";
-  ctx.fillRect(10, h - 14, 8, 8);
-  ctx.fillStyle = "#4a9eff";
-  ctx.fillText("input", 22, h - 6);
-  ctx.fillStyle = "#34d399";
-  ctx.fillRect(60, h - 14, 8, 8);
-  ctx.fillText("output", 72, h - 6);
-  ctx.fillStyle = "#a78bfa";
-  ctx.fillRect(115, h - 14, 8, 8);
-  ctx.fillText("reasoning", 127, h - 6);
-}
-
-function startLiveMetricsPolling() {
-  stopLiveMetricsPolling();
-  liveMetricsInterval = setInterval(pollLiveMetrics, 3000);
-  pollLiveMetrics();
 }
 
 function escHtml(s) {

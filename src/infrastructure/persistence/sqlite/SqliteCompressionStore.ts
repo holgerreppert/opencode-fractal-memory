@@ -1,5 +1,5 @@
 import { DbProvider } from "../../db/DbProvider";
-import type { CompressionStore, CompressionStatsResult, ContextDashboardResult, TokenTrackingEntry, TokenHistoryResult } from "../../../domain/ports/CompressionStore";
+import type { CompressionStore, CompressionStatsResult, ContextDashboardResult, ContextPressureEntry, TokenTrackingEntry, TokenHistoryResult } from "../../../domain/ports/CompressionStore";
 import { queryInjectionMetrics } from "../../../storage/injection-events";
 
 export class SqliteCompressionStore implements CompressionStore {
@@ -270,5 +270,32 @@ export class SqliteCompressionStore implements CompressionStore {
         model: r.model,
       })),
     };
+  }
+
+  async recordContextPressure(entry: { sessionId: string; pressurePct: number; totalTokens: number; archivedCount: number }): Promise<void> {
+    const db = await this.provider.getDb();
+    db.run(
+      "INSERT INTO context_pressure (session_id, timestamp, pressure_pct, total_tokens, archived_count) VALUES (?, ?, ?, ?, ?)",
+      [entry.sessionId, Date.now(), entry.pressurePct, entry.totalTokens, entry.archivedCount]
+    );
+  }
+
+  async getContextPressure(days: number = 7, limit: number = 100): Promise<Array<ContextPressureEntry>> {
+    const db = await this.provider.getDb();
+    const since = Date.now() - days * 86400000;
+    const rows = db.query(
+      "SELECT id, session_id, timestamp, pressure_pct, total_tokens, archived_count FROM context_pressure WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?"
+    ).all(since, limit) as Array<{
+      id: number; session_id: string; timestamp: number;
+      pressure_pct: number; total_tokens: number; archived_count: number;
+    }>;
+    return rows.map(r => ({
+      id: r.id,
+      sessionId: r.session_id,
+      timestamp: r.timestamp,
+      pressurePct: r.pressure_pct,
+      totalTokens: r.total_tokens,
+      archivedCount: r.archived_count,
+    }));
   }
 }
