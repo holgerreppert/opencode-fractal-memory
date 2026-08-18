@@ -665,4 +665,22 @@ export const MIGRATIONS: Migration[] = [
       } catch { /* table may not exist yet */ }
     },
   },
+  {
+    version: 34,
+    name: "add-context-pressure",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS context_pressure (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          timestamp INT NOT NULL,
+          pressure_pct INT NOT NULL,
+          total_tokens INT NOT NULL DEFAULT 0,
+          archived_count INT NOT NULL DEFAULT 0
+        )
+      `);
+      db.run("CREATE INDEX IF NOT EXISTS idx_pressure_session ON context_pressure(session_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_pressure_ts ON context_pressure(timestamp)");
+    },
+  },
 ];

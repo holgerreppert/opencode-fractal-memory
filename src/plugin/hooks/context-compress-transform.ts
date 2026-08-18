@@ -1,18 +1,18 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
-import { estimateTokens } from "../../infrastructure/llm/embeddings";
 import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { memLog } from "../../logging";
 import type { HookHandler } from "./types";
 import { getCompressState, rebuildCompressState, markDeadCompressEntries } from "../../application/context-compression/state";
+import { estimateMessageTokens, realMessageTokens, type SizableMessage } from "../../application/context-compression/message-size";
 
 const HIGH_PRIORITY_TOKENS = 5000;
 const MEDIUM_PRIORITY_TOKENS = 500;
 const CONTEXT_LIMIT_TOKENS = 128000;
 
 type TransformMessage = {
-  info: { role?: string; id?: string; type?: string; [key: string]: unknown };
-  parts: Array<{ type?: string; text?: string; [key: string]: unknown }>;
+  info: { role?: string; id?: string; type?: string; tokens?: Record<string, unknown>; [key: string]: unknown };
+  parts: Array<{ type?: string; text?: string; state?: { output?: unknown; input?: unknown; error?: unknown }; source?: { text?: { value?: unknown } }; [key: string]: unknown }>;
 };
 
 function isCompactionMessage(msg: TransformMessage): boolean {
@@ -86,43 +86,72 @@ ${config.injectionVisibility?.enabled === false ? "" : `[memory-plugin:context-c
 // At high context pressure (pct >= config threshold), appends a directive
 // anchor telling the model to proactively archive messages irrelevant to the
 // current task (not just the biggest ones).
+// Proprioception dashboard + DCP-style priority nudges. Research-validated
+// design (research:proactive-context-management):
+//   - VISTA: models are proprioceptively blind — an ALWAYS-ON compact context
+//     line every turn drives self-regulation by itself.
+//   - Focus: imperative "archive now" phrasing at high pressure is validated
+//     (aggressive prompting → 22.7% token reduction at identical accuracy).
+// Deduped per turn — identical lines are not re-injected.
 function buildNudgeLine(
   messages: TransformMessage[],
   compressed: Set<string>,
   nudgeSeen: Set<string>,
   pressureThreshold: number,
+  archivedCount: number,
+  store?: MemoryStore,
+  sessionId?: string,
 ): string | null {
   const high: string[] = [];
   const medium: string[] = [];
   let totalTokens = 0;
+  let largest: { id: string; tokens: number } | null = null;
   for (const msg of messages) {
     const id = msg.info?.id;
     if (!id || compressed.has(id)) continue;
     const role = msg.info?.role;
     if (role !== "user" && role !== "assistant") continue;
-    const text = msg.parts?.filter((p) => p.type === "text").map((p) => String(p.text ?? "")).join(" ") ?? "";
-    if (!text) continue;
-    const tokens = estimateTokens(text);
+    const real = realMessageTokens(msg as SizableMessage);
+    const tokens = real !== null ? real : estimateMessageTokens(msg as SizableMessage);
+    if (tokens <= 0) continue;
     totalTokens += tokens;
+    if (!largest || tokens > largest.tokens) largest = { id, tokens };
+    const tag = real !== null ? "real" : "est";
     if (tokens >= HIGH_PRIORITY_TOKENS) {
-      high.push(`[message ${id}] (~${tokens.toLocaleString()} tok)`);
+      high.push(`[message ${id}] (~${tokens.toLocaleString()} tok, ${tag})`);
     } else if (tokens >= MEDIUM_PRIORITY_TOKENS) {
-      medium.push(`[message ${id}] (~${tokens.toLocaleString()} tok)`);
+      medium.push(`[message ${id}] (~${tokens.toLocaleString()} tok, ${tag})`);
     }
   }
+  if (totalTokens <= 0) return null;
   const pressurePct = Math.round((totalTokens / CONTEXT_LIMIT_TOKENS) * 100);
   const underPressure = totalTokens / CONTEXT_LIMIT_TOKENS >= pressureThreshold;
-  if (high.length === 0 && medium.length === 0 && !underPressure) return null;
-  const nudgeKey = `${high.join(",")}|${medium.join(",")}|${underPressure ? `p${pressurePct}` : ""}`;
+  const largestStr = largest ? `${largest.id} (${largest.tokens.toLocaleString()} tok)` : "—";
+  const dashboard =
+    `[memory-plugin:context-compress] context ${pressurePct}% | ${high.length + medium.length} msg >${MEDIUM_PRIORITY_TOKENS.toLocaleString()} tok | largest ${largestStr} | archived ${archivedCount}`;
+  // Persist a pressure sample for the management app's Context tab (pressure
+  // history chart). Fire-and-forget — never block the transform.
+  if (store && sessionId && typeof store.recordContextPressure === "function") {
+    void store.recordContextPressure({ sessionId, pressurePct, totalTokens, archivedCount }).catch(() => null);
+  }
+  // Always-on proprioception: even with no candidates, the one-line dashboard
+  // is injected every turn (deduped when unchanged).
+  const nudgeKey = `${dashboard}|${high.join(",")}|${medium.join(",")}|${underPressure ? "IMP" : ""}`;
   if (nudgeSeen.has(nudgeKey)) return null;
   nudgeSeen.add(nudgeKey);
-  const lines = ["[memory-plugin:context-compress] The following messages are consuming significant context and can be compressed with compress (originals are archived, nothing is lost):"];
-  if (high.length > 0) lines.push(`  HIGH priority: ${high.join(", ")}`);
-  if (medium.length > 0) lines.push(`  MEDIUM priority: ${medium.join(", ")}`);
-  lines.push("  Use the message ids above (markers on the messages) as messageId args.");
+  const lines = [dashboard];
+  if (high.length > 0) {
+    lines.push(`  HIGH priority (archive these with archivecontext): ${high.join(", ")}`);
+  }
+  if (medium.length > 0) {
+    lines.push(`  MEDIUM priority: ${medium.join(", ")}`);
+  }
+  if (high.length > 0 || medium.length > 0) {
+    lines.push("  Use the message ids above (markers on the messages) as messageId args, or archive all HIGH at once with archivecontext(allFlagged:true).");
+  }
   if (underPressure) {
     lines.push(
-      `  Context at ~${pressurePct}% of the ${CONTEXT_LIMIT_TOKENS.toLocaleString()}-token limit. Proactively archive messages that are IRRELEVANT to the current task (completed investigations, obsolete context, superseded decisions) — not just the largest ones. Originals are permanently saved; nothing is lost.`,
+      `  PRESSURE at ~${pressurePct}% of the ${CONTEXT_LIMIT_TOKENS.toLocaleString()}-token limit. Archive now: call archivecontext(allFlagged:true) (or pass the messageIds above). Consolidate-then-prune — archive completed investigations, obsolete context and superseded decisions, not just the largest ones; keep task-critical context. Originals are permanently saved; nothing is lost.`,
     );
   }
   return lines.join("\n");
@@ -174,7 +203,7 @@ export function createContextCompressTransformHandler(
       injectMessageMarkers(pruned, compressedIds);
 
       // 3. Priority nudge line after the last user message (deduped per turn).
-      const nudge = buildNudgeLine(pruned, compressedIds, nudgeSeen, ccConfig?.nudgePressureThreshold ?? 0.6);
+      const nudge = buildNudgeLine(pruned, compressedIds, nudgeSeen, ccConfig?.nudgePressureThreshold ?? 0.6, state.blocks.size, store, sessionId);
       if (nudge) {
         const lastUserIdx = [...pruned].reverse().findIndex((m) => m.info?.role === "user");
         if (lastUserIdx >= 0) {

@@ -576,6 +576,14 @@ class SqliteMemoryStore implements MemoryStore {
     return this.compressionStore.getTokenHistory(days, limit);
   }
 
+  async recordContextPressure(entry: { sessionId: string; pressurePct: number; totalTokens: number; archivedCount: number }): Promise<void> {
+    return this.compressionStore.recordContextPressure(entry);
+  }
+
+  async getContextPressure(days?: number, limit?: number): Promise<import("../domain/ports/CompressionStore").ContextPressureEntry[]> {
+    return this.compressionStore.getContextPressure(days, limit);
+  }
+
   async recordConversationTurn(turn: import("../domain/ports/LiveFeedStore").ConversationTurn): Promise<void> {
     return this.liveFeedStore.recordConversationTurn(turn);
   }

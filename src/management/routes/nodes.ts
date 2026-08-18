@@ -13,7 +13,6 @@ export function registerNodeRoutes(router: Router, store: MemoryStore): void {
   router.get(/^\/api\/links$/, async (_, ctx) => handleLinks(ctx, store));
   router.get(/^\/api\/temporal-edges$/, async (_, ctx) => handleTemporalEdges(ctx, store));
   router.get(/^\/api\/stats$/, async (_, ctx) => handleStats(ctx, store));
-  router.get(/^\/api\/projects$/, async (req, ctx) => handleProjects(ctx, store));
   router.get(/^\/api\/search$/, (req, ctx) => handleSearch(ctx, store));
   router.put(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx, store));
   router.patch(/^\/api\/nodes\/(?<id>[^/]+)$/, (req, ctx) => handleNodeUpdate(req, ctx, store));
@@ -79,18 +78,6 @@ async function handleStats(ctx: { scope: string; url: URL }, store: MemoryStore)
   }
 
   return jsonResponse(stats);
-}
-
-async function handleProjects(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
-  const url = ctx.url;
-  const limit = parseInt(url.searchParams.get("limit") || "10000", 10);
-  const nodes = await store.listNodes(ctx.scope as MemoryScope, undefined, limit);
-  const projects = new Set<string>();
-  for (const n of nodes) {
-    if (n.projectName && n.projectName.startsWith("auto-edges-test-")) continue;
-    projects.add(n.projectName || "(default)");
-  }
-  return jsonResponse([...projects].sort());
 }
 
 async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {

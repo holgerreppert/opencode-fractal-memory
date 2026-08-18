@@ -223,4 +223,86 @@ describe("createContextCompressTool", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("allFlagged archives only messages above the token floor, biggest first", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const big = "word ".repeat(7000); // 7000 words → ≥7000 tok under BOTH estimate modes (exact tokenizer ~1 tok/word, fallback 1.5×) → HIGH (>5000)
+    const client = {
+      session: {
+        messages: async () => [
+          { info: { id: "msg-big", role: "user" }, parts: [{ type: "text", text: big }] },
+          { info: { id: "msg-small", role: "user" }, parts: [{ type: "text", text: "tiny" }] },
+        ],
+      },
+    };
+    try {
+      const tool = createContextCompressTool(store, client, makeConfig());
+      const result = await tool.execute(
+        { topic: "auto-batch", allFlagged: true },
+        { sessionID: SESSION } as never,
+      );
+      expect(result).toContain("Compressed 1 message(s)");
+      const state = getCompressState(SESSION);
+      expect(state.blocks.has("msg-big")).toBe(true);
+      expect(state.blocks.has("msg-small")).toBe(false);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("allFlagged returns nothing-to-archive when no message crosses the floor", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const client = {
+      session: {
+        messages: async () => [
+          { info: { id: "msg-small", role: "user" }, parts: [{ type: "text", text: "tiny" }] },
+        ],
+      },
+    };
+    try {
+      const tool = createContextCompressTool(store, client, makeConfig());
+      const result = await tool.execute(
+        { topic: "auto-batch", allFlagged: true },
+        { sessionID: SESSION } as never,
+      );
+      expect(result).toContain("Nothing to archive");
+      expect(getCompressState(SESSION).blocks.size).toBe(0);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("allFlagged uses real tokens when available (info.tokens)", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const client = {
+      session: {
+        messages: async () => [
+          {
+            info: { id: "msg-real", role: "assistant", tokens: { output: 6000, reasoning: 1000 } },
+            parts: [{ type: "text", text: "short" }],
+          },
+        ],
+      },
+    };
+    try {
+      const tool = createContextCompressTool(store, client, makeConfig());
+      const result = await tool.execute(
+        { topic: "auto-batch", allFlagged: true },
+        { sessionID: SESSION } as never,
+      );
+      expect(result).toContain("Compressed 1 message(s)");
+      expect(getCompressState(SESSION).blocks.has("msg-real")).toBe(true);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

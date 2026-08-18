@@ -531,13 +531,10 @@
         <button class="tab-btn" data-tab="quality">Quality</button>
 
         <div class="tab-group-label">DATA</div>
-        <button class="tab-btn" data-tab="compress">Compress</button>
-        <button class="tab-btn" data-tab="tokens">Tokens</button>
         <button class="tab-btn" data-tab="graph">Graph</button>
 
         <div class="tab-group-label">LIVE</div>
         <button class="tab-btn" data-tab="live-agent">Live Agent</button>
-        <button class="tab-btn" data-tab="live-metrics">Live Metrics</button>
 
         <div class="tab-group-label">SYSTEM</div>
         <button class="tab-btn" data-tab="settings">Settings</button>
@@ -1643,6 +1640,57 @@
         <div id="context-breakdown" style="margin-bottom:16px;"></div>
         <div id="context-tables"></div>
       </div>
+
+      <div class="section">
+        <h3>Context Pressure</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">
+          Per-turn context pressure samples recorded by the context-compress transform hook (context N% | N msg >500 tok | archived N).
+        </p>
+        <div id="pressure-summary" style="margin-bottom:12px;"></div>
+        <canvas id="pressure-chart" style="width:100%;height:200px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;"></canvas>
+      </div>
+
+      <div class="section">
+        <h3>Archived Context (contexthistory)</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">
+          Every <code>archivecontext</code> batch — msgRef, topic, description, and the node label for <code>memory(mode="fetch")</code>.
+        </p>
+        <div id="archive-registry">
+          <div class="stat-row"><span class="stat-label">Loading archived context...</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Compression Stats</h3>
+        <div id="compress-summary" style="margin-bottom:16px;"></div>
+        <div id="compress-charts"></div>
+        <div id="compress-detail-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center;">
+          <div id="compress-detail-modal" style="background:#111;border:1px solid #333;border-radius:8px;padding:24px;max-width:700px;max-height:80vh;overflow-y:auto;margin:auto;position:relative;top:10vh;"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Token Usage</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">
+          Per-turn token tracking from compaction data. Each assistant message's input, output, reasoning, and cache tokens are recorded during session compaction.
+          Data only appears after the next compaction cycle.
+        </p>
+        <div id="tokens-summary" style="margin-bottom:16px;">
+          <div class="stat-row"><span class="stat-label">Loading...</span></div>
+        </div>
+        <div id="tokens-breakdown"></div>
+        <div id="tokens-recent"></div>
+      </div>
+
+      <div class="section">
+        <h3>Live Injections</h3>
+        <div id="live-injections" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
+      </div>
+
+      <div class="section">
+        <h3>Live Compressions</h3>
+        <div id="live-compressions" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
+      </div>
     </div>
 
     <!-- Quality Panel -->
@@ -1657,33 +1705,6 @@
           <div class="stat-row"><span class="stat-label">Loading...</span></div>
         </div>
         <div id="quality-charts"></div>
-      </div>
-    </div>
-
-    <div id="compress-panel" class="main-tab-panel">
-      <div class="section">
-        <h3>Compression Stats</h3>
-        <div id="compress-summary" style="margin-bottom:16px;"></div>
-        <div id="compress-charts"></div>
-        <div id="compress-detail-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center;">
-          <div id="compress-detail-modal" style="background:#111;border:1px solid #333;border-radius:8px;padding:24px;max-width:700px;max-height:80vh;overflow-y:auto;margin:auto;position:relative;top:10vh;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Token Usage Panel -->
-    <div id="tokens-panel" class="main-tab-panel">
-      <div class="section">
-        <h3>Token Usage</h3>
-        <p style="color:#888;font-size:12px;margin-bottom:12px;">
-          Per-turn token tracking from compaction data. Each assistant message's input, output, reasoning, and cache tokens are recorded during session compaction.
-          Data only appears after the next compaction cycle.
-        </p>
-        <div id="tokens-summary" style="margin-bottom:16px;">
-          <div class="stat-row"><span class="stat-label">Loading...</span></div>
-        </div>
-        <div id="tokens-breakdown"></div>
-        <div id="tokens-recent"></div>
       </div>
     </div>
 
@@ -1728,33 +1749,7 @@
     </div>
   </div>
 
-  <!-- Live Metrics Panel -->
-  <div id="live-metrics-panel" class="main-tab-panel">
-    <div class="section">
-      <h3>Live Metrics</h3>
-      <p style="color:#888;font-size:12px;margin-bottom:8px;">
-        Auto-refreshing every 3s. Last 50 entries per section.
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;height:calc(100vh - 160px);overflow-y:auto;">
-        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
-          <h4 style="font-size:12px;color:#4a9eff;margin-bottom:8px;">Injections</h4>
-          <div id="live-injections" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
-        </div>
-        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
-          <h4 style="font-size:12px;color:#34d399;margin-bottom:8px;">Compressions</h4>
-          <div id="live-compressions" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
-        </div>
-        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
-          <h4 style="font-size:12px;color:#fb923c;margin-bottom:8px;">Tool Calls</h4>
-          <div id="live-toolcalls" style="font-family:monospace;font-size:11px;line-height:1.5;"></div>
-        </div>
-        <div class="metric-card" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
-          <h4 style="font-size:12px;color:#a78bfa;margin-bottom:8px;">Token Graph</h4>
-          <canvas id="live-token-chart" width="400" height="200" style="width:100%;height:auto;"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
+</div>
 
   <!-- Confirmation Modal -->
   <div id="confirm-modal">

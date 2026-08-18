@@ -42,6 +42,12 @@ function makeMessage(id: string, role: string, text: string, extra: Record<strin
 
 const SESSION = "ses-test";
 
+// Messages carrying the always-on proprioception dashboard (injected after the
+// last user message) — filter them out so index-based assertions stay stable.
+function withoutDashboard(msgs: Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>) {
+  return msgs.filter(m => !(m.parts[0]?.text ?? "").startsWith("[memory-plugin:context-compress] context "));
+}
+
 beforeEach(() => {
   forgetCompressSession(SESSION);
 });
@@ -61,9 +67,11 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "Hi!"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
-    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text);
-    expect(texts[0]).toContain("[message msg-1]");
-    expect(texts[1]).toContain("[message msg-2]");
+    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    const real = withoutDashboard(msgs);
+    expect(real).toHaveLength(2);
+    expect(real[0]!.parts[0]!.text).toContain("[message msg-1]");
+    expect(real[1]!.parts[0]!.text).toContain("[message msg-2]");
   });
 
   test("replaces compressed messages with synthetic placeholder", async () => {
@@ -82,11 +90,12 @@ describe("createContextCompressTransformHandler", () => {
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
-    expect(msgs).toHaveLength(2);
-    expect(msgs[1]!.parts[0]!.text).toContain("[Compressed conversation section]");
-    expect(msgs[1]!.parts[0]!.text).toContain("fixing graph hook");
-    expect(msgs[1]!.parts[0]!.text).toContain("contexthistory:ses-test:0");
-    expect(msgs[1]!.parts[0]!.text).not.toContain("very long explanation");
+    const real = withoutDashboard(msgs);
+    expect(real).toHaveLength(2);
+    expect(real[1]!.parts[0]!.text).toContain("[Compressed conversation section]");
+    expect(real[1]!.parts[0]!.text).toContain("fixing graph hook");
+    expect(real[1]!.parts[0]!.text).toContain("contexthistory:ses-test:0");
+    expect(real[1]!.parts[0]!.text).not.toContain("very long explanation");
   });
 
   test("does not double-mark already-compressed messages", async () => {
@@ -105,9 +114,10 @@ describe("createContextCompressTransformHandler", () => {
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const msgs = output.messages as Array<{ parts: Array<{ text?: string }> }>;
+    const real = withoutDashboard(msgs as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>);
     // msg-1 replaced by synthetic (no marker added), msg-2 gets marker
-    expect(msgs[0]!.parts[0]!.text).toContain("[Compressed conversation section]");
-    expect(msgs[1]!.parts[0]!.text).toContain("[message msg-2]");
+    expect(real[0]!.parts[0]!.text).toContain("[Compressed conversation section]");
+    expect(real[1]!.parts[0]!.text).toContain("[message msg-2]");
   });
 
   test("clears compress state on compaction message", async () => {
@@ -129,8 +139,9 @@ describe("createContextCompressTransformHandler", () => {
     await handler["chat.messages.transform"]!({}, output);
     expect(getCompressState(SESSION).blocks.size).toBe(0);
     // After clearing, msg-2 is NOT compressed anymore
-    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text);
-    expect(texts[1]).toContain("[message msg-2]");
+    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    const real = withoutDashboard(msgs);
+    expect(real[1]!.parts[0]!.text).toContain("[message msg-2]");
   });
 
   test("detects compaction via PART type (real opencode shape)", async () => {
@@ -167,6 +178,61 @@ describe("createContextCompressTransformHandler", () => {
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("compress");
+    expect(joined).toContain("[message msg-2]");
+  });
+
+  test("nudge counts TOOL part outputs (the context hogs text-only missed)", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    // A message whose ONLY large payload is a tool output — invisible to the
+    // old text-only sizing, must be flagged now.
+    const bigOutput = "output-line ".repeat(2000); // ~4000+ tokens
+    const output = { messages: [
+      makeMessage("msg-1", "user", "run the command"),
+      {
+        info: { id: "msg-2", role: "assistant" },
+        parts: [{ type: "tool", tool: "bash", state: { status: "completed", output: bigOutput, input: { command: "ls" } } }],
+      },
+    ] };
+    await handler["chat.messages.transform"]!({}, output);
+    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
+    const joined = texts.join("\n");
+    expect(joined).toContain("[message msg-2]");
+    expect(joined).toContain("est");
+  });
+
+  test("nudge prefers REAL token counts when info.tokens present", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    // Short text but real provider-reported 9000 output tokens → HIGH priority.
+    const output = { messages: [
+      makeMessage("msg-1", "user", "hi"),
+      {
+        info: { id: "msg-2", role: "assistant", tokens: { input: 100, output: 9000, reasoning: 0, cache: { read: 0, write: 0 } } },
+        parts: [{ type: "text", text: "short" }],
+      },
+    ] };
+    await handler["chat.messages.transform"]!({}, output);
+    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
+    const joined = texts.join("\n");
+    expect(joined).toContain("[message msg-2]");
+    expect(joined).toContain("real");
+  });
+
+  test("nudge counts reasoning part text", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    const bigReasoning = "thinking ".repeat(2000); // ~4000+ tokens
+    const output = { messages: [
+      makeMessage("msg-1", "user", "solve it"),
+      {
+        info: { id: "msg-2", role: "assistant" },
+        parts: [{ type: "reasoning", text: bigReasoning }, { type: "text", text: "done" }],
+      },
+    ] };
+    await handler["chat.messages.transform"]!({}, output);
+    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
+    const joined = texts.join("\n");
     expect(joined).toContain("[message msg-2]");
   });
 
@@ -208,10 +274,12 @@ describe("createContextCompressTransformHandler", () => {
     const originalArray = output.messages;
     await handler["chat.messages.transform"]!({}, output);
     expect(output.messages).toBe(originalArray);
-    expect(output.messages).toHaveLength(2);
+    // Always-on dashboard inserted after the last user message (index 1).
+    expect(output.messages).toHaveLength(3);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text);
     expect(texts[0]).toContain("[message msg-1]");
-    expect(texts[1]).toContain("[message msg-2]");
+    expect(texts[1]).toContain("[memory-plugin:context-compress] context ");
+    expect(texts[2]).toContain("[message msg-2]");
   });
 
   test("nudge is deduped per turn", async () => {
@@ -278,14 +346,14 @@ describe("createContextCompressTransformHandler", () => {
       injectionVisibility: { enabled: true, markers: true, digest: true },
     } as unknown as MemConfig;
     const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
-    // Big text pushes past the 1% threshold → directive must appear.
+    // Big text pushes past the 1% threshold → imperative directive must appear.
     const bigText = "word ".repeat(2000); // ~4000+ tokens ≈ 3% of 128k
     const output = { messages: [makeMessage("msg-1", "user", bigText)] };
     await handler["chat.messages.transform"]!({}, output);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
-    expect(joined).toContain("IRRELEVANT to the current task");
-    expect(joined).toContain("Proactively archive");
+    expect(joined).toContain("PRESSURE at ~");
+    expect(joined).toContain("Archive now");
   });
 
   test("does not add pressure directive when threshold not crossed", async () => {
@@ -295,6 +363,32 @@ describe("createContextCompressTransformHandler", () => {
     await handler["chat.messages.transform"]!({}, output);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
-    expect(joined).not.toContain("IRRELEVANT to the current task");
+    expect(joined).not.toContain("PRESSURE at ~");
+  });
+
+  test("always-on dashboard appears even with no candidates above threshold", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    const output = { messages: [makeMessage("msg-1", "user", "small text")] };
+    await handler["chat.messages.transform"]!({}, output);
+    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
+    const joined = texts.join("\n");
+    expect(joined).toContain("[memory-plugin:context-compress] context ");
+    expect(joined).toContain("archived 0");
+  });
+
+  test("nudge suggests allFlagged:true for HIGH priority messages", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    const bigText = "word ".repeat(7000); // 7000 words → ≥7000 tok under BOTH estimate modes (exact ~1 tok/word, fallback 1.5×) → HIGH (>5000)
+    const output = { messages: [
+      makeMessage("msg-1", "user", "small"),
+      makeMessage("msg-2", "assistant", bigText),
+    ] };
+    await handler["chat.messages.transform"]!({}, output);
+    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
+    const joined = texts.join("\n");
+    expect(joined).toContain("HIGH priority");
+    expect(joined).toContain("allFlagged:true");
   });
 });

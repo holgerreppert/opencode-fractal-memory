@@ -4,9 +4,17 @@ import type { MemConfig } from "../infrastructure/config/config";
 import type { ToastService } from "../infrastructure/toast-service";
 import { memLog } from "../logging";
 import { recordCompressBlock, nextMsgRef, getCompressState, rebuildCompressState } from "../application/context-compression/state";
+import { estimateMessageTokens, realMessageTokens, partPayloadText, type SizableMessage } from "../application/context-compression/message-size";
 
 const MAX_HISTORY_NODE_CHARS = 50_000;
 const MAX_MESSAGE_TEXT_CHARS = 2_000;
+
+// allFlagged floor: only messages at/above this token size are bulk-archived.
+// Matches the nudge's HIGH priority tier — avoids net-loss archiving of small
+// messages (tool-call overhead > tokens saved).
+const ALL_FLAGGED_MIN_TOKENS = 5_000;
+const ALL_FLAGGED_MAX = 10;
+const AUTO_DESC_CHARS = 200;
 
 type FetchedMessage = {
   info?: { id?: string; role?: string; agent?: string | null; time?: { created?: number } };
@@ -64,6 +72,7 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
     args: {
       topic: tool.schema.string().describe("Short label for this compression batch"),
       content: tool.schema.string().describe("JSON-encoded array of messages to compress, each with messageId, topic, description"),
+      allFlagged: tool.schema.boolean().optional().describe("Archive every nudge-flagged HIGH-priority message (>= 5000 tokens, max 10) in one call. Auto-generates topic/description from content. Overrides content."),
     },
     async execute(args, toolCtx) {
       const ccConfig = config.contextCompression;
@@ -73,16 +82,6 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
       const sessionId = toolCtx.sessionID;
       if (!sessionId) {
         return "No session ID available — run within a session.";
-      }
-
-      let targets: Array<{ messageId: string; topic?: string; description: string }>;
-      try {
-        targets = JSON.parse(args.content ?? "[]") as Array<{ messageId: string; topic?: string; description: string }>;
-      } catch {
-        return "Error: content must be a JSON-encoded array of {messageId, topic, description} objects.";
-      }
-      if (!Array.isArray(targets)) {
-        return "Error: content must be a JSON-encoded array.";
       }
 
       await rebuildCompressState(store, sessionId);
@@ -100,6 +99,49 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
       }
 
       const state = getCompressState(sessionId);
+      const skipIds = new Set(state.blocks.keys());
+
+      // allFlagged: deterministic bulk-archive of the largest messages, sorted
+      // biggest-first, capped. No LLM judgment — Deep Agents pattern (research:
+      // proactive-context-management): auto-offload is deterministic, not judged.
+      let targets: Array<{ messageId: string; topic?: string; description: string }>;
+      if (args.allFlagged) {
+        const flagged: Array<{ messageId: string; description: string; tokens: number }> = [];
+        for (const m of messages) {
+          const id = m.info?.id;
+          if (!id || skipIds.has(id)) continue;
+          const role = m.info?.role;
+          if (role !== "user" && role !== "assistant") continue;
+          const real = realMessageTokens(m as unknown as SizableMessage);
+          const tokens = real !== null ? real : estimateMessageTokens(m as unknown as SizableMessage);
+          if (tokens < ALL_FLAGGED_MIN_TOKENS) continue;
+          const text = m.parts?.map((p) => partPayloadText(p as Parameters<typeof partPayloadText>[0])).filter(Boolean).join(" ").trim() ?? "";
+          if (!text) continue;
+          flagged.push({
+            messageId: id,
+            tokens,
+            description: `auto-flagged (${tokens.toLocaleString()} tok): ${text.slice(0, AUTO_DESC_CHARS)}`,
+          });
+        }
+        flagged.sort((a, b) => b.tokens - a.tokens);
+        targets = flagged.slice(0, ALL_FLAGGED_MAX).map((f) => ({
+          messageId: f.messageId,
+          topic: args.topic ?? "auto-flagged-bulk-archive",
+          description: f.description,
+        }));
+        if (targets.length === 0) {
+          return `allFlagged: no messages above the ${ALL_FLAGGED_MIN_TOKENS.toLocaleString()}-token floor (already-compressed excluded). Nothing to archive.`;
+        }
+      } else {
+        try {
+          targets = JSON.parse(args.content ?? "[]") as Array<{ messageId: string; topic?: string; description: string }>;
+        } catch {
+          return "Error: content must be a JSON-encoded array of {messageId, topic, description} objects.";
+        }
+        if (!Array.isArray(targets)) {
+          return "Error: content must be a JSON-encoded array.";
+        }
+      }
       const done: string[] = [];
       const skipped: string[] = [];
       const perMsg: Array<{ msgRef: string; nodeLabel: string; description: string }> = [];

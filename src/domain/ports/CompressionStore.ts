@@ -66,6 +66,15 @@ export type TokenHistoryResult = {
   recentTurns: Array<TokenTrackingEntry>;
 };
 
+export type ContextPressureEntry = {
+  id: number;
+  sessionId: string;
+  timestamp: number;
+  pressurePct: number;
+  totalTokens: number;
+  archivedCount: number;
+};
+
 export interface CompressionStore {
   recordCompressionStat(stat: {
     sessionId?: string; command: string; strategy: string;
@@ -78,4 +87,6 @@ export interface CompressionStore {
   getContextDashboard(): Promise<ContextDashboardResult>;
   recordTokenUsage(entry: TokenTrackingEntry): Promise<void>;
   getTokenHistory(days?: number, limit?: number): Promise<TokenHistoryResult>;
+  recordContextPressure(entry: { sessionId: string; pressurePct: number; totalTokens: number; archivedCount: number }): Promise<void>;
+  getContextPressure(days?: number, limit?: number): Promise<Array<ContextPressureEntry>>;
 }
