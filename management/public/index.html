@@ -547,7 +547,13 @@
 
     <div class="section" style="margin-bottom:10px;">
       <h3>Scope</h3>
-      <div class="filter-group" id="scope-filters"></div>
+      <div style="position:relative;">
+        <button class="filter-btn" id="scope-dropdown-trigger" style="width:100%;display:flex;justify-content:space-between;align-items:center;border-radius:12px;padding:6px 12px;">
+          <span id="scope-dropdown-label">project (all)</span>
+          <span>▾</span>
+        </button>
+        <div id="scope-filters" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:#161625;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:6px;margin-top:4px;max-height:300px;overflow-y:auto;"></div>
+      </div>
     </div>
 
     <div class="section" style="margin-bottom:10px;">

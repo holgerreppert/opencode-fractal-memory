@@ -4,11 +4,12 @@ import { Router } from "../router";
 import {
   readProjectConfig, writeProjectConfig, getAvailableScopes,
 } from "../helpers";
+import type { MemoryStore } from "../../domain/ports/MemoryStore";
 import { VERSION } from "../../version";
 import { jsonResponse } from "./common";
 
-export function registerSystemRoutes(router: Router): void {
-  router.get(/^\/api\/scopes$/, () => handleScopes());
+export function registerSystemRoutes(router: Router, store: MemoryStore | null): void {
+  router.get(/^\/api\/scopes$/, () => handleScopes(store));
   router.get(/^\/api\/config$/, () => handleConfigGet());
   router.put(/^\/api\/config$/, (req) => handleConfigSave(req));
   router.post(/^\/api\/config$/, (req) => handleConfigSave(req));
@@ -17,8 +18,24 @@ export function registerSystemRoutes(router: Router): void {
   router.get(/^\/api\/shutdown$/, () => handleShutdown());
 }
 
-function handleScopes(): Response {
-  return jsonResponse(getAvailableScopes());
+// Scope entries: the two built-in scopes (global + project-all) plus one entry
+// per distinct project_name found in the project DB — drives the visualize
+// sidebar's scope dropdown (global | each project).
+async function handleScopes(store: MemoryStore | null): Promise<Response> {
+  const base = getAvailableScopes();
+  if (!store || typeof store.listProjects !== "function") return jsonResponse(base);
+  try {
+    const projects = await store.listProjects("project");
+    const extra = projects.map((p) => ({
+      scope: "project" as const,
+      path: base.find((s) => s.scope === "project")?.path ?? "",
+      projectName: p,
+    }));
+    return jsonResponse([...base, ...extra]);
+  } catch (e) {
+    memLog("error", "management", "[api] listProjects failed:", { error: e instanceof Error ? e.message : String(e) });
+    return jsonResponse(base);
+  }
 }
 
 function handleConfigGet(): Response {

@@ -7,7 +7,7 @@ import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, wi
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
 import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
 import type { MemoryStore } from "../domain/ports/MemoryStore";
-import { queryListNodes, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
+import { queryListNodes, queryListProjectNames, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
 import { querySearchText, querySearchBM25 } from "./queries/node-search";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
 import { queryCreateTemporalEdge, queryGetTemporalEdges, queryExpandWithTemporalEdges, queryDeleteTemporalEdgesForNode } from "./queries/temporal-edges";
@@ -108,6 +108,11 @@ class SqliteMemoryStore implements MemoryStore {
     }
 
     return nodes;
+  }
+
+  async listProjects(scope: MemoryScope): Promise<string[]> {
+    const db = await this.getDb(scope);
+    return queryListProjectNames(db, scope);
   }
 
   async getNode(id: string): Promise<MemoryNode> {
