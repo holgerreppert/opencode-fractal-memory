@@ -9,6 +9,7 @@ import { createJournalTool } from "../tools/consolidated/journal";
 import { createGraphPluginTool } from "../tools/graph";
 import { createSkeletonizeTool } from "../tools/consolidated/skeletonize";
 import { createContextCompressTool } from "../tools/context-compress";
+import { createSessionMessagesTool } from "../tools/session-messages";
 import { ToastService } from "../infrastructure/toast-service";
 import type { JournalStore, JournalContext } from "../application/journal";
 
@@ -37,6 +38,7 @@ export function createToolMap(
     journal: createJournalTool(journalStore, journalCtx, store),
     graph: createGraphPluginTool(),
     skeletonize: createSkeletonizeTool(),
+    memory_session_messages: createSessionMessagesTool(client),
   };
   memLog("info", "tool-map", "TOOL-MAP-RETURNED", { keys: Object.keys(map) });
   return map;

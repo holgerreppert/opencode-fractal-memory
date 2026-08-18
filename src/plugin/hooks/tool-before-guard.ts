@@ -3,8 +3,6 @@ import { memLog } from "../../logging";
 
 const MAX_HINTS_PER_SESSION = 3;
 const MAX_REWRITES_TRACKED = 50;
-const hintCounts = new Map<string, Map<string, number>>();
-const rewrittenCalls = new Map<string, string>();
 
 // ripgrep's `-r` is `--replace`, NOT "recursive" (rg recurses by default).
 // `rg -rn "pat"` is parsed as `-r n` → every match is replaced with "n",
@@ -49,7 +47,7 @@ export function rgFootgunHint(replaceMisuse: string): string {
   return `[rg-footgun] \`rg -r${replaceMisuse}\` means \`-r ${replaceMisuse}\` (\`--replace\`) in ripgrep, NOT recursive — every match was rewritten to "${replaceMisuse}" in the output above. Use \`rg -n\` instead (rg recurses by default).`;
 }
 
-function shouldShowHint(sessionId: string, hintKey: string): boolean {
+function shouldShowHint(sessionId: string, hintKey: string, hintCounts: Map<string, Map<string, number>>): boolean {
   const sessionHints = hintCounts.get(sessionId);
   if (!sessionHints) {
     hintCounts.set(sessionId, new Map([[hintKey, 1]]));
@@ -62,6 +60,11 @@ function shouldShowHint(sessionId: string, hintKey: string): boolean {
 }
 
 export function createToolBeforeGuardHandler(): HookHandler {
+  // Per-handler-instance state — module-level maps leaked across instances and
+  // test reruns in the same process (the hint cap for a session was consumed by
+  // the first run, silently silencing subsequent runs).
+  const hintCounts = new Map<string, Map<string, number>>();
+  const rewrittenCalls = new Map<string, string>();
   return {
     // Rewrite the footgun in `tool.before` so the command never executes
     // mangled: `rg -rn "pat"` → `rg -n "pat"`. `tool.before` output exposes a
@@ -124,7 +127,7 @@ export function createToolBeforeGuardHandler(): HookHandler {
 
       const sessionId = input.sessionID ?? "default";
       const hintKey = `rg-footgun:${replaceMisuse}`;
-      if (!shouldShowHint(sessionId, hintKey)) return;
+      if (!shouldShowHint(sessionId, hintKey, hintCounts)) return;
 
       const hint = rgFootgunHint(replaceMisuse);
       if (typeof out.output === "string") {
