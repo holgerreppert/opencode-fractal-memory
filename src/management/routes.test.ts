@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Router } from "./router";
 import { registerRoutes } from "./routes";
-import { rowToNode, computeStats, extractLinks, getAvailableScopes } from "./helpers";
+import { rowToNode, computeStats, extractLinks, getAvailableScopes, resolveNodeShape } from "./helpers";
 
 describe("rowToNode", () => {
   test("transforms raw DB row to MemoryNode shape", () => {
@@ -80,6 +80,25 @@ describe("computeStats", () => {
     const stats = computeStats(nodes);
     expect(stats.nodesPerShape).toEqual({ torus: 1, box: 1 });
     expect(stats.nodesPerCustomType).toEqual({ "middle-term": 1 });
+  });
+
+  test("resolves purpose-type shapes to match the client map", () => {
+    const nodes = [
+      { id: "1", type: "fact", level: 0, importance: 0.5, usefulnessScore: 0, metadata: null, projectName: null },
+      { id: "2", type: "plan", level: 0, importance: 0.5, usefulnessScore: 0, metadata: null, projectName: null },
+      { id: "3", type: "architecture", level: 0, importance: 0.5, usefulnessScore: 0, metadata: null, projectName: null },
+      { id: "4", type: "decision", level: 0, importance: 0.5, usefulnessScore: 0, metadata: null, projectName: null },
+      { id: "5", type: "contexthistory", level: 0, importance: 0.5, usefulnessScore: 0, metadata: null, projectName: null },
+    ];
+    const stats = computeStats(nodes);
+    expect(stats.nodesPerShape).toEqual({
+      octahedron: 1, torus: 1, box: 1, dodecahedron: 1, sphere: 1,
+    });
+    expect(resolveNodeShape({ type: "fact", metadata: null })).toBe("octahedron");
+    expect(resolveNodeShape({ type: "plan", metadata: null })).toBe("torus");
+    expect(resolveNodeShape({ type: "architecture", metadata: null })).toBe("box");
+    expect(resolveNodeShape({ type: "decision", metadata: null })).toBe("dodecahedron");
+    expect(resolveNodeShape({ type: "contexthistory", metadata: null })).toBe("sphere");
   });
 });
 

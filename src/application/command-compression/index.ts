@@ -11,4 +11,4 @@ export { trimByRelevance } from "./relevance";
 export { tryDeltaCompression, updateDeltaCache } from "./delta";
 export { addContentDedup, trigramJaccard } from "./dedup";
 export { isSignalOutput, stripAnsi, contentPreview, getCommandPrefix, smartFilter, scoreLine, extractQueryTerms, SIGNAL_WORDS } from "./utils";
-export { ollamaExtract } from "./ollama-extract";
+export { ollamaExtract, enqueueExtraction, drainPendingExtractions, pendingExtractionCount, warmupExtractionModel } from "./ollama-extract";

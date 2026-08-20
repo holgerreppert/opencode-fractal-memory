@@ -104,8 +104,8 @@ export function createToolBeforeGuardHandler(): HookHandler {
     "tool.after": async (_input: unknown, output: unknown) => {
       const input = _input as { tool?: string; args?: Record<string, unknown>; sessionID?: string; callID?: string };
       const tool = input.tool;
-      memLog("info", "rg-footgun", "tool.after entered", { tool: tool ?? "?", sessionID: input.sessionID ?? "?" });
       if (tool !== "bash") return;
+      memLog("info", "rg-footgun", "tool.after entered", { tool: tool ?? "?", sessionID: input.sessionID ?? "?" });
       const command = (input.args?.command ?? "") as string;
       memLog("info", "rg-footgun", "bash command seen", { cmd: command.slice(0, 80) });
       const out = output as { output?: string };

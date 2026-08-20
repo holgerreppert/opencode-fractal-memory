@@ -40,6 +40,12 @@ export interface OllamaExtractionConfig {
   model: string;
   minOutputChars: number;
   timeoutMs: number;
+  /** Defer extraction to session.idle instead of blocking tool.after (default true). */
+  deferToIdle?: boolean;
+  /** Keep the model resident in Ollama memory between calls (default "30m"). */
+  keepAlive?: string;
+  /** Max pending extractions queued per process (default 20). */
+  maxQueueSize?: number;
 }
 
 export interface FuzzyDedupConfig {
@@ -53,7 +59,10 @@ export const DEFAULT_FUZZY: FuzzyDedupConfig = { enabled: true, similarityThresh
 export const DEFAULT_OLLAMA_EXTRACTION: OllamaExtractionConfig = {
   enabled: false,
   baseUrl: "http://localhost:11434",
-  model: "qwen3.5:3b",
+  model: "llama3.2:latest",
   minOutputChars: 2000,
   timeoutMs: 10000,
+  deferToIdle: true,
+  keepAlive: "30m",
+  maxQueueSize: 20,
 };

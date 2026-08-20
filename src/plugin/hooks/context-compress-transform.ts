@@ -15,14 +15,22 @@ type TransformMessage = {
   parts: Array<{ type?: string; text?: string; state?: { output?: unknown; input?: unknown; error?: unknown }; source?: { text?: { value?: unknown } }; [key: string]: unknown }>;
 };
 
-function isCompactionMessage(msg: TransformMessage): boolean {
-  // opencode marks compaction as a PART type ({"type":"compaction","tail_start_id":...}),
-  // not info.type — info spreads row.data which has no `type` field for compaction messages.
-  return (
-    msg.info?.type === "compaction" ||
-    msg.info?.type === "session.compacted" ||
-    msg.parts?.some((p) => p.type === "compaction")
-  );
+// Detect a compaction marker in the message array and derive a stable key for
+// dedup (the marker PERSISTS in the view after opencode compacts, so we must
+// only reset once per compaction event, not once per request).
+function compactionKeyOf(messages: TransformMessage[]): string | null {
+  for (const msg of messages) {
+    if (msg.info?.type === "compaction" || msg.info?.type === "session.compacted") {
+      return msg.info?.id ?? `type:${msg.info?.type}`;
+    }
+    // opencode marks compaction as a PART type ({"type":"compaction","tail_start_id":...}),
+    // not info.type — info spreads row.data which has no `type` field for compaction messages.
+    const part = msg.parts?.find((p) => p.type === "compaction");
+    if (part) {
+      return typeof part.tail_start_id === "string" ? `tail:${part.tail_start_id}` : "compaction-part";
+    }
+  }
+  return null;
 }
 
 // Inject [message <id>] markers into user/assistant text so the model knows
@@ -168,6 +176,9 @@ export function createContextCompressTransformHandler(
   }
 
   const nudgeSeen = new Set<string>();
+  // Compaction markers persist in the message array after opencode compacts —
+  // this set remembers which compaction events we already reset for.
+  const seenCompactionKeys = new Set<string>();
 
   return {
     "chat.messages.transform": async (_input: unknown, output: unknown) => {
@@ -182,18 +193,34 @@ export function createContextCompressTransformHandler(
       // Also mark registry entries whose msgId is no longer in the view as
       // "compacted" so rebuilds only load prunable (live) entries and the
       // nudge stops suggesting messages that can never be pruned again.
-      if (out.messages.some(isCompactionMessage)) {
+      // GATED: the compaction marker PERSISTS in the message array after
+      // opencode compacts, so without a seen-set this branch re-ran (and
+      // re-wrote the registry) on every request. Only reset on a NEW marker.
+      const compactionKey = compactionKeyOf(out.messages);
+      if (compactionKey !== null && !seenCompactionKeys.has(compactionKey)) {
+        seenCompactionKeys.add(compactionKey);
         const liveIds = new Set(out.messages.map((m) => m.info?.id).filter((x): x is string => Boolean(x)));
         state.blocks.clear();
         nudgeSeen.clear();
         await markDeadCompressEntries(store, sessionId, liveIds);
-        memLog("info", "context-compress", "Compaction detected — cleared compress state", { sessionId });
+        memLog("info", "context-compress", "Compaction detected — cleared compress state", { sessionId, compactionKey });
       }
 
       // Rebuild from DB when empty (session start / restart after compaction).
       if (state.blocks.size === 0) {
         await rebuildCompressState(store, sessionId);
       }
+
+      // TURN-BOUNDARY GATE: the transform fires on EVERY model request,
+      // including mid-turn tool loops (assistant tool call → tool result →
+      // next model call within a single response). Pruning archived messages
+      // or injecting the nudge between those tool calls interrupts the agent
+      // (reported: "it prunes old messages and interrupts"). Only mutate the
+      // message view at a true turn boundary — the last message is a fresh
+      // user message. Mid-turn requests pass through untouched.
+      const lastMsg = out.messages[out.messages.length - 1];
+      const atTurnBoundary = lastMsg?.info?.role === "user";
+      if (!atTurnBoundary) return;
 
       const compressedIds = new Set(state.blocks.keys());
 

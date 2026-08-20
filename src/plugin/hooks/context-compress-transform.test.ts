@@ -65,13 +65,15 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "Hello there"),
       makeMessage("msg-2", "assistant", "Hi!"),
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
-    expect(real).toHaveLength(2);
+    expect(real).toHaveLength(3);
     expect(real[0]!.parts[0]!.text).toContain("[message msg-1]");
     expect(real[1]!.parts[0]!.text).toContain("[message msg-2]");
+    expect(real[2]!.parts[0]!.text).toContain("[message msg-3]");
   });
 
   test("replaces compressed messages with synthetic placeholder", async () => {
@@ -87,11 +89,12 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "Please fix it"),
       makeMessage("msg-2", "assistant", "Here is a very long explanation of the bug and the fix that should be archived"),
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
-    expect(real).toHaveLength(2);
+    expect(real).toHaveLength(3);
     expect(real[1]!.parts[0]!.text).toContain("[Compressed conversation section]");
     expect(real[1]!.parts[0]!.text).toContain("fixing graph hook");
     expect(real[1]!.parts[0]!.text).toContain("contexthistory:ses-test:0");
@@ -111,6 +114,7 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "original user text that was compressed"),
       makeMessage("msg-2", "assistant", "reply"),
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const msgs = output.messages as Array<{ parts: Array<{ text?: string }> }>;
@@ -135,6 +139,7 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-1", "user", "hi"),
       makeMessage("msg-2", "assistant", "bye"),
       { info: { type: "compaction", id: "cmp-1" }, parts: [] },
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     expect(getCompressState(SESSION).blocks.size).toBe(0);
@@ -193,6 +198,7 @@ describe("createContextCompressTransformHandler", () => {
         info: { id: "msg-2", role: "assistant" },
         parts: [{ type: "tool", tool: "bash", state: { status: "completed", output: bigOutput, input: { command: "ls" } } }],
       },
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
@@ -211,6 +217,7 @@ describe("createContextCompressTransformHandler", () => {
         info: { id: "msg-2", role: "assistant", tokens: { input: 100, output: 9000, reasoning: 0, cache: { read: 0, write: 0 } } },
         parts: [{ type: "text", text: "short" }],
       },
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
@@ -229,6 +236,7 @@ describe("createContextCompressTransformHandler", () => {
         info: { id: "msg-2", role: "assistant" },
         parts: [{ type: "reasoning", text: bigReasoning }, { type: "text", text: "done" }],
       },
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
@@ -253,6 +261,7 @@ describe("createContextCompressTransformHandler", () => {
     const messages = [
       makeMessage("msg-1", "user", "Please fix it"),
       makeMessage("msg-2", "assistant", "Here is a very long explanation that should be pruned"),
+      makeMessage("msg-3", "user", "continue"),
     ];
     const output = { messages };
     const originalArray = output.messages;
@@ -269,17 +278,51 @@ describe("createContextCompressTransformHandler", () => {
     const messages = [
       makeMessage("msg-1", "user", "Hello there"),
       makeMessage("msg-2", "assistant", "Hi!"),
+      makeMessage("msg-3", "user", "continue"),
     ];
     const output = { messages };
     const originalArray = output.messages;
     await handler["chat.messages.transform"]!({}, output);
     expect(output.messages).toBe(originalArray);
-    // Always-on dashboard inserted after the last user message (index 1).
-    expect(output.messages).toHaveLength(3);
+    // Always-on dashboard inserted after the last user message (index 2).
+    expect(output.messages).toHaveLength(4);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text);
     expect(texts[0]).toContain("[message msg-1]");
-    expect(texts[1]).toContain("[memory-plugin:context-compress] context ");
-    expect(texts[2]).toContain("[message msg-2]");
+    expect(texts[2]).toContain("[message msg-3]");
+    expect(texts[3]).toContain("[memory-plugin:context-compress] context ");
+  });
+
+  test("mid-turn tool-loop request passes through untouched (no prune, no nudge)", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    recordCompressBlock(SESSION, "msg-2", {
+      blockId: "m0001",
+      nodeId: "node-x",
+      label: "contexthistory:ses-test:0",
+      summary: "assistant explained the fix",
+      topic: "fixing graph hook",
+    });
+    const bigText = "word ".repeat(2000);
+    const messages = [
+      makeMessage("msg-1", "user", "Please fix it"),
+      makeMessage("msg-2", "assistant", "Here is a very long explanation that should be pruned"),
+      makeMessage("msg-3", "user", "run the command"),
+      {
+        info: { id: "msg-4", role: "assistant" },
+        parts: [{ type: "tool", tool: "bash", state: { status: "completed", output: bigText, input: { command: "ls" } } }],
+      },
+    ];
+    const output = { messages };
+    const originalArray = output.messages;
+    await handler["chat.messages.transform"]!({}, output);
+    // Mid-turn (last message is assistant tool result): array identity AND
+    // content must be preserved — no pruning, no markers, no nudge injection.
+    expect(output.messages).toBe(originalArray);
+    expect(output.messages).toHaveLength(4);
+    const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
+    expect(texts[0]).not.toContain("[message msg-1]");
+    expect(texts[1]).not.toContain("[Compressed conversation section]");
+    expect(texts.join("\n")).not.toContain("[memory-plugin:context-compress] context ");
   });
 
   test("nudge is deduped per turn", async () => {
@@ -384,6 +427,7 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "small"),
       makeMessage("msg-2", "assistant", bigText),
+      makeMessage("msg-3", "user", "continue"),
     ] };
     await handler["chat.messages.transform"]!({}, output);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");

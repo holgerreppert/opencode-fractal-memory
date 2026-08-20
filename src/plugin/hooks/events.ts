@@ -2,6 +2,8 @@ import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import { distillRules, runConsolidation, applyScoreDecay, extractSessionLessons, captureSessionWork } from "../../application";
+import { drainPendingExtractions, ollamaExtract, warmupExtractionModel } from "../../application/command-compression";
+import { getSessionCache, recordSessionCache } from "../../application/command-compression/hook-support";
 import { cleanupMiddleTermCaptures } from "../state";
 import { ensureBackgroundGraph } from "../../application/graph/build";
 import type { HookHandler } from "./types";
@@ -71,6 +73,41 @@ export function createEventHandler(
           const maxFiles = config.graph.maxFiles ?? 5000;
           ensureBackgroundGraph(root, maxFiles);
           tasks.push("graph-rebuild");
+        }
+
+        // Deferred Ollama extraction drain: outputs queued by the compress
+        // hook (non-blocking) get extracted here with a long timeout. Results
+        // populate the session cache so repeat outputs compress instantly.
+        if (config?.commandCompression?.ollamaExtraction?.enabled) {
+          const extConfig = config.commandCompression.ollamaExtraction;
+          if (extConfig.deferToIdle !== false) {
+            void warmupExtractionModel(extConfig);
+            const idleTimeoutMs = 120000;
+            const batch = drainPendingExtractions();
+            if (batch.length > 0) {
+              memLog("info", "compress", "idle drain started", { sessionId, queued: batch.length });
+              void (async () => {
+                let extractedCount = 0;
+                for (const item of batch) {
+                  try {
+                    const extracted = await ollamaExtract(item.output, item.command, {
+                      ...extConfig,
+                      timeoutMs: idleTimeoutMs,
+                    });
+                    if (extracted) {
+                      const cache = getSessionCache(item.sessionId);
+                      recordSessionCache(cache, item.output, extracted, "ollama-extract");
+                      extractedCount++;
+                    }
+                  } catch {
+                    // Best-effort per item — continue draining the rest.
+                  }
+                }
+                memLog("info", "compress", "idle drain complete", { sessionId, queued: batch.length, extracted: extractedCount });
+              })().catch(err => memLog("error", "compress", "Idle drain failed", { sessionId, error: String(err) }));
+              tasks.push(`extract-drain(${batch.length})`);
+            }
+          }
         }
 
         if (sl()) {

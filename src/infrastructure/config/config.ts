@@ -50,6 +50,9 @@ export interface MemConfig {
       model: string;
       minOutputChars: number;
       timeoutMs: number;
+      deferToIdle: boolean;
+      keepAlive: string;
+      maxQueueSize: number;
     } | undefined;
   } | undefined;
   autoRetrieve?: {
@@ -314,9 +317,12 @@ const ManagementSchema = z.object({
 const OllamaExtractionSchema = z.object({
   enabled: z.boolean().default(false),
   baseUrl: z.string().default("http://localhost:11434"),
-  model: z.string().default("qwen3.5:3b"),
+  model: z.string().default("llama3.2:latest"),
   minOutputChars: z.number().positive().int().default(2000),
   timeoutMs: z.number().positive().int().default(10000),
+  deferToIdle: z.boolean().default(true),
+  keepAlive: z.string().default("30m"),
+  maxQueueSize: z.number().positive().int().default(20),
 });
 
 const CommandCompressionSchema = z.object({

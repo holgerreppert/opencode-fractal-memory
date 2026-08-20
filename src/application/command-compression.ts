@@ -4,7 +4,7 @@ export { DEFAULT_TIERED, DEFAULT_FUZZY, DEFAULT_OLLAMA_EXTRACTION } from "./comm
 export { tryDeltaCompression, updateDeltaCache } from "./command-compression/delta";
 export { addContentDedup, trigramJaccard } from "./command-compression/dedup";
 export { compressGeneric, compressRelevantGeneric, compressLs, compressTestOutput, compressGrep, compressGitStatus, compressGitLog, compressGitDiff, compressGitPush, compressGitCommit, compressGitAdd, compressGitPull } from "./command-compression/strategies";
-export { ollamaExtract } from "./command-compression/ollama-extract";
+export { ollamaExtract, enqueueExtraction, drainPendingExtractions, pendingExtractionCount, warmupExtractionModel } from "./command-compression/ollama-extract";
 export { compressByType, detectOutputType } from "./command-compression/output-types";
 export { classifyShape, applyShapeCompression } from "./command-compression/shape";
 export { trimByRelevance } from "./command-compression/relevance";

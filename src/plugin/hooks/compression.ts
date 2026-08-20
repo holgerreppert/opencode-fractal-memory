@@ -3,7 +3,7 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { recordInjection } from "../../application/injection-visibility";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
-import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, type FuzzyDedupConfig } from "../../application/command-compression";
+import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, enqueueExtraction, pendingExtractionCount, type FuzzyDedupConfig } from "../../application/command-compression";
 import { stashOriginal } from "../../application/tool-compression";
 import {
   DEDUP_CACHE, DELTA_CACHE, contentSnippet, contentPreview, offloadOutput, offloadPathFor,
@@ -115,15 +115,24 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
 
       let compressed = compressCommandOutput(cmd, raw, failed, compressConfig, intentTerms.length > 0 ? intentTerms : undefined);
 
-      // Try Ollama extraction as last-resort when sync strategies don't match
+      // Try Ollama extraction as last-resort when sync strategies don't match.
+      // When deferToIdle is on (default), DON'T block the tool loop on a slow
+      // model load — enqueue and let the session.idle drain run it with a long
+      // timeout, caching the result so repeat outputs compress instantly.
       if (!compressed && compressConfig?.ollamaExtraction?.enabled) {
-        try {
-          const extracted = await ollamaExtract(raw, cmd, compressConfig.ollamaExtraction);
-          if (extracted) {
-            compressed = { output: extracted, strategy: "ollama-extract" };
+        const extConfig = compressConfig.ollamaExtraction;
+        if (extConfig.deferToIdle !== false) {
+          enqueueExtraction({ sessionId: input.sessionID ?? "unknown", output: raw, command: cmd }, extConfig.maxQueueSize);
+          trace("deferred-to-idle", { queue: pendingExtractionCount() });
+        } else {
+          try {
+            const extracted = await ollamaExtract(raw, cmd, extConfig);
+            if (extracted) {
+              compressed = { output: extracted, strategy: "ollama-extract" };
+            }
+          } catch {
+            // Best-effort — fall through to no compression
           }
-        } catch {
-          // Best-effort — fall through to no compression
         }
       }
 
