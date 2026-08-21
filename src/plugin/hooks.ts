@@ -25,6 +25,7 @@ import { createToolBeforeGuardHandler } from "./hooks/tool-before-guard";
 import { createContextCompressTransformHandler } from "./hooks/context-compress-transform";
 import { createTextCompleteHandler } from "./hooks/text-complete";
 import type { HookHandler } from "./hooks/types";
+import { runToolResultPipeline, wrapHookHandlerAsTransformer, type ToolResultTransformer } from "./tool-result-pipeline";
 
 const TURN_COUNTERS = new Map<string, number>();
 
@@ -47,30 +48,71 @@ export function createHookHandlers(
 ) {
   const toolBeforeGuard = createToolBeforeGuardHandler();
 
+  const dedupHandler = createToolDedupHandler(memConfig);
+  const errorPruneHandler = createErrorPruneHandler(memConfig);
+  const recordingHandler = createRecordingHandler(store, memConfig);
+  const workingCacheHandler = createWorkingCacheHandler(store);
+  const compressionHandler = createCompressionHandler(store, memConfig);
+  const nonBashCompressionHandler = createNonBashCompressionHandler();
+  const reReadHandler = createReReadEliminationHandler(memConfig);
+  const adaptivePressureHandler = createAdaptivePressureHandler(memConfig);
+  const seedRulesHandler = createSeedRulesHandler(store, memConfig, ruleCache, ruleCacheDirty, sessionInjectionLock);
+  const compactionHandler = createCompactionHandler(store, memConfig, client);
+  const eventHandler = createEventHandler(store, memConfig, client, managementServer);
+  const outputTokenHandler = createOutputTokenControlHandler(memConfig);
+  const chatParamsHandler = createChatParamsHandler(memConfig);
+  const messagesTransformHandler = createMessagesTransformHandler(store, memConfig, currentSessionId);
+  const contextCompressHandler = createContextCompressTransformHandler(store, memConfig, currentSessionId);
+  const graphRefreshHandler = createGraphRefreshHandler(memConfig);
+  const graphContextHandler = createGraphContextHandler(memConfig);
+  const graphEditCheckHandler = createGraphEditCheckHandler(memConfig);
+  const graphSearchHintHandler = createGraphSearchHintHandler(memConfig);
+  const injectionDigestHandler = createInjectionDigestHandler(store, memConfig, currentSessionId);
+  const toolDefinitionHandler = createToolDefinitionHandler();
+  const textCompleteHandler = createTextCompleteHandler();
+
   const handlers: HookHandler[] = [
-    createToolDedupHandler(memConfig),
-    createErrorPruneHandler(memConfig),
+    dedupHandler,
+    errorPruneHandler,
     toolBeforeGuard,
-    createToolDefinitionHandler(),
-    createTextCompleteHandler(),
-    createRecordingHandler(store, memConfig),
-    createWorkingCacheHandler(store),
-    createCompressionHandler(store, memConfig),
-    createNonBashCompressionHandler(),
-    createReReadEliminationHandler(memConfig),
-    createAdaptivePressureHandler(memConfig),
-    createSeedRulesHandler(store, memConfig, ruleCache, ruleCacheDirty, sessionInjectionLock),
-    createCompactionHandler(store, memConfig, client),
-    createEventHandler(store, memConfig, client, managementServer),
-    createOutputTokenControlHandler(memConfig),
-    createChatParamsHandler(memConfig),
-    createMessagesTransformHandler(store, memConfig, currentSessionId),
-    createContextCompressTransformHandler(store, memConfig, currentSessionId),
-    createGraphRefreshHandler(memConfig),
-    createGraphContextHandler(memConfig),
-    createGraphEditCheckHandler(memConfig),
-    createGraphSearchHintHandler(memConfig),
-    createInjectionDigestHandler(store, memConfig, currentSessionId),
+    toolDefinitionHandler,
+    textCompleteHandler,
+    recordingHandler,
+    workingCacheHandler,
+    compressionHandler,
+    nonBashCompressionHandler,
+    reReadHandler,
+    adaptivePressureHandler,
+    seedRulesHandler,
+    compactionHandler,
+    eventHandler,
+    outputTokenHandler,
+    chatParamsHandler,
+    messagesTransformHandler,
+    contextCompressHandler,
+    graphRefreshHandler,
+    graphContextHandler,
+    graphEditCheckHandler,
+    graphSearchHintHandler,
+    injectionDigestHandler,
+  ];
+
+  // Explicit tool-result pipeline — ordered by priority, each step logs provenance + metrics
+  const toolAfterPipeline: ToolResultTransformer[] = [
+    wrapHookHandlerAsTransformer("tool-before-guard", 5, toolBeforeGuard),
+    wrapHookHandlerAsTransformer("tool-dedup", 10, dedupHandler),
+    wrapHookHandlerAsTransformer("error-prune", 20, errorPruneHandler),
+    wrapHookHandlerAsTransformer("working-cache", 30, workingCacheHandler),
+    wrapHookHandlerAsTransformer("recording", 35, recordingHandler),
+    wrapHookHandlerAsTransformer("re-read-elimination", 40, reReadHandler),
+    wrapHookHandlerAsTransformer("compression", 50, compressionHandler),
+    wrapHookHandlerAsTransformer("non-bash-compression", 51, nonBashCompressionHandler),
+    wrapHookHandlerAsTransformer("adaptive-pressure", 60, adaptivePressureHandler),
+    wrapHookHandlerAsTransformer("graph-context", 70, graphContextHandler),
+    wrapHookHandlerAsTransformer("graph-search-hint", 71, graphSearchHintHandler),
+    wrapHookHandlerAsTransformer("graph-edit-check", 72, graphEditCheckHandler),
+    wrapHookHandlerAsTransformer("graph-refresh", 73, graphRefreshHandler),
+    wrapHookHandlerAsTransformer("injection-digest", 80, injectionDigestHandler),
   ];
 
   async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {
@@ -123,7 +165,30 @@ export function createHookHandlers(
           memLog("error", "live-capture", "Failed to capture tool call", { error: String(e) });
         }
       }
-      await callHooks("tool.after", input, output);
+      // Explicit pipeline — ordered, typed, with provenance + per-transform metrics
+      const raw: import("./tool-result-pipeline").ToolResult = {
+        tool: (inp?.tool as string) ?? "unknown",
+        ...(inp?.sessionID !== undefined ? { sessionID: inp.sessionID } : {}),
+        ...(inp?.args !== undefined ? { args: inp.args } : {}),
+        ...((out as { output?: string })?.output !== undefined ? { output: (out as { output: string }).output } : {}),
+        ...((out as { title?: string })?.title !== undefined ? { title: (out as { title: string }).title } : {}),
+        ...((out as { metadata?: Record<string, unknown> })?.metadata !== undefined ? { metadata: (out as { metadata: Record<string, unknown> }).metadata } : {}),
+      }
+      const result = await runToolResultPipeline(raw, toolAfterPipeline)
+      // copy pipeline result back to opencode's output object
+      const cur = result.current
+      if (out && typeof out === "object") {
+        const o = out as Record<string, unknown>
+        o["output"] = cur.output
+        if (cur.title !== undefined) o["title"] = cur.title
+        if (cur.metadata !== undefined) o["metadata"] = cur.metadata
+        // attach provenance for management live feed / debugging
+        o["__pipelineProvenance"] = result.provenance
+      }
+      memLog("info", "hooks", "tool.after pipeline finished", {
+        tool: raw.tool,
+        provenance: result.provenance.map((r) => `${r.name}:${r.applied ? "ok" : "skip"}:${r.durationMs}ms`).join(","),
+      })
     },
     "tool.definition": (input: unknown, output: unknown) =>
       callHooks("tool.definition", input, output),
