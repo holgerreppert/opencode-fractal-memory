@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { memLog } from "../logging";
+import { scopeDbPath } from "../infrastructure/db/DbProvider";
 export {
   getProjectDir, getProjectName, getConfigDir, getBackupDir,
   getBackupSources, formatSize,
@@ -77,10 +78,6 @@ interface NodeLike {
   verificationCount: number | null;
   lastAccessed: Date | null;
   source: string | null;
-}
-
-function getDbPath(): string {
-  return path.join(os.homedir(), ".config", "opencode", "memory.db");
 }
 
 export const MIME_TYPES: Record<string, string> = {
@@ -170,7 +167,7 @@ export function extractLinks(nodes: NodeLike[]) {
 }
 
 export function getAvailableScopes(): Array<{ scope: string; path: string }> {
-  const dbPath = getDbPath();
+  const dbPath = scopeDbPath(os.homedir(), "global");
   if (!fs.existsSync(dbPath)) return [];
   return [
     { scope: "global", path: dbPath },

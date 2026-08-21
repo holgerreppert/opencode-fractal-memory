@@ -3,6 +3,7 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
+import { getLatestPressureSync } from "./storage/sync-pressure"
 
 const CONTEXT_LIMIT = 128000
 
@@ -36,25 +37,7 @@ function getMgmt() {
 }
 
 function getPressure(): { pressure_pct: number; total_tokens: number; timestamp: number; session_id: string } | null {
-  const dbPath = path.join(os.homedir(), ".config", "opencode", "memory.db")
-  try {
-    if (!fs.existsSync(dbPath)) return null
-    // non-HTTP: direct sqlite read via bun:sqlite
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Database } = require("bun:sqlite") as { Database: new (p: string, o?: unknown) => { query: (s: string) => { get: () => unknown }; close: () => void } }
-    const db = new Database(dbPath, { readonly: true })
-    try {
-      const row = db
-        .query("SELECT pressure_pct, total_tokens, timestamp, session_id FROM context_pressure ORDER BY timestamp DESC LIMIT 1")
-        .get() as { pressure_pct: number; total_tokens: number; timestamp: number; session_id: string } | null
-      if (!row) return null
-      return row
-    } finally {
-      try { db.close() } catch {}
-    }
-  } catch {
-    return null
-  }
+  return getLatestPressureSync()
 }
 
 function bar(pct: number, width = 10): string {
