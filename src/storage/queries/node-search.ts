@@ -13,7 +13,8 @@ export function querySearchText(db: Database, scope: MemoryScope, query: string,
   const rows = db.query(`
     SELECT id, scope, label, content, summary, level, parent_ids, embedding_blob, embedding_segments, created_at, updated_at,
            importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at,
-           confidence, last_verified, verification_count, usefulness_score, times_used, times_helpful, project_name
+           confidence, last_verified, verification_count, usefulness_score, times_used, times_helpful, project_name,
+           derived_from, derivation, status, valid_from, valid_until, supersedes_id, content_hash
     FROM memory_nodes
     WHERE scope = ? AND (LOWER(label) LIKE ? OR LOWER(content) LIKE ?) ${projectClause}
     ORDER BY importance DESC
@@ -33,6 +34,7 @@ export function querySearchBM25(db: Database, scope: MemoryScope, terms: string[
            n.created_at, n.updated_at, n.importance, n.access_count, n.last_accessed,
            n.type, n.category, n.supertype, n.domain, n.tags, n.source, n.metadata, n.sticky, n.ttl_days, n.expires_at,
            n.confidence, n.last_verified, n.verification_count, n.usefulness_score, n.times_used, n.times_helpful, n.project_name,
+           n.derived_from, n.derivation, n.status, n.valid_from, n.valid_until, n.supersedes_id, n.content_hash,
            COALESCE(SUM(b.frequency), 0) as bm25_score
     FROM memory_nodes n
     INNER JOIN bm25_index b ON n.id = b.node_id

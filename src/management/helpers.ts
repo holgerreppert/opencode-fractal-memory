@@ -78,6 +78,8 @@ interface NodeLike {
   verificationCount: number | null;
   lastAccessed: Date | null;
   source: string | null;
+  status: string | null;
+  supersedesId: string | null;
 }
 
 export const MIME_TYPES: Record<string, string> = {
@@ -229,6 +231,7 @@ export interface StatsResult {
   nodesPerSupertype: Record<string, number>;
   nodesPerDomain: Record<string, number>;
   nodesPerSource: Record<string, number>;
+  nodesPerStatus: Record<string, number>;
   tagsFrequency: Record<string, number>;
   confidenceHistogram: Record<string, number>;
   stratumBreakdown: Record<string, number>;
@@ -258,6 +261,7 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
   const nodesPerSupertype: Record<string, number> = {};
   const nodesPerDomain: Record<string, number> = {};
   const nodesPerSource: Record<string, number> = {};
+  const nodesPerStatus: Record<string, number> = {};
   const tagsFrequency: Record<string, number> = {};
   const confidenceHistogram: Record<string, number> = {};
   const stratumBreakdown: Record<string, number> = {};
@@ -286,6 +290,8 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
     nodesPerDomain[domainKey] = (nodesPerDomain[domainKey] ?? 0) + 1;
     const sourceKey = node.source || "auto";
     nodesPerSource[sourceKey] = (nodesPerSource[sourceKey] ?? 0) + 1;
+    const statusKey = node.status || "active";
+    nodesPerStatus[statusKey] = (nodesPerStatus[statusKey] ?? 0) + 1;
     if (node.tags) {
       for (const tag of node.tags) {
         tagsFrequency[tag] = (tagsFrequency[tag] ?? 0) + 1;
@@ -314,6 +320,7 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
     nodesPerSupertype,
     nodesPerDomain,
     nodesPerSource,
+    nodesPerStatus,
     tagsFrequency,
     confidenceHistogram,
     stratumBreakdown,

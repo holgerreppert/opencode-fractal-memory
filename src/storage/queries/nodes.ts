@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import type { SqliteNode } from "./base";
 import { embeddingToBlob, rowToNode } from "./base";
 import type { MemoryScope, MemoryNodeLevel, MemoryNode, MemoryCategory, CreateNodeInput } from "../types";
 import { getHNSWIndex } from "../../infrastructure/vector/hnsw-index";
 import { z } from "zod";
+import { memLog } from "../../logging";
 import {
   resolveNodeCategory, resolveNodeSupertype, resolveNodeDomain,
   autoGenerateMetadata, validateLabel,
@@ -35,6 +36,13 @@ const CreateNodeSchema = z.object({
   timesHelpful: z.number().int().min(0).optional(),
   domain: z.string().nullable().optional(),
   projectName: z.string().nullable().optional(),
+  derivedFrom: z.array(z.string()).nullable().optional(),
+  derivation: z.string().nullable().optional(),
+  status: z.enum(["active", "proposed", "superseded"]).nullable().optional(),
+  validFrom: z.number().nullable().optional(),
+  validUntil: z.number().nullable().optional(),
+  supersedesId: z.string().nullable().optional(),
+  contentHash: z.string().nullable().optional(),
 });
 
 export function queryListProjectNames(db: Database, scope: MemoryScope): string[] {
@@ -80,6 +88,8 @@ export async function queryListNodes(
     conditions.push("(expires_at IS NULL OR expires_at > ?)");
     params.push(Date.now());
   }
+  // Exclude superseded nodes by default (provenance lifecycle)
+  conditions.push("(status IS NULL OR status != 'superseded')");
   
   if (conditions.length > 0) {
     query += " WHERE " + conditions.join(" AND ");
@@ -162,9 +172,16 @@ export async function queryCreateNode(
   const timesHelpful = node.timesHelpful ?? 0;
   const resolvedMetadata = node.metadata ?? autoGenerateMetadata(node.type ?? null);
   const resolvedTags = node.tags !== undefined ? node.tags : (resolvedMetadata?.tags as string[] | undefined) ?? null;
+  const derivedFrom = node.derivedFrom ?? null;
+  const derivation = node.derivation ?? null;
+  const status = node.status ?? "active";
+  const validFrom = node.validFrom ? (node.validFrom instanceof Date ? node.validFrom.getTime() : node.validFrom) : now;
+  const validUntil = node.validUntil ? (node.validUntil instanceof Date ? node.validUntil.getTime() : node.validUntil) : null;
+  const supersedesId = node.supersedesId ?? null;
+  const contentHash = node.contentHash ?? createHash("sha256").update(node.content).digest("hex");
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name, derived_from, derivation, status, valid_from, valid_until, supersedes_id, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
@@ -183,7 +200,7 @@ export async function queryCreateNode(
       null,
       node.type ?? null,
       resolvedCategory,
-resolvedSupertype,
+      resolvedSupertype,
       resolvedDomain,
       resolvedTags ? JSON.stringify(resolvedTags) : null,
       node.source ?? null,
@@ -197,8 +214,35 @@ resolvedSupertype,
       timesUsed,
       timesHelpful,
       node.projectName ?? null,
+      derivedFrom ? JSON.stringify(derivedFrom) : null,
+      derivation,
+      status,
+      validFrom,
+      validUntil,
+      supersedesId,
+      contentHash,
     ],
   );
+
+  // Contradiction / supersession: for fact/decision/knowledge with same label, overlapping tags → mark older active as superseded
+  if (node.label && ["fact", "decision", "knowledge", "convention", "lesson"].includes(node.type ?? "")) {
+    try {
+      const existing = db.query("SELECT id, tags FROM memory_nodes WHERE label = ? AND scope = ? AND status = 'active' AND id != ?").all(node.label, node.scope, id) as Array<{ id: string; tags: string | null }>;
+      for (const row of existing) {
+        const oldTags: string[] = row.tags ? JSON.parse(row.tags) : [];
+        const newTags: string[] = resolvedTags ?? [];
+        const overlap = newTags.length === 0 || oldTags.length === 0 ? false : newTags.some(t => oldTags.includes(t));
+        // supersede if tags overlap or both have no tags but same label+type
+        if (overlap || (resolvedTags === null && row.tags === null)) {
+          db.run("UPDATE memory_nodes SET status = 'superseded', valid_until = ? WHERE id = ?", [now, row.id]);
+          db.run("UPDATE memory_nodes SET supersedes_id = ? WHERE id = ?", [row.id, id]);
+          memLog("info", "provenance", "superseded", { oldId: row.id, newId: id, label: node.label, type: node.type });
+        }
+      }
+    } catch (e) {
+      memLog("warn", "provenance", "supersession check failed", { error: e instanceof Error ? e.message : String(e) });
+    }
+  }
 
   // Store links
   await storeLinks(node.scope, id, node.content);
@@ -250,6 +294,13 @@ resolvedSupertype,
     timesUsed: node.timesUsed ?? 0,
     timesHelpful: node.timesHelpful ?? 0,
     projectName: node.projectName ?? null,
+    derivedFrom: derivedFrom,
+    derivation: derivation,
+    status: status as "active" | "proposed" | "superseded",
+    validFrom: new Date(validFrom),
+    validUntil: validUntil ? new Date(validUntil) : null,
+    supersedesId: supersedesId,
+    contentHash: contentHash,
   };
 }
 
@@ -286,12 +337,19 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
   confidence: (v) => [["confidence = ?", v as number]],
   usefulnessScore: (v) => [["usefulness_score = ?", v as number]],
   timesHelpful: (v) => [["times_helpful = ?", v as number]],
+  derivedFrom: (v) => [["derived_from = ?", v ? JSON.stringify(v) : null]],
+  derivation: (v) => [["derivation = ?", v as string | null]],
+  status: (v) => [["status = ?", v as string | null]],
+  validFrom: (v) => [["valid_from = ?", v ? (v instanceof Date ? v.getTime() : v as number) : null]],
+  validUntil: (v) => [["valid_until = ?", v ? (v instanceof Date ? v.getTime() : v as number) : null]],
+  supersedesId: (v) => [["supersedes_id = ?", v as string | null]],
+  contentHash: (v) => [["content_hash = ?", v as string | null]],
 };
 
 export async function queryUpdateNode(
   db: Database,
   id: string,
-  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>
+  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful" | "derivedFrom" | "derivation" | "status" | "validFrom" | "validUntil" | "supersedesId" | "contentHash">>
 ): Promise<void> {
   const setClauses: string[] = ["updated_at = ?"];
   const params: (string | number | Buffer | null)[] = [Date.now()];

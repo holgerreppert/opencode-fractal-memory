@@ -683,4 +683,28 @@ export const MIGRATIONS: Migration[] = [
       db.run("CREATE INDEX IF NOT EXISTS idx_pressure_ts ON context_pressure(timestamp)");
     },
   },
+  {
+    version: 35,
+    name: "add-provenance-supersession",
+    up: (db) => {
+      const addCol = (col: string, def: string): void => {
+        try {
+          const info = db.query("PRAGMA table_info(memory_nodes)").all() as { name: string }[];
+          const exists = new Set(info.map(c => c.name)).has(col);
+          if (!exists) db.run(`ALTER TABLE memory_nodes ADD COLUMN ${col} ${def}`);
+        } catch { /* ignore */ }
+      };
+      addCol("derived_from", "TEXT");
+      addCol("derivation", "TEXT");
+      addCol("status", "TEXT DEFAULT 'active'");
+      addCol("valid_from", "INTEGER");
+      addCol("valid_until", "INTEGER");
+      addCol("supersedes_id", "TEXT");
+      addCol("content_hash", "TEXT");
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_status ON memory_nodes(status)"); } catch { /* ignore */ }
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_supersedes ON memory_nodes(supersedes_id)"); } catch { /* ignore */ }
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_content_hash ON memory_nodes(content_hash)"); } catch { /* ignore */ }
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_valid_until ON memory_nodes(valid_until)"); } catch { /* ignore */ }
+    },
+  },
 ];

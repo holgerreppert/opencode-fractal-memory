@@ -26,7 +26,7 @@ function matchesTagsFilter(nodeTags: string[] | null, tagsFilter: string[] | und
 // content is materialized into node objects. Kept in sync with isDumpNode.
 // COALESCE guards NULL type/label (NULL = 'x' is NULL, and NOT NULL = NULL
 // would silently exclude every row without a type/label).
-const DUMP_EXCLUSION_SQL = "AND NOT (COALESCE(type,'') IN ('storedcontext','contexthistory') OR COALESCE(label,'') LIKE 'middle-term:%' OR COALESCE(label,'') LIKE '[history]%')";
+const DUMP_EXCLUSION_SQL = "AND NOT (COALESCE(type,'') IN ('storedcontext','contexthistory') OR COALESCE(label,'') LIKE 'middle-term:%' OR COALESCE(label,'') LIKE '[history]%') AND (status IS NULL OR status != 'superseded')";
 
 const ALL_EDGE_TYPES = ["NEXT", "DURING_SESSION", "CAUSAL", "REFERENCES", "RELATED_TO"];
 
