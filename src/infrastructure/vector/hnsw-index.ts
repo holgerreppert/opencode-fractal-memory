@@ -298,12 +298,21 @@ export function persistHNSWIndex(): boolean {
     const dir = path.dirname(PERSIST_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const json = JSON.stringify(state);
-    fs.writeFileSync(PERSIST_PATH, json, "utf-8");
+    const tmpPath = `${PERSIST_PATH}.tmp.${process.pid}`;
+    fs.writeFileSync(tmpPath, json, "utf-8");
+    fs.renameSync(tmpPath, PERSIST_PATH);
     const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
-    memLog("info", "hnsw", "HNSW index persisted", { bytes: json.length, path: PERSIST_PATH, rssMB: rss });
+    memLog("info", "hnsw", "HNSW index persisted atomically", { bytes: json.length, path: PERSIST_PATH, rssMB: rss });
+    // update index_state revision (best-effort, no DB dependency here)
+    try {
+      const hash = json.length.toString();
+      // lazy: if DB available later, index_state will be synced via sqlite store
+      (globalThis as unknown as { __indexStateUpdate?: (hash: string, count: number) => void }).__indexStateUpdate?.(hash, state.globalNodes.length + state.projectNodes.length);
+    } catch { /* ignore */ }
     return true;
   } catch (e) {
     memLog("error", "hnsw", "Failed to persist HNSW index", { error: String(e) });
+    try { if (fs.existsSync(`${PERSIST_PATH}.tmp.${process.pid}`)) fs.unlinkSync(`${PERSIST_PATH}.tmp.${process.pid}`); } catch { /* ignore */ }
     return false;
   }
 }
