@@ -287,6 +287,12 @@ export class HNSWIndex {
 
 const PERSIST_PATH = path.join(os.homedir(), ".config", "opencode", "hnsw-index.json");
 
+type HnswStateUpdater = (hash: string, globalCount: number, projectCount: number) => void;
+let hnswIndexStateUpdater: HnswStateUpdater | null = null;
+export function setHnswIndexStateUpdater(fn: HnswStateUpdater | null): void {
+  hnswIndexStateUpdater = fn;
+}
+
 export function persistHNSWIndex(): boolean {
   const idx = hnswInstance;
   if (!idx) {
@@ -298,12 +304,19 @@ export function persistHNSWIndex(): boolean {
     const dir = path.dirname(PERSIST_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const json = JSON.stringify(state);
-    fs.writeFileSync(PERSIST_PATH, json, "utf-8");
+    const tmpPath = `${PERSIST_PATH}.tmp.${process.pid}`;
+    fs.writeFileSync(tmpPath, json, "utf-8");
+    fs.renameSync(tmpPath, PERSIST_PATH);
     const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
-    memLog("info", "hnsw", "HNSW index persisted", { bytes: json.length, path: PERSIST_PATH, rssMB: rss });
+    memLog("info", "hnsw", "HNSW index persisted atomically", { bytes: json.length, path: PERSIST_PATH, rssMB: rss });
+    try {
+      const hash = String(json.length);
+      hnswIndexStateUpdater?.(hash, state.globalNodes.length, state.projectNodes.length);
+    } catch { /* ignore updater */ }
     return true;
   } catch (e) {
     memLog("error", "hnsw", "Failed to persist HNSW index", { error: String(e) });
+    try { if (fs.existsSync(`${PERSIST_PATH}.tmp.${process.pid}`)) fs.unlinkSync(`${PERSIST_PATH}.tmp.${process.pid}`); } catch { /* ignore */ }
     return false;
   }
 }

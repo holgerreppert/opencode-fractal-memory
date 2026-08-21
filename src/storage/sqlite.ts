@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { Database } from "bun:sqlite";
-import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
+import { getHNSWIndex, setHnswIndexStateUpdater } from "../infrastructure/vector/hnsw-index";
 import { DbProvider } from "../infrastructure/db/DbProvider";
 import { migrateFromProjectDb } from "./project-db-migration";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
@@ -69,6 +69,28 @@ class SqliteMemoryStore implements MemoryStore {
     this.configStore = deps.configStore;
     this.injectionStore = deps.injectionStore;
     this.liveFeedStore = deps.liveFeedStore;
+
+    // wire HNSW persist → index_state manifest (v36) — replaces globalThis hack
+    const provider = this.dbProvider;
+    setHnswIndexStateUpdater((hash, globalCount, projectCount) => {
+      void (async () => {
+        try {
+          const now = Date.now();
+          const counts: Record<string, number> = { global: globalCount, project: projectCount };
+          for (const scope of ["global", "project"] as const) {
+            const db = await provider.getDb(scope);
+            const existing = db.query("SELECT revision FROM index_state WHERE scope = ? AND index_type = ?").get(scope, "hnsw") as { revision: number } | null;
+            const nextRev = (existing?.revision ?? 0) + 1;
+            db.run(
+              `INSERT INTO index_state (scope, index_type, revision, node_count, hash, updated_at)
+               VALUES (?, 'hnsw', ?, ?, ?, ?)
+               ON CONFLICT(scope, index_type) DO UPDATE SET revision = excluded.revision, node_count = excluded.node_count, hash = excluded.hash, updated_at = excluded.updated_at`,
+              [scope, nextRev, counts[scope] ?? 0, hash, now]
+            );
+          }
+        } catch { /* best-effort manifest update */ }
+      })();
+    });
   }
 
   private async getDb(scope?: MemoryScope): Promise<Database> {

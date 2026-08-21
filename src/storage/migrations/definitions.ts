@@ -707,4 +707,22 @@ export const MIGRATIONS: Migration[] = [
       try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_valid_until ON memory_nodes(valid_until)"); } catch { /* ignore */ }
     },
   },
+  {
+    version: 36,
+    name: "add-index-state",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS index_state (
+          scope TEXT NOT NULL,
+          index_type TEXT NOT NULL,
+          revision INT NOT NULL DEFAULT 0,
+          node_count INT NOT NULL DEFAULT 0,
+          hash TEXT,
+          updated_at INT NOT NULL,
+          PRIMARY KEY (scope, index_type)
+        )
+      `);
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_index_state_type ON index_state(index_type)"); } catch { /* ignore */ }
+    },
+  },
 ];

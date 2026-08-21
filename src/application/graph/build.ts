@@ -171,27 +171,31 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
   trackBackgroundBuild("ensureBackgroundGraph");
   memLog("info", "graph", "ensureBackgroundGraph start", { hasGraph: !!backgroundGraph, rssMB: rssMB() });
   if (backgroundGraph) {
+    // temp-swap: clone → incremental on clone → atomic swap only on success (no partial mutation)
     try {
-      const result = incrementalBuildGraph(backgroundGraph, root, maxFiles);
-      memLog("info", "graph", "Background incremental build", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
+      const clone = CodeGraph.fromJSON(backgroundGraph.toJSON());
+      const result = incrementalBuildGraph(clone, root, maxFiles);
+      backgroundGraph = clone;
+      activeGraph = clone;
+      memLog("info", "graph", "Background incremental build (temp-swap)", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
     } catch {
-      // incremental build failed — fall back to full rebuild
+      // incremental build failed — keep existing graph, no partial mutation (temp discarded)
     }
     return;
   }
   const cached = loadGraphCache(root);
   if (cached) {
-    backgroundGraph = cached;
-    activeGraph = cached;
+    // temp-swap from cache: incremental on clone, swap only on success
     try {
-      const result = incrementalBuildGraph(cached, root, maxFiles);
-      memLog("info", "graph", "Background build from cache", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
+      const clone = CodeGraph.fromJSON(cached.toJSON());
+      const result = incrementalBuildGraph(clone, root, maxFiles);
+      backgroundGraph = clone;
+      activeGraph = clone;
+      memLog("info", "graph", "Background build from cache (temp-swap)", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
+      return;
     } catch {
-      // cached incremental build failed — fall back to full rebuild
-      backgroundGraph = null;
-      activeGraph = null;
+      // cached incremental build failed — fall back to full rebuild (no assignment)
     }
-    if (backgroundGraph) return;
   }
   if (backgroundBuildPromise) return;
   backgroundBuildPromise = (async () => {
