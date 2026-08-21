@@ -288,13 +288,31 @@ export async function searchByEmbedding(
     }
   }
 
-  // Unified scoring: feature-weighted linear model (or RRF when rrfK is set), recency tiebreak only
-  let finalNodes = toRankedNodes(rankCandidates(candidates, {
+  // Unified scoring: feature-weighted linear model (or RRF when rrfK is set), recency tiebreak only + provenance trace
+  const ranked = rankCandidates(candidates, {
     weights,
     levelWeights: options?.levelWeights,
     intent: options?.intent,
     rrfK: options?.rrfK,
-  }));
+    // MMR diversity when limit suggests top-10 injection (prevents >2 nodes from same project/session)
+    mmrLambda: limit >= 10 && candidates.length > limit ? 0.3 : undefined,
+    mmrMaxResults: limit >= 10 && candidates.length > limit ? limit : undefined,
+  })
+  // Log trace for live feed / debug (components include features+weights+intent/level multipliers)
+  if (ranked.length > 0) {
+    memLog("info", "search", "ranking trace", {
+      query: queryText?.slice(0, 120) ?? null,
+      candidates: candidates.length,
+      top: ranked.slice(0, 3).map(r => ({
+        id: r.node.id,
+        label: r.node.label,
+        importance: r.importance,
+        features: r.features,
+        components: r.components,
+      })),
+    })
+  }
+  let finalNodes = toRankedNodes(ranked);
 
   // Multi-hop temporal expansion: expand top candidates along temporal edges with score decay
   const temporalHops = options?.temporalBoost?.boostFactor !== undefined ? 1 : (options?.temporalHops ?? 0);

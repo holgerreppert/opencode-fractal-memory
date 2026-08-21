@@ -5,6 +5,8 @@ import type { RankWeights } from "./weights";
 import { DEFAULT_RANK_WEIGHTS } from "./weights";
 import { computeIntentWeight } from "./intent";
 import { computeRecencyScore } from "../../storage/queries/search-helpers";
+import { cosineSimilarity } from "../../math";
+import { memLog } from "../../logging";
 
 export interface RankCandidate {
   node: MemoryNode;
@@ -22,6 +24,18 @@ export interface RankOptions {
   intent?: SearchIntent | undefined;
   recencyRole?: "tiebreak" | "off" | undefined;
   recencyAnchor?: (node: MemoryNode) => Date | null | undefined;
+  /** MMR lambda in [0,1] — when set, results are re-ordered by MMR diversity: score = relevance - lambda * maxSimilarity */
+  mmrLambda?: number | undefined;
+  mmrMaxResults?: number | undefined;
+}
+
+export interface RankComponents {
+  features: RankFeatures;
+  weights: RankWeights;
+  rawScore: number;
+  intentWeight: number;
+  levelWeight: number;
+  contextual: number;
 }
 
 export interface RankedResult {
@@ -29,6 +43,7 @@ export interface RankedResult {
   features: RankFeatures;
   rawScore: number;
   importance: number;
+  components: RankComponents;
 }
 
 /**
@@ -65,12 +80,21 @@ export function rankCandidates(candidates: RankCandidate[], options: RankOptions
     const intentWeight = computeIntentWeight(options.intent, node.category, node.type, node.supertype);
     const levelWeight = levelWeights[(node.level ?? 0) as MemoryNodeLevel] ?? 1;
     const contextual = rawScore * intentWeight * levelWeight;
+    const importance = normalizeFusedScore(contextual, weights);
 
     return {
       node,
       features,
       rawScore,
-      importance: normalizeFusedScore(contextual, weights),
+      importance,
+      components: {
+        features,
+        weights,
+        rawScore,
+        intentWeight,
+        levelWeight,
+        contextual,
+      },
     };
   });
 
@@ -80,6 +104,22 @@ export function rankCandidates(candidates: RankCandidate[], options: RankOptions
     if (recencyRole === "off") return 0;
     return computeRecencyScore(recencyAnchor(b.node) ?? null) - computeRecencyScore(recencyAnchor(a.node) ?? null);
   });
+
+  if (ranked.length > 0) {
+    const top = ranked[0]!
+    memLog("info", "ranking", "rankCandidates", {
+      candidates: candidates.length,
+      topId: top.node.id,
+      topImportance: top.importance,
+      topFeatures: top.features,
+      intent: options.intent ?? null,
+    })
+  }
+
+  if (options.mmrLambda !== undefined && ranked.length > 1) {
+    const maxResults = options.mmrMaxResults ?? ranked.length
+    return selectWithMMR(ranked, maxResults, options.mmrLambda)
+  }
 
   return ranked;
 }
@@ -132,6 +172,7 @@ function rankByRRF(candidates: RankCandidate[], options: RankOptions): RankedRes
   const recencyAnchor = options.recencyAnchor ?? ((node: MemoryNode): Date | null =>
     (node.level ?? 0) >= 1 ? node.createdAt : node.lastAccessed);
 
+  const weights = DEFAULT_RANK_WEIGHTS;
   const results: RankedResult[] = rrfScores.map(({ candidate, rrfScore }) => {
     const normalized = range > 0 ? (rrfScore - minScore) / range : 1.0;
     const recencyScore = recencyRole === "off" ? 1.0 : computeRecencyScore(recencyAnchor(candidate.node) ?? null);
@@ -141,14 +182,78 @@ function rankByRRF(candidates: RankCandidate[], options: RankOptions): RankedRes
       featuresByNode.set(candidate.node.id, features);
     }
     const importance = normalized * (0.3 + 0.7 * recencyScore);
+    const rawScore = rrfScore;
     return {
       node: candidate.node,
       features,
-      rawScore: rrfScore,
+      rawScore,
       importance,
+      components: {
+        features,
+        weights,
+        rawScore,
+        intentWeight: 1,
+        levelWeight: 1,
+        contextual: rrfScore,
+      },
     };
   });
 
   results.sort((a, b) => b.importance - a.importance);
+  if (options.mmrLambda !== undefined && results.length > 1) {
+    const maxResults = options.mmrMaxResults ?? results.length
+    return selectWithMMR(results, maxResults, options.mmrLambda)
+  }
   return results;
+}
+
+function embeddingSimilarity(a: MemoryNode, b: MemoryNode): number {
+  const ea = (a as unknown as { embedding?: number[] }).embedding
+  const eb = (b as unknown as { embedding?: number[] }).embedding
+  if (ea && eb && ea.length > 0 && eb.length === ea.length) {
+    try {
+      return Math.max(0, cosineSimilarity(ea, eb))
+    } catch { /* ignore */ }
+  }
+  // Fallback: same projectName penalty
+  if (a.projectName && b.projectName && a.projectName === b.projectName) return 0.5
+  if (a.type && b.type && a.type === b.type && a.label === b.label) return 0.9
+  return 0
+}
+
+export function selectWithMMR(ranked: RankedResult[], maxResults: number, lambda: number): RankedResult[] {
+  const lam = Math.min(1, Math.max(0, lambda))
+  if (lam === 0 || ranked.length <= 1 || maxResults >= ranked.length) {
+    if (maxResults < ranked.length) return ranked.slice(0, maxResults)
+    return ranked
+  }
+  const selected: RankedResult[] = []
+  const remaining = [...ranked]
+  // seed with most relevant
+  selected.push(remaining.shift()!)
+  while (selected.length < maxResults && remaining.length > 0) {
+    let bestIdx = -1
+    let bestScore = -Infinity
+    for (let i = 0; i < remaining.length; i++) {
+      const cand = remaining[i]!
+      const relevance = cand.importance
+      let maxSim = 0
+      for (const s of selected) {
+        const sim = embeddingSimilarity(cand.node, s.node)
+        if (sim > maxSim) maxSim = sim
+      }
+      // session/project diversity: penalize if already >1 from same project
+      const sameProjectCount = selected.filter(s => s.node.projectName && cand.node.projectName && s.node.projectName === cand.node.projectName).length
+      if (sameProjectCount >= 2) maxSim = Math.max(maxSim, 0.7)
+      const mmrScore = relevance - lam * maxSim
+      if (mmrScore > bestScore) {
+        bestScore = mmrScore
+        bestIdx = i
+      }
+    }
+    if (bestIdx >= 0) selected.push(remaining.splice(bestIdx, 1)[0]!)
+    else break
+  }
+  memLog("info", "ranking", "MMR selection", { lambda: lam, before: ranked.length, after: selected.length })
+  return selected
 }
