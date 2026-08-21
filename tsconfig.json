@@ -19,7 +19,9 @@
     "noImplicitOverride": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "types": ["node", "js-yaml", "bun"]
+    "types": ["node", "js-yaml", "bun"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/solid"
   },
   "include": ["src"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
