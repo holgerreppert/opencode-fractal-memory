@@ -1898,6 +1898,29 @@ function showDetailPanel(node) {
     `;
   }
 
+  let provenanceHtml = "";
+  {
+    const status = node.status || "active";
+    const statusColor = status === "active" ? "#22c55e" : status === "proposed" ? "#eab308" : status === "superseded" ? "#ef4444" : "#888";
+    const hasProvenance = node.derivedFrom || node.derivation || node.supersedesId || node.contentHash || node.validFrom || node.validUntil || status !== "active";
+    if (hasProvenance) {
+      const validFromStr = node.validFrom ? new Date(node.validFrom).toLocaleString() : "—";
+      const validUntilStr = node.validUntil ? new Date(node.validUntil).toLocaleString() : "∞";
+      provenanceHtml = `
+        <div class="detail-section">
+          <h4>Provenance</h4>
+          <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" style="color:${statusColor};font-weight:600;text-transform:capitalize;">${escapeHtml(status)}</span></div>
+          ${node.derivation ? `<div class="stat-row"><span class="stat-label">Derivation</span><span class="stat-value" style="font-family:monospace;font-size:11px;">${escapeHtml(node.derivation)}</span></div>` : ""}
+          ${node.derivedFrom && node.derivedFrom.length ? `<div class="stat-row"><span class="stat-label">Derived From</span><span class="stat-value" style="font-family:monospace;font-size:11px;">${node.derivedFrom.map(escapeHtml).join(", ")}</span></div>` : ""}
+          ${node.supersedesId ? `<div class="stat-row"><span class="stat-label">Supersedes</span><span class="stat-value" style="font-family:monospace;font-size:11px;">${escapeHtml(node.supersedesId)}</span></div>` : ""}
+          ${node.contentHash ? `<div class="stat-row"><span class="stat-label">Content Hash</span><span class="stat-value" style="font-family:monospace;font-size:11px;">${escapeHtml(node.contentHash.slice(0,12))}…</span></div>` : ""}
+          <div class="stat-row"><span class="stat-label">Valid From</span><span class="stat-value">${escapeHtml(validFromStr)}</span></div>
+          <div class="stat-row"><span class="stat-label">Valid Until</span><span class="stat-value">${escapeHtml(validUntilStr)}</span></div>
+        </div>
+      `;
+    }
+  }
+
   const dotButtonHtml = node.type === "dot"
     ? `<button class="dot-open-btn" id="open-dot-btn">◈ Open Diagram</button>`
     : "";
@@ -1941,6 +1964,7 @@ function showDetailPanel(node) {
       </div>
       <div style="margin-top: 8px;"><button class="btn btn-sm" onclick="verifyNode('${node.id}')">✓ Verify</button></div>
     </div>
+    ${provenanceHtml}
     ${metadataHtml}
     ${skillHtml}
     ${playbookHtml}
