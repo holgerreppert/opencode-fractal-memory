@@ -44,6 +44,13 @@ export type MemoryNode = {
   timesUsed: number;
   timesHelpful: number;
   projectName: string | null;
+  derivedFrom: string[] | null;
+  derivation: string | null;
+  status: "active" | "proposed" | "superseded" | null;
+  validFrom: Date | null;
+  validUntil: Date | null;
+  supersedesId: string | null;
+  contentHash: string | null;
 };
 
 export type CreateNodeInput = {
@@ -71,6 +78,13 @@ export type CreateNodeInput = {
   timesUsed?: number | undefined;
   timesHelpful?: number | undefined;
   projectName?: string | null | undefined;
+  derivedFrom?: string[] | null | undefined;
+  derivation?: string | null | undefined;
+  status?: "active" | "proposed" | "superseded" | null | undefined;
+  validFrom?: Date | null | undefined;
+  validUntil?: Date | null | undefined;
+  supersedesId?: string | null | undefined;
+  contentHash?: string | null | undefined;
 };
 
 export type TemporalEdge = {

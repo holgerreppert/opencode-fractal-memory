@@ -13,6 +13,8 @@ export function mapNode(n: {
   parentIds: string[] | null;
   metadata: Record<string, unknown> | null;
   projectName: string | null;
+  derivedFrom: string[] | null; derivation: string | null; status: string | null;
+  validFrom: Date | null; validUntil: Date | null; supersedesId: string | null; contentHash: string | null;
 }) {
   return {
     id: n.id,
@@ -39,5 +41,12 @@ export function mapNode(n: {
     parentIds: n.parentIds ? (typeof n.parentIds === "string" ? JSON.parse(n.parentIds) : n.parentIds) : null,
     metadata: n.metadata ? (typeof n.metadata === "string" ? JSON.parse(n.metadata) : n.metadata) : null,
     projectName: n.projectName ?? null,
+    derivedFrom: n.derivedFrom ?? null,
+    derivation: n.derivation ?? null,
+    status: n.status ?? "active",
+    validFrom: n.validFrom ?? null,
+    validUntil: n.validUntil ?? null,
+    supersedesId: n.supersedesId ?? null,
+    contentHash: n.contentHash ?? null,
   };
 }

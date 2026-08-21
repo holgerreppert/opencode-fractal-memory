@@ -32,6 +32,13 @@ export interface SqliteNode {
   times_used: number;
   times_helpful: number;
   project_name: string | null;
+  derived_from: string | null;
+  derivation: string | null;
+  status: string | null;
+  valid_from: number | null;
+  valid_until: number | null;
+  supersedes_id: string | null;
+  content_hash: string | null;
 }
 
 import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain } from "../../storage/types";
@@ -97,5 +104,12 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     timesUsed: row.times_used ?? 0,
     timesHelpful: row.times_helpful ?? 0,
     projectName: row.project_name ?? null,
+    derivedFrom: row.derived_from ? JSON.parse(row.derived_from) : null,
+    derivation: row.derivation ?? null,
+    status: (row.status as "active" | "proposed" | "superseded" | null) ?? "active",
+    validFrom: row.valid_from ? new Date(row.valid_from) : null,
+    validUntil: row.valid_until ? new Date(row.valid_until) : null,
+    supersedesId: row.supersedes_id ?? null,
+    contentHash: row.content_hash ?? null,
   };
 }
