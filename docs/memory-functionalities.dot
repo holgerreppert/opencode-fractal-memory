@@ -1,76 +1,147 @@
+// Key memory functionalities — opencode-fractal-memory (excl. management app & MCP)
+// Accurate to branch feat/retrieval-explain-ui (main 0e41064, schema v36).
+// Render: dot -Tsvg docs/memory-functionalities.dot -o memory-functionalities.svg
 digraph MemoryFunctionalities {
   rankdir=TB;
-  splines=polyline;
+  compound=true;
   fontname="Helvetica,Arial,sans-serif";
-  fontsize=11;
+  fontsize=12;
   bgcolor="#0d1117";
-  labeljust=l;
-  label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="16" COLOR="#58a6ff">opencode-fractal-memory — Key Memory Functionalities (excl. management &amp; MCP)</FONT></B></TD></TR><TR><TD><FONT COLOR="#8b949e">Layers: domain ports ← infrastructure ← application ← plugin (composition-root wiring)</FONT></TD></TR></TABLE>>;
-  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, fillcolor="#161b22", color="#30363d", fontcolor="#c9d1d9"];
-  edge [color="#58a6ff", penwidth=1.2];
+  label=<<b><font point-size="18" color="#58a6ff">opencode-fractal-memory — key memory functionalities</font></b><br/><font point-size="10" color="#8b949e">OpenCode events → plugin hooks → priority pipeline → application services → domain ports → storage (schema v36)</font>>;
+  node [shape=box style="rounded,filled" fillcolor="#161b22" color="#30363d" fontcolor="#c9d1d9" fontname="Helvetica" fontsize=10 margin="0.15,0.08"];
+  edge [color="#58a6ff" penwidth=1.1 fontcolor="#8b949e" fontsize=9];
 
-  subgraph cluster_domain {
-    label="Domain Ports (interfaces only)";
-    labelloc=t; color="#238636"; fontcolor="#7ee787";
-    p_memory [label="MemoryStore\n(src/domain/ports)"];
-    p_node [label="NodeRepository\nsessions/links"];
-    p_session [label="SessionTracker"];
+  /* ── OpenCode integration surface ─────────────────────────── */
+  subgraph cluster_opencode {
+    label=<<font color="#f85149"><b>OpenCode hook events</b></font>>; color="#da3633"; style=dashed; fontcolor="#f85149";
+    ev_before   [label="tool.execute.before"];
+    ev_after    [label="tool.execute.after"];
+    ev_system   [label="chat.system.transform"];
+    ev_messages [label="chat.messages.transform"];
+    ev_params   [label="chat.params"];
+    ev_compact  [label="session.compacting"];
+    ev_event    [label="event (idle/compact)"];
   }
-  subgraph cluster_infra {
-    label="Infrastructure (SQLite + ONNX + sqlite-vec)";
-    labelloc=t; color="#1f6feb"; fontcolor="#58a6ff";
-    s_sqlite [label="SQLite Store\n(memory.db, WAL)\nqueries/nodes.ts"];
-    s_fts [label="FTS5 BM25\nquerySearchBM25"];
-    s_hnsw [label="HNSW vec 384d\nsqlite-vec\npersist tmp→rename"];
-    s_index [label="index_state (v36)\nrevision/hash"];
-    s_onnx [label="ONNX gte-small\ncross-encoder"];
-    s_graph [label="CodeGraph\ntree-sitter WASM\nsubprocess batches"];
+
+  /* ── Plugin adapters: ordered tool-result pipeline ────────── */
+  subgraph cluster_pipeline {
+    label=<<font color="#d29922"><b>tool-result pipeline — priority order (tool-result-pipeline.ts)</b></font>>; color="#bb8009"; fontcolor="#d29922";
+    guard     [label="tool-before-guard ·5"];
+    dedup     [label="tool-dedup ·10"];
+    errprune  [label="error-prune ·20"];
+    wcache    [label="working-cache ·30"];
+    recording [label="recording ·35"];
+    reread    [label="re-read elimination ·40"];
+    compress  [label="command compression ·50"];
+    nonbash   [label="non-bash compression ·51"];
+    pressure  [label="adaptive pressure ·60"];
+    gctx      [label="graph context ·70"];
+    ghint     [label="graph search hint ·71"];
+    gedit     [label="graph edit check ·72"];
+    grefresh  [label="graph refresh ·73"];
+    digest    [label="injection digest ·80"];
+    guard -> dedup -> errprune -> wcache -> recording -> reread
+         -> compress -> nonbash -> pressure -> gctx -> ghint -> gedit -> grefresh -> digest [style=invis];
+    prov [label="TransformationRecord provenance\n→ __pipelineProvenance + memLog", shape=note fillcolor="#21262d"];
+    digest -> prov [style=dotted];
   }
+
+  other_hooks [label="other handlers\ntool.definition · text.complete\nseed rules (system.transform) · output-token (chat.params)\ncompaction capture · auto-lessons / work-capture (event)", shape=box3d];
+
+  /* ── Application services ─────────────────────────────────── */
   subgraph cluster_app {
-    label="Application (memory & context)";
-    labelloc=t; color="#8957e5"; fontcolor="#d2a8ff";
-    a_rank [label="Ranking\nfeature-weighted Σw·f\n+ MMR λ=0.3\n+ intent/purpose"];
-    a_search [label="Hybrid Search\nvector ∪ BM25\n+ rerank (keyword/cross-encoder)"];
-    a_compress [label="Command Compression\npipeline + strategies\noffload scratch"];
-    a_pressure [label="Context Pressure\nadaptive / injection gate"];
-    a_lesson [label="Lesson Extraction\nfailed tools → lesson:"];
-    a_work [label="Work Capture\nedits → work:"];
-    a_cache [label="Working Cache\n8KB bounded"];
-    a_visibility [label="Injection Visibility\nmarkers + digest"];
+    label=<<font color="#d2a8ff"><b>application services</b></font>>; color="#8957e5"; fontcolor="#d2a8ff";
+    rank_w   [label="ranking/weights"];
+    rank_f   [label="ranking/features"];
+    rank_fu  [label="ranking/fusion Σwᵢ·fᵢ"];
+    rank_i   [label="ranking/intent boosts"];
+    rank_p   [label="ranking/pipeline\nrankCandidates + MMR λ"];
+    rerank_k [label="rerank/keyword"];
+    rerank_c [label="rerank/cross-encoder"];
+    autoret  [label="auto-retrieve\nLLM judge → ONNX fallback\npressure phases ≥0.6/0.8"];
+    qrefine  [label="query refinement\n+ injection gate"];
+    compapp  [label="command-compression\npipeline · strategy registry\n7 strategies + offload"];
+    tokctl   [label="output-token-control"];
+    visib    [label="injection-visibility\nmarkers + metrics DB"];
+    lessons  [label="lesson-extraction\nfailed tools → lesson:"];
+    workcap  [label="work-capture\nsuccessful edits → work:"];
+    graphapp [label="graph/\nbuild · persist(tmp→rename)\nbatching · worker · query · cluster"];
+
+    rank_w -> rank_f -> rank_fu -> rank_p [style=invis];
+    rerank_k -> rank_p; rerank_c -> rank_p;
   }
-  subgraph cluster_plugin {
-    label="Plugin Hooks (adapters)";
-    labelloc=t; color="#da3633"; fontcolor="#f85149";
-    h_pipeline [label="ToolResult Pipeline\n priorities 5→80\nprovenance: TransformationRecord"];
-    h_hooks [label="Hooks\ntool.execute.before/after\nchat.transform\ncompaction (12KB/2KB)"];
+
+  /* ── Domain ports ─────────────────────────────────────────── */
+  subgraph cluster_ports {
+    label=<<font color="#7ee787"><b>domain ports (interfaces only)</b></font>>; color="#238636"; fontcolor="#7ee787";
+    p_store  [label="MemoryStore"];
+    p_nodes  [label="NodeRepository"];
+    p_sess   [label="SessionTracker"];
+    p_cfg    [label="ConfigPort"];
+    p_tools  [label="ToolRegistry"];
+    p_comp   [label="CompressionPort"];
   }
-  mgmt [label="Management UI\n(excluded, dashed)\n8787", shape=ellipse, style="dashed,filled", fillcolor="#21262d", color="#8b949e", fontcolor="#8b949e"];
-  mcp [label="MCP Server\n(excluded, dashed)", shape=ellipse, style="dashed,filled", fillcolor="#21262d", color="#8b949e", fontcolor="#8b949e"];
 
-  // Flow: OpenCode → Plugin → Application → Domain → Storage
-  h_hooks -> h_pipeline [label="wraps"];
-  h_pipeline -> a_compress [label="compress"];
-  h_pipeline -> a_cache [label="re-read elim"];
-  h_pipeline -> a_pressure [label="adaptive"];
-  a_search -> a_rank [label="rankCandidates"];
-  a_rank -> s_hnsw [label="ANN"];
-  a_rank -> s_fts [label="BM25"];
-  s_hnsw -> s_sqlite [label="persist"];
-  s_fts -> s_sqlite;
-  s_index -> s_sqlite [label="manifest"];
-  s_onnx -> a_rank [label="rerank"];
-  s_graph -> h_pipeline [label="hints"];
-  a_lesson -> s_sqlite [label="insert"];
-  a_work -> s_sqlite [label="insert"];
-  a_visibility -> h_pipeline;
-  p_memory -> s_sqlite [style=dashed, color="#8b949e", label="port"];
-  p_node -> s_sqlite [style=dashed, color="#8b949e"];
-  a_search -> p_memory [style=dashed, color="#8b949e"];
-  h_pipeline -> p_memory [style=dashed, color="#8b949e"];
+  /* ── Infrastructure & storage ─────────────────────────────── */
+  subgraph cluster_infra {
+    label=<<font color="#79c0ff"><b>infrastructure</b></font>>; color="#1f6feb"; fontcolor="#79c0ff";
+    dbprov [label="db/DbProvider\n(only bun:sqlite outside storage)"];
+    embed  [label="llm/embeddings\ngte-small 384d ONNX"];
+    xenc   [label="llm/cross-encoder\nms-marco MiniLM"];
+    ollama [label="llm/ollama judge"];
+    cfg    [label="config Zod (opencode-mem.json)"];
+    memlog [label="logging/memLog\nper-feature files"];
+  }
+  subgraph cluster_storage {
+    label=<<font color="#ffa657"><b>storage — SQLite memory.db (WAL)</b></font>>; color="#bd561d"; fontcolor="#ffa657";
+    sqlite  [label="sqlite.ts store facade\n+ queries/{nodes,node-search,\nlinks,temporal-edges,live-feed}"];
+    fts5    [label="FTS5 BM25"];
+    vecidx  [label="sqlite-vec HNSW\npersist tmp.pid→rename"];
+    istate  [label="index_state v36\n(scope,index_type) PK\nrevision·hash·count"];
+    migr    [label="migrations v1..v36\nprovenance cols:\nderived_from · status\nsupersedes_id · valid_from/until\ncontent_hash"];
+    sqlite -> fts5; sqlite -> vecidx; sqlite -> istate [label="upsert on persist"]; sqlite -> migr;
+  }
+  graphproc [label="batch-worker subprocesses\n(tree-sitter WASM, fresh heap per 100 files)", shape=component fillcolor="#21262d"];
 
-  mgmt -> s_sqlite [style=dashed, color="#8b949e", label="read-only"];
-  mcp -> p_memory [style=dashed, color="#8b949e", label="graph tool"];
+  /* ── Edges across layers ──────────────────────────────────── */
+  ev_before -> guard;
+  ev_after  -> guard [lhead=cluster_pipeline, label="wraps every transformer"];
+  ev_system -> other_hooks;
+  ev_params -> other_hooks;
+  ev_compact-> other_hooks;
+  ev_event  -> other_hooks;
 
-  // Provenance supersession edge
-  s_sqlite -> s_sqlite [label="supersedes_id\nvalid_from/until\nstatus", color="#f0883e", fontcolor="#f0883e"];
+  compress  -> compapp;
+  pressure  -> qrefine;
+  digest    -> visib;
+  other_hooks -> autoret [label="messages.transform"];
+  other_hooks -> lessons;
+  other_hooks -> workcap;
+  other_hooks -> tokctl;
+  grefresh  -> graphapp;
+  gctx      -> graphapp [style=dotted];
+
+  graphapp -> graphproc [label="extractInBatches"];
+  graphproc -> graphapp [label="merged JSON"];
+
+  autoret -> rank_p [label="candidates"];
+  compapp -> p_comp;
+  rank_p  -> p_nodes [label="search"];
+  lessons -> p_nodes; workcap -> p_nodes;
+  visib   -> p_nodes [label="metrics"];
+
+  p_nodes -> sqlite [label="implemented by"];
+  p_store -> sqlite;
+  p_sess  -> sqlite;
+  p_comp  -> compapp [style=dashed, dir=back];
+  p_cfg   -> cfg;
+  p_tools -> other_hooks [style=dashed, dir=back];
+
+  embed  -> vecidx [label="384-d vectors"];
+  xenc   -> rerank_c;
+  ollama -> autoret;
+  dbprov -> sqlite;
+  memlog -> prov [style=dotted, label="pipeline logs"];
+
+  vecidx -> istate [label="revision++ on persist", color="#f0883e" fontcolor="#f0883e"];
 }

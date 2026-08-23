@@ -1,54 +1,69 @@
-# Clean Code Review — opencode-fractal-memory (excl. management app & MCP)
+# Clean Code Review — opencode-fractal-memory
 
-Scope: `src/` only — `src/management/` and `src/tools/mcp.ts` excluded. Branch `feat/retrieval-explain-ui:0e41064` (v36, `index_state` + HNSW `tmp→rename` + graph `temp-swap`). Based on prior `fast` scan + `fact:opencode-fractal-memory-hub` + `research:clean-architecture-2026-06-25`.
+**Scope**: `src/` (excl. `src/management/`, `management/public/`, `src/tools/mcp.ts`, MCP wiring).
+**Method**: two parallel evidence scans (LOC census, import-graph check, catch-block audit, hook-map extraction) + targeted verification of every claim below. All numbers reproducible via the commands cited.
+**Baseline**: branch `feat/retrieval-explain-ui:4d2b5f5` (main `0e41064`, schema v36).
 
-## Executive Summary
-Codebase is feature-rich (~150 files, ~18k LOC) with strong safeguards (hybrid retrieval, bounded compaction, subprocess WASM batching at `src/application/graph/batching.ts`). Primary clean-code risk is **coupling around `SQLiteStore` + `plugin hooks`** and **SRP violations in application services** — not missing functionality. Layering `domain/ports → storage → application → plugin` is declared (AGENTS.md) but leaks: hooks import `storage` directly, ranking mixes scoring with I/O, and神 objects (`sqlite.ts`, `hooks.ts`) centralize unrelated duties.
+---
 
-Overall: **PASS with structural debt** — reliability/observability well-addressed (`pipeline`, `index_state`, `ranking trace`), memory correctness next.
+## 1. Verdict
 
-## Top 15 Findings
+| Dimension | Grade | Evidence |
+|---|---|---|
+| Layering / hexagonal discipline | **A−** | Zero `../storage` imports from `plugin/`, `application/`, `domain/`, `tools/`; `bun:sqlite` appears **only** in `src/storage/*` and `src/infrastructure/db/DbProvider.ts:4` (plus tests) |
+| Naming & conventions | **A** | No `I`-prefix, `exactOptionalPropertyTypes`, Zod only at boundaries, `Record<string, unknown>` discipline (oxlint 0/0) |
+| Observability | **B−** | Per-feature `memLog` + pipeline provenance are strong; **~95 silent `catch {}` blocks without comments** undermine it |
+| Single Responsibility | **C+** | `seed-nodes.ts` (1533 L data-as-code), `config.ts` (731 L single Zod tree), `search.ts` (556 L full pipeline in one module) |
+| Testability | **B** | 50-file essential suite ~6 s; but largest test file `sqlite.test.ts` 1615 L is a god-test |
 
-| # | File:Line | Severity | Issue | Why / Suggestion |
-|---|-----------|----------|-------|-----------------|
-| 1 | `src/storage/sqlite.ts:60-250, 212` | **critical** | God object `SqliteMemoryStore` (store + migrations + caching + HNSW wiring + index_state updater) | Violates SRP. Split: `SqliteStore` (CRUD) + `IndexStateRepository` (v36 manifest) + `StoreFactory` (composition). Keep `src/storage/queries/` but move updater wiring to `infrastructure/db`. |
-| 2 | `src/plugin/hooks.ts:100-130` | **critical** | Massive `HookHandler[]` array, implicit ordering, mixed concerns (compression, graph, pressure, visibility) | Coupling. Keep `ToolResultContext` pipeline (`src/plugin/tool-result-pipeline.ts` already) as single source of ordering; `hooks.ts` should only register transformers with `priority`. |
-| 3 | `src/storage/search.ts:280-310` | **major** | `rankCandidates` / `searchByEmbedding` long function (>150L) mixes candidate union, scoring, rerank, MMR, logging | SRP. Extract `candidateGeneration()`, `scoring()`, `diversity()` stages per fractal staged-retrieval proposal. |
-| 4 | `src/application/ranking/pipeline.ts:70-120` | **major** | Ranking mixes pure scoring with `memLog` + embedding fetch | Pure function should return `RankComponents` + `trace`; logging at call site. Enables Mgmt UI dry-run. |
-| 5 | `src/application/auto-retrieve/candidates.ts:58` | **major** | Long function >200L coupling `storage` imports + pressure logic | Extract `PressurePolicy` + `CandidateProvider` port. |
-| 6 | `src/application/graph/build.ts:150,200` | **major** | `buildGraph` couples file walk + `migrations` + `refreshGraphFile`; `ensureBackgroundGraph` mutates global + persists | Separate `GraphBuilder` (pure) vs `GraphCache` (persist `tmp→rename`); temp-swap clone already fixes atomicity but still leaks `backgroundGraph` global. |
-| 7 | `src/application/cache.ts:45` | **major** | Global mutable `workingCache` exposed | Encapsulate behind `WorkingCacheRepository` with bounded `8KB` + LRU already, but expose via port not global. |
-| 8 | `src/domain/ports/MemoryStore.ts:45` | **major** | `MemoryStore` exposes mutable state / broad `any` in `wrapWithTracking` | DIP violation. Narrow interface: `get/search/insert/update` + `Record<string,unknown>` not `any`. |
-| 9 | `src/application/lesson-extraction.ts:120` | **major** | Extraction + persistence merged | Split `LessonExtractor` (pure) vs `LessonRepository`. |
-| 10 | `src/application/work-capture.ts:95` | **major** | Capture + compression mixed | Same split as lesson. |
-| 11 | `src/application/injection-visibility.ts:30` | **minor** | Visibility logging mixed with core injection | Move to decorator `withVisibility()`. |
-| 12 | `src/application/adaptive-pressure.ts:65` | **minor** | Pressure check + injection together | Extract `PressureStrategy`. |
-| 13 | `src/application/output-token-control.ts:70` | **minor** | Token control + logging | Separate `TokenBudgetPolicy`. |
-| 14 | `src/domain/ports/NodeRepository.ts:30` | **minor** | Duplicate `findByTag` logic | Consolidate via `querySearchText` + `tagsFilter`. |
-| 15 | `src/application/command-compression/pipeline.ts` | **minor** | Pipeline registers `ls/test/grep/git-*` strategies but `strategy.ts` names not validated | Add `Zod` at registry entry (external boundary). |
+**Overall: structurally sound, with three concrete debt clusters — silent error swallowing, data-in-code, and monolithic retrieval/config modules.** The earlier concern "hooks import storage directly" was **not confirmed** — the priority-ordered `ToolResultTransformer` pipeline (`tool-result-pipeline.ts`) is exactly the right pattern.
 
-## Coupling & Layering
+---
 
-- **Declared:** `domain/ports ← infrastructure ← application ← plugin` (`AGENTS.md: Hexagonal`). **Actual:** `plugin/hooks` imports `storage` + `infrastructure/vector/hnsw-index.ts` directly (see `sync-pressure.ts` `scopeDbPath` exception). Fix: inject `MemoryRepository`/`NodeRepository` via `composition-root.ts`.
-- **Process boundary:** `management` and `plugin` share SQLite file (`~/.config/opencode/memory.db`) with `index_state` manifest — now atomic (`tmp→rename`) but no `project sharding` for large repos (Phase4 deferred).
-- **Hook interference:** 14 transforms (`priorities 5→80` in `tool-result-pipeline.ts`) now explicit and logged (`__pipelineProvenance` + `memLog pipeline`), but optimization hooks still not disableable per `fractal.txt` proposal.
+## 2. Findings (verified)
 
-## Actionable Roadmap
+### F1 — Silent catches erode the observability investment  · **major**
+`rg -o "catch \{" src -g '!*.test.ts' | wc -l` → **156**, of which only **61** carry an explanatory comment. ~95 swallow errors with no `memLog` breadcrumb — directly against the project rule "all storage/mgmt/TUI changes logged via `memLog`".
+Hotspots: `src/application/auto-retrieve/index.ts`, `src/application/ranking/pipeline.ts`, `src/application/search.ts`, `src/infrastructure/llm/cross-encoder.ts`.
+*Fix*: mechanical sweep — replace bare `catch { /* ignore */ }` with `catch (e) { memLog("warn", "<feature>", "...", {error}) }`, or at minimum a `/* expected: <why> */` tag; add oxlint rule `no-empty-catch` scoped to warn.
 
-**Quick wins (1-2 days, no breaking change):**
-1. Move `SqliteMemoryStore` `index_state` updater to `src/storage/queries/index-state.ts` (already wired via `setHnswIndexStateUpdater` — extract).
-2. Expose `RankComponents` trace via `GET /api/search?dryRun=1` (stage retrieval) — planned for `feat/retrieval-explain-ui`.
-3. Add `status:proposed→approved` promotion button in `management/public/app.js` detail panel (uses existing `PUT /api/nodes/:id` `status`).
+### F2 — `seed-nodes.ts`: 1533 lines of content compiled as code  · **major**
+Seed memory content lives in TS string literals → parsed on every build, uneditable by the management app, un-diffable as data.
+*Fix*: move to `src/seeds/*.json` + a ~40-line loader; keeps type-safety via one Zod parse at load.
 
-**Structural (1-2 weeks):**
-4. Split `sqlite.ts` god object; enforce `MemoryRepository` only touches SQLite.
-5. Stage retrieval: `scope→candidate (BM25/vector/graph) → union → lightweight score → rerank (cross-encoder) → MMR diversity → explanation` (see `fractal.txt:208-224`).
-6. Make optimization hooks toggleable (`config.features.*.enabled`) with health check `/api/health` (index revision vs manifest).
+### F3 — `config.ts` god-schema (731 L)  · **major**
+One Zod object mixes ranking weights, compression tiers, auto-retrieve phases, ollama, injection visibility, lessons, capture…
+*Fix*: split per feature (`configSchema = merge(rankingSchema, compressionSchema, …)`); each feature file owns its slice. Unblocks Phase-5 "config grouped by user goals".
 
-**Deferred (per user):** graph DB, predictive prefetch, sleep consolidation, fine-tuned embeddings — intentionally not re-litigated.
+### F4 — `storage/search.ts` (556 L) spans five pipeline stages  · **major**
+Candidate union, hybrid scoring, temporal expansion, rerank dispatch, and MMR live in one module. Ranking math itself is well-factored into `application/ranking/{weights,features,fusion,intent,pipeline,rerank}` — the storage layer re-couples them.
+*Fix*: extract stage functions (`generateCandidates`, `fuseScores`, `selectDiverse`) inside `search.ts` or promote to `application/retrieval/`; enables the `dryRun=1` trace API cleanly.
 
-## Verification
+### F5 — God test `sqlite.test.ts` (1615 L)  · **minor**
+Slow to localize failures; split per store concern (nodes/links/sessions/provenance/index_state).
 
-- `bun run lint` — 0 errors (oxlint).
-- `bunx tsc --noEmit` — 0 errors (`exactOptionalPropertyTypes`, no `I` prefix).
-- Tests — `667 pass` (synthetic `search.swecontext` baseline ~18% HitRate, cross-encoder `72%` @10).
+### F6 — `definitions.ts` holds all 36 migrations inline (728 L)  · **minor**
+Convention is documented and safe (append-only, version-bumped), but per-version files (`migrations/v036-index-state.ts`) would shrink diff noise. Low urgency.
+
+### F7 — Optimization hooks not toggleable  · **minor**
+14 transformers run unconditionally (`priorities 5→80`, all `applied` in logs even when no-op). `fractal.txt:398` asks for correctness/opt separation.
+*Fix*: `config.features.<name>.enabled` gate checked in each transformer's `applies()`.
+
+### Non-findings (checked, clean)
+- **No layering leaks**: plugin/app/domain/tools never import `storage/` directly; composition flows through ports.
+- **HNSW/graph persistence** is atomic (`tmp.pid → rename`) with `index_state (scope,index_type) PK` manifest v36 — verified schema matches docs.
+- **WASM isolation**: graph extraction spawns fresh subprocess batches (`graph/batching.ts` + `worker`) — parent stays ~91 MB RSS.
+- **Ports surface** is right-sized: `MemoryStore, NodeRepository, SessionTracker, ConfigPort, ToolRegistry, CompressionPort`.
+
+---
+
+## 3. Priority roadmap
+
+1. **Silent-catch sweep** (~half day, mechanical) → biggest observability win.
+2. **Seeds → JSON** (~1 h) → removes largest file in repo.
+3. **Config split** (~half day) → prepares feature toggles (F7) and dry-run UX.
+4. **Retrieval staging** (1–2 d) → unlocks `/api/search?dryRun=1` explain UI already planned on this branch.
+5. Optional: god-test split, per-version migration files.
+
+---
+*Verification commands*: `find src -name '*.ts' ! -name '*.test.ts' | xargs wc -l | sort -rn`; `rg -o "catch \{" src -g '!*.test.ts' | wc -l`; `rg -n "../storage" src/plugin src/application src/domain src/tools`; `grep CURRENT_VERSION src/storage/migrations/index.ts` → 36.
