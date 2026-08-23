@@ -1,0 +1,76 @@
+digraph MemoryFunctionalities {
+  rankdir=TB;
+  splines=polyline;
+  fontname="Helvetica,Arial,sans-serif";
+  fontsize=11;
+  bgcolor="#0d1117";
+  labeljust=l;
+  label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="16" COLOR="#58a6ff">opencode-fractal-memory — Key Memory Functionalities (excl. management &amp; MCP)</FONT></B></TD></TR><TR><TD><FONT COLOR="#8b949e">Layers: domain ports ← infrastructure ← application ← plugin (composition-root wiring)</FONT></TD></TR></TABLE>>;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, fillcolor="#161b22", color="#30363d", fontcolor="#c9d1d9"];
+  edge [color="#58a6ff", penwidth=1.2];
+
+  subgraph cluster_domain {
+    label="Domain Ports (interfaces only)";
+    labelloc=t; color="#238636"; fontcolor="#7ee787";
+    p_memory [label="MemoryStore\n(src/domain/ports)"];
+    p_node [label="NodeRepository\nsessions/links"];
+    p_session [label="SessionTracker"];
+  }
+  subgraph cluster_infra {
+    label="Infrastructure (SQLite + ONNX + sqlite-vec)";
+    labelloc=t; color="#1f6feb"; fontcolor="#58a6ff";
+    s_sqlite [label="SQLite Store\n(memory.db, WAL)\nqueries/nodes.ts"];
+    s_fts [label="FTS5 BM25\nquerySearchBM25"];
+    s_hnsw [label="HNSW vec 384d\nsqlite-vec\npersist tmp→rename"];
+    s_index [label="index_state (v36)\nrevision/hash"];
+    s_onnx [label="ONNX gte-small\ncross-encoder"];
+    s_graph [label="CodeGraph\ntree-sitter WASM\nsubprocess batches"];
+  }
+  subgraph cluster_app {
+    label="Application (memory & context)";
+    labelloc=t; color="#8957e5"; fontcolor="#d2a8ff";
+    a_rank [label="Ranking\nfeature-weighted Σw·f\n+ MMR λ=0.3\n+ intent/purpose"];
+    a_search [label="Hybrid Search\nvector ∪ BM25\n+ rerank (keyword/cross-encoder)"];
+    a_compress [label="Command Compression\npipeline + strategies\noffload scratch"];
+    a_pressure [label="Context Pressure\nadaptive / injection gate"];
+    a_lesson [label="Lesson Extraction\nfailed tools → lesson:"];
+    a_work [label="Work Capture\nedits → work:"];
+    a_cache [label="Working Cache\n8KB bounded"];
+    a_visibility [label="Injection Visibility\nmarkers + digest"];
+  }
+  subgraph cluster_plugin {
+    label="Plugin Hooks (adapters)";
+    labelloc=t; color="#da3633"; fontcolor="#f85149";
+    h_pipeline [label="ToolResult Pipeline\n priorities 5→80\nprovenance: TransformationRecord"];
+    h_hooks [label="Hooks\ntool.execute.before/after\nchat.transform\ncompaction (12KB/2KB)"];
+  }
+  mgmt [label="Management UI\n(excluded, dashed)\n8787", shape=ellipse, style="dashed,filled", fillcolor="#21262d", color="#8b949e", fontcolor="#8b949e"];
+  mcp [label="MCP Server\n(excluded, dashed)", shape=ellipse, style="dashed,filled", fillcolor="#21262d", color="#8b949e", fontcolor="#8b949e"];
+
+  // Flow: OpenCode → Plugin → Application → Domain → Storage
+  h_hooks -> h_pipeline [label="wraps"];
+  h_pipeline -> a_compress [label="compress"];
+  h_pipeline -> a_cache [label="re-read elim"];
+  h_pipeline -> a_pressure [label="adaptive"];
+  a_search -> a_rank [label="rankCandidates"];
+  a_rank -> s_hnsw [label="ANN"];
+  a_rank -> s_fts [label="BM25"];
+  s_hnsw -> s_sqlite [label="persist"];
+  s_fts -> s_sqlite;
+  s_index -> s_sqlite [label="manifest"];
+  s_onnx -> a_rank [label="rerank"];
+  s_graph -> h_pipeline [label="hints"];
+  a_lesson -> s_sqlite [label="insert"];
+  a_work -> s_sqlite [label="insert"];
+  a_visibility -> h_pipeline;
+  p_memory -> s_sqlite [style=dashed, color="#8b949e", label="port"];
+  p_node -> s_sqlite [style=dashed, color="#8b949e"];
+  a_search -> p_memory [style=dashed, color="#8b949e"];
+  h_pipeline -> p_memory [style=dashed, color="#8b949e"];
+
+  mgmt -> s_sqlite [style=dashed, color="#8b949e", label="read-only"];
+  mcp -> p_memory [style=dashed, color="#8b949e", label="graph tool"];
+
+  // Provenance supersession edge
+  s_sqlite -> s_sqlite [label="supersedes_id\nvalid_from/until\nstatus", color="#f0883e", fontcolor="#f0883e"];
+}
