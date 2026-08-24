@@ -42,9 +42,9 @@ if you find bugs or if you just want to suggest improvements
 
 - **Memory nodes** — structured persistent memory with labels, content, metadata, and type system
 - **Dot nodes** — store Graphviz DOT source as a memory node (`type: "dot"`). Dot nodes are automatically sticky and skip embedding generation (diagram source isn't semantic text), so they survive compression and cost no vector storage. The management app renders them in-browser via the vendored `@viz-js/viz` WASM build (`management/public/vendor/viz-global.js`) — select a `dot:` node and click **◈ Open Diagram** for a pan/zoomable, fit-to-view rendering. `dot:` labels get the ×1.25 purpose-quality boost
-- **Semantic search** — ONNX-powered embeddings (all-MiniLM-L6-v2) with HNSW vector index for fast ANN retrieval
+- **Semantic search** — ONNX-powered embeddings (all-MiniLM-L6-v2) with sqlite-vec brute-force `vec_distance_cosine` on `memory_nodes.embedding_blob` (`v0.1.9`, fallback HNSW)
 - **Native ONNX runtime** — `onnxruntime-node` with multi-threaded CPU execution (`intraOpNumThreads: 0`), full graph optimization (`graphOptimizationLevel: "all"`), CPU memory arena, and denormal/GELU approximation flags. 12-15× faster embedding inference vs WASM
-- **BM25 hybrid search + dual retrieval** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching. BM25 runs independently across ALL scope nodes (not just HNSW candidates), catching keyword matches outside the vector neighborhood and covering nodes without embeddings
+- **BM25 hybrid search + dual retrieval** — keyword + vector hybrid scoring with dynamic weight adjustment; code queries get boosted BM25 weight for exact pattern matching. BM25 runs independently across ALL scope nodes (not just vector candidates), catching keyword matches outside the vector neighborhood and covering nodes without embeddings
 - **Multi-hop temporal expansion** — temporally adjacent nodes (NEXT / DURING_SESSION edges) expanded up to 3 hops with 0.7^depth score decay, configurable via `temporal_hops` arg
 - **Fractal retrieval** — drill-down from high-level summaries to granular details
 - **Automatic compression** — periodically summarizes low-level nodes into progressively higher-level abstractions (4 levels + LLM-powered summaries)
