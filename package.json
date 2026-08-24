@@ -40,6 +40,7 @@
     "prepublishOnly": "npm run build && npm run typecheck",
     "postinstall": "node scripts/postinstall.cjs",
     "dev-install": "bun run scripts/dev-install.ts",
+    "plugin:clean": "bun run scripts/clean-plugin-installs.ts",
     "test": "bun test",
     "test:essential": "bun test",
     "test:full": "bun test --path-ignore-patterns 'zz-none'",
