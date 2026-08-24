@@ -78,6 +78,10 @@ const NESTED_DEPS = [
   "onnxruntime-web",
   "@kreuzberg/tree-sitter-language-pack-wasm",
   "@yomguithereal/helpers",
+  "@opentui/core",
+  "@opentui/solid",
+  "solid-js",
+  "entities",
 ];
 
 const SKIP_BUILD = process.argv.includes("--skip-build");
