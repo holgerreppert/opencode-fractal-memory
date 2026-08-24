@@ -28,9 +28,9 @@
  *   bun run scripts/dev-install.ts          # build + install
  *   bun run scripts/dev-install.ts --skip-build   # install only (dist already fresh)
  */
-import { cp, mkdir, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { cp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
@@ -116,6 +116,30 @@ async function copyNestedDeps(target: string): Promise<void> {
   }
 }
 
+/**
+ * Register dist/tui.js in the GLOBAL tui.json (~/.config/opencode/tui.json).
+ * OpenCode only scans project .opencode/tui.json + global config dir for TUI
+ * manifests — a tui.json inside the installed package is never discovered.
+ */
+async function ensureGlobalTuiRegistration(): Promise<void> {
+  const globalTui = path.join(homedir(), ".config", "opencode", "tui.json");
+  const entry = path.join(TARGETS[1], "dist", "tui.js");
+  if (!existsSync(entry)) {
+    log(`WARN: ${entry} missing — cannot register TUI plugin`);
+    return;
+  }
+  let json: { $schema?: string; plugin?: string[] } = {};
+  try {
+    if (existsSync(globalTui)) json = JSON.parse(await readFile(globalTui, "utf-8"));
+  } catch { /* corrupt file — start fresh */ }
+  const plugins = new Set(json.plugin ?? []);
+  plugins.add(entry);
+  json.$schema ??= "https://opencode.ai/tui.json";
+  json.plugin = [...plugins];
+  await writeFile(globalTui, `${JSON.stringify(json, null, 2)}\n`);
+  log(`TUI registered in ${globalTui}`);
+}
+
 async function main(): Promise<void> {
   const { version } = JSON.parse(
     await (await import("node:fs/promises")).readFile(path.join(REPO_ROOT, "package.json"), "utf-8"),
@@ -135,6 +159,8 @@ async function main(): Promise<void> {
     await copyTopLevel(target);
     await copyNestedDeps(target);
   }
+
+  await ensureGlobalTuiRegistration();
 
   const cacheTarget = TARGETS[1];
   const cachePkg = path.join(cacheTarget, "package.json");

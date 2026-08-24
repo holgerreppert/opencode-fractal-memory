@@ -75,6 +75,30 @@ if (existsSync(globalPkgJson)) {
   } catch { /* unparseable package.json — leave it alone */ }
 }
 
+// Strip our entry from the GLOBAL tui.json (TUI sidebar registration).
+const globalTui = join(home, ".config", "opencode", "tui.json");
+if (existsSync(globalTui)) {
+  try {
+    const raw = readFileSync(globalTui, "utf8");
+    const json = JSON.parse(raw) as { $schema?: string; plugin?: string[] };
+    if (Array.isArray(json.plugin)) {
+      const kept = json.plugin.filter((p) => !p.includes(PKG));
+      if (kept.length !== json.plugin.length) {
+        if (dryRun) {
+          console.log(`[dry-run] would remove ${json.plugin.length - kept.length} TUI registration(s) from ${globalTui}`);
+        } else if (kept.length === 0 && Object.keys({ ...json, plugin: undefined }).filter((k) => k !== "plugin").length <= 1) {
+          import("node:fs").then((fs) => fs.rmSync(globalTui));
+          console.log(`removed   ${globalTui} (no other TUI plugins left)`);
+        } else {
+          json.plugin = kept;
+          writeFileSync(globalTui, JSON.stringify(json, null, 2) + "\n");
+          console.log(`cleaned   ${globalTui} (${kept.length} other plugin(s) kept)`);
+        }
+      }
+    }
+  } catch { /* unparseable tui.json — leave it alone */ }
+}
+
 if (!dryRun) {
   console.log(`
 All copies removed. Next steps for a clean-install test:
