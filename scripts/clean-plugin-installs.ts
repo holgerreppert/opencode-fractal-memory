@@ -75,24 +75,32 @@ if (existsSync(globalPkgJson)) {
   } catch { /* unparseable package.json — leave it alone */ }
 }
 
-// Strip our entry from the GLOBAL tui.json (TUI sidebar registration).
-const globalTui = join(home, ".config", "opencode", "tui.json");
-if (existsSync(globalTui)) {
+// Strip our entry from tui.json files (TUI sidebar registration).
+// Handles both npm spec "opencode-fractal-memory" (deduped by package name)
+// and legacy file spec "./dist/tui.js" (needs dist/tui.js substring; does not contain PKG).
+// Per specs/tui-plugins.md: duplicate npm vs file are NOT deduped, so both must be removed.
+const isOurTuiEntry = (p: string) => p.includes(PKG) || p.includes("dist/tui.js");
+for (const tuiPath of [
+  join(home, ".config", "opencode", "tui.json"),
+  ...projects.map((p) => join(p, "tui.json")),
+  ...projects.map((p) => join(p, ".opencode", "tui.json")),
+]) {
+  if (!tuiPath || !existsSync(tuiPath)) continue;
   try {
-    const raw = readFileSync(globalTui, "utf8");
+    const raw = readFileSync(tuiPath, "utf8");
     const json = JSON.parse(raw) as { $schema?: string; plugin?: string[] };
     if (Array.isArray(json.plugin)) {
-      const kept = json.plugin.filter((p) => !p.includes(PKG));
+      const kept = json.plugin.filter((p) => !isOurTuiEntry(p));
       if (kept.length !== json.plugin.length) {
         if (dryRun) {
-          console.log(`[dry-run] would remove ${json.plugin.length - kept.length} TUI registration(s) from ${globalTui}`);
+          console.log(`[dry-run] would remove ${json.plugin.length - kept.length} TUI registration(s) from ${tuiPath}`);
         } else if (kept.length === 0 && Object.keys({ ...json, plugin: undefined }).filter((k) => k !== "plugin").length <= 1) {
-          import("node:fs").then((fs) => fs.rmSync(globalTui));
-          console.log(`removed   ${globalTui} (no other TUI plugins left)`);
+          import("node:fs").then((fs) => fs.rmSync(tuiPath));
+          console.log(`removed   ${tuiPath} (no other TUI plugins left)`);
         } else {
           json.plugin = kept;
-          writeFileSync(globalTui, JSON.stringify(json, null, 2) + "\n");
-          console.log(`cleaned   ${globalTui} (${kept.length} other plugin(s) kept)`);
+          writeFileSync(tuiPath, JSON.stringify(json, null, 2) + "\n");
+          console.log(`cleaned   ${tuiPath} (${kept.length} other plugin(s) kept)`);
         }
       }
     }
@@ -102,9 +110,9 @@ if (existsSync(globalTui)) {
 if (!dryRun) {
   console.log(`
 All copies removed. Next steps for a clean-install test:
-  1. (optional) publish first: npm version patch && npm publish   — published 0.8.2 predates tui.json!
+  1. (optional) publish first: npm version patch && npm publish   — 0.8.3 now ships oc-plugin + tui
   2. start opencode in a project whose opencode.json lists "opencode-fractal-memory"
      → OpenCode auto-resolves/installs into .opencode/node_modules or the cache.
   3. verify: grep PLUGIN_LOADED_FROM ~/.config/opencode/logs/memory-plugin.log
-     and check the Fractal Memory sidebar box renders.`);
+     and check the Fractal Memory sidebar box renders (single, order 50).`);
 }
