@@ -83,6 +83,11 @@ const NESTED_DEPS = [
   "solid-js",
   "entities",
   "sqlite-vec",
+  "sqlite-vec-linux-x64",
+  "sqlite-vec-darwin-x64",
+  "sqlite-vec-darwin-arm64",
+  "sqlite-vec-linux-arm64",
+  "sqlite-vec-windows-x64",
 ];
 
 const SKIP_BUILD = process.argv.includes("--skip-build");
