@@ -55,6 +55,7 @@ const TOP_LEVEL_ITEMS = [
   "commands",
   "agent",
   "scripts",
+  "tui.json",
 ];
 
 /**
