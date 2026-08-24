@@ -37,6 +37,23 @@ Holger
 PS.: Did I mention that this is alpha? So feel free to post issues with suggestions
 if you find bugs or if you just want to suggest improvements 
 
+## Installation — one command
+
+```bash
+opencode plugin add opencode-fractal-memory
+# alias: opencode plugin opencode-fractal-memory  — that really works
+```
+
+It installs **both** targets via `oc-plugin: [["server"],["tui"]]` + `exports["./tui"]`:
+
+- **Server** → `opencode.json: ["opencode-fractal-memory"]` (memory, graph, hooks)
+- **TUI** → `tui.json: ["opencode-fractal-memory"]` (`sidebar_content` order 50, `/mem` palette)
+
+No manual `tui.json` edit, no `postinstall` — `src/plugin/install.ts: patchPluginConfig()` does it (`npm install --ignore-scripts`). After install **restart OpenCode** (it loads from `~/.cache/opencode/packages/opencode-fractal-memory@latest`).
+
+**Local dev** (this repo): `bun run dev-install` (build + sync cache + ensure `tui.json` npm spec + platform binaries for `sqlite-vec`).
+
+Published `0.8.3` (`sqlite-vec v0.1.9` brute-force, `oc-plugin`).
 
 ## Features
 
