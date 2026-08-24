@@ -13,7 +13,8 @@
     "agent",
     "commands",
     "management",
-    "scripts"
+    "scripts",
+    "tui.json"
   ],
   "keywords": [
     "opencode",
@@ -39,6 +40,7 @@
     "prepublishOnly": "npm run build && npm run typecheck",
     "postinstall": "node scripts/postinstall.cjs",
     "dev-install": "bun run scripts/dev-install.ts",
+    "plugin:clean": "bun run scripts/clean-plugin-installs.ts",
     "test": "bun test",
     "test:essential": "bun test",
     "test:full": "bun test --path-ignore-patterns 'zz-none'",
@@ -88,7 +90,9 @@
   },
   "engines": {
     "node": ">=18.0.0",
-    "bun": ">=1.0.0"
+    "bun": ">=1.0.0",
+    "opencode": "^1.18.0"
   },
+  "oc-plugin": [["server"], ["tui"]],
   "overrides": {}
 }
