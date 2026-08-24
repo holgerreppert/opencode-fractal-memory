@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.8.3
+- **sqlite-vec brute-force vector search** (`src/infrastructure/vector/sqlite-vec-adapter.ts`, `sqlite-vec@0.1.9`): replace in-memory HNSW graph + `hnsw-index.json` persistence with direct `vec_distance_cosine(embedding_blob, queryBlob) ORDER BY distance` on `memory_nodes`. Extension loaded lazily per-DB via `loadVecExtension()` (once per `Database`), `vecBruteSearch` per-scope (`global`/`project` + `projectName` filter) with fallback to HNSW → insertion-order JS cosine. `composition-root.ts:initializeStore` no longer does `loadHNSWIndexFromDisk/persistHNSWIndex/rebuildHNSWIndex` — startup is instant (was 10-30s). Verified `self distance 0` on live 545M DB, `search.test` 29 pass, full suite 667 pass. `hnsw` kept as fallback until stable.
+- **Dev-install platform binaries** (`scripts/dev-install.ts:85`): `sqlite-vec`'s native `vec0.so` lives in the platform sub-package `sqlite-vec-linux-x64` (optionalDependency), not in `sqlite-vec` itself — `NESTED_DEPS` now includes `sqlite-vec-linux-x64/-darwin-x64/-darwin-arm64/-linux-arm64/-windows-x64` or `load()` fails with `Cannot find module 'sqlite-vec-linux-x64/vec0.so'` (seen 2026-08-24 21:40). Both `npm install` (regular) and `dev-install` (cache sync) now copy the binaries.
+- **Docs sync for sqlite-vec** (`knowledge:search-pipeline:2ad711da`, `arch:storage-and-query-layers:d0d66a99`, `AGENTS.md:8`, `README.md:45`): semantic path now documents `vec_distance_cosine` brute-force (`sqlite-vec-adapter.ts v0.1.9`, fallback `hnsw-index.ts`), Flow `vecBruteSearch (top limit*5 per scope)`, Storage `memory_nodes.embedding_blob`, Key Files updated. BM25 wording changed to `not just vector candidates`.
+- **TUI duplicate box fix** (`tui.json:589481e`, `scripts/dev-install.ts:134`, `scripts/postinstall.cjs:24`, `~/.config/opencode/tui.json`, `.opencode/tui.json`): repo root `tui.json` had file spec `["./dist/tui.js"]` while global had npm spec `["opencode-fractal-memory"]` — per `specs/tui-plugins.md` npm vs file are NOT deduped, so both loaded → two `sidebar_content` boxes. Fixed: repo root `tui.json` now empty (global npm spec is sole source, deduped by package name across layers), `dev-install`/`postinstall` now register npm spec `opencode-fractal-memory` and filter out any `*dist/tui.js` legacy entries. `.opencode/plugins/tui-mem-smoke.tsx` (identical `Fractal Memory` box, `order: 50`) removed as obsolete — it was a dev copy of `src/tui.tsx` and caused a second duplicate alongside the real plugin.
+- **Backup** before DB change: `~/.config/opencode/backups/pre-sqlite-vec-20260824-212408/` with `memory.db` 545M, `memory.db.checkpointed` 180M (VACUUM), `hnsw-index.json` 22M, wal checkpointed to 0 — restorable via `cp`.
+
+## v0.8.2
+- **TUI sidebar Fractal Memory** (`src/tui.tsx` → `dist/tui.js`, `tui.json`, `oc-plugin: [["server"],["tui"]]`): Tier-2 `sidebar_content` `order: 50`, palette `/mem`, non-HTTP pressuremeter via `getLatestPressureSync()` (direct `context_pressure` sqlite read) + mgmt status `getMgmt()`. Dev-install syncs `tui.json` + `sqlite-vec` platform handling. Verified `wasgehtbesser` single box after dedupe.
+
+## v0.8.1
+- **Deferred Ollama extraction + compaction-reset gate + shape map**: minor compression and context improvements (see git log `1655c75`).
+
+## v0.8.0
+- **Context tab merge + pressure tracking + `session-messages` tool** (`5f1d241`): management app context tab, pressure tracking, archive `allFlagged` mode.
+
 ## v0.7.19
 - **Test tiering via `bunfig.toml`** — the first config file for the test runner. `pathIgnorePatterns` now excludes the two slow benchmark evals (`search.loco.test.ts` ~5min, `search.swecontext.test.ts` ~4min) at discovery time, so plain `bun test` is the fast **essential** suite (~6s, 50 files) by default. Named tiers as npm scripts:
   - `bun test` / `bun run test:essential` — fast suite, slow evals excluded via toml
