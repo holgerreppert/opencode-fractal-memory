@@ -3,6 +3,7 @@ import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCa
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
+import { vecBruteSearch, loadVecExtension } from "../infrastructure/vector/sqlite-vec-adapter";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { cosineSimilarity } from "../math";
 import { computeBM25ScoresSQL, isDumpNode } from "./queries/search-helpers";
@@ -110,38 +111,47 @@ export async function searchByEmbedding(
 
   const scopes: MemoryScope[] = options?.projectName !== undefined ? ["project"] : ["global"];
 
-  const hnsw = getHNSWIndex();
-  const indexSize = hnsw.getStats().globalNodes + hnsw.getStats().projectNodes;
-  const maxPool = Math.max(limit * 5, Math.min(1500, indexSize));
-
-  const collectCandidates = async (poolSize: number): Promise<{ candidates: RankCandidate[]; hnswResultCount: number }> => {
-    const hnswResults = await hnsw.search(query, poolSize, scopes[0]);
+  // Prefer sqlite-vec brute-force (vec_distance_cosine) — no HNSW rebuild, no JSON persistence.
+  // Falls back to HNSW if extension fails to load.
+  const collectCandidates = async (poolSize: number): Promise<{ candidates: RankCandidate[]; resultCount: number }> => {
     const out: RankCandidate[] = [];
+    let totalResults = 0;
 
-    if (hnswResults.length > 0) {
-      const candidateIds = new Set(hnswResults.map(r => r.id));
-      const hnswScoreMap = new Map<string, number>();
-      for (const r of hnswResults) {
-        const existing = hnswScoreMap.get(r.id) ?? -Infinity;
-        if (r.score > existing) hnswScoreMap.set(r.id, r.score);
-      }
+    // Try sqlite-vec first
+    let vecIds: string[] = [];
+    const vecScoreMap = new Map<string, number>();
+    for (const scope of scopes) {
+      try {
+        const db = await getDb(scope);
+        loadVecExtension(db);
+        const vecResults = vecBruteSearch(db, query, poolSize, scope, options?.projectName);
+        if (vecResults.length > 0) {
+          totalResults += vecResults.length;
+          for (const r of vecResults) {
+            const existing = vecScoreMap.get(r.id) ?? -Infinity;
+            if (r.score > existing) vecScoreMap.set(r.id, r.score);
+            if (!vecIds.includes(r.id)) vecIds.push(r.id);
+          }
+        }
+      } catch { /* vec failed, will try HNSW below */ }
+    }
 
+    if (vecIds.length > 0) {
+      const candidateIds = new Set(vecIds);
       for (const scope of scopes) {
         const db = await getDb(scope);
         const projectFilter = options?.projectName !== undefined && scope === "project";
-
-        const placeholders = Array.from(candidateIds).map(() => "?").join(",");
+        if (vecIds.length === 0) continue;
+        const placeholders = vecIds.map(() => "?").join(",");
         const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} ${DUMP_EXCLUSION_SQL}`;
-        const params: (string | number)[] = [...Array.from(candidateIds), Date.now(), scope];
+        const params: (string | number)[] = [...vecIds, Date.now(), scope];
         if (projectFilter) params.push(options!.projectName!);
         const rows = db.query(sql).all(...params) as SqliteNode[];
-
         for (const row of rows) {
+          if (!candidateIds.has(row.id)) continue;
           const level = row.level as MemoryNodeLevel;
-
           const node = rowToNode(row);
           if (!node.embedding) continue;
-
           if (options?.minLevel !== undefined && level < options.minLevel) continue;
           if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
           if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
@@ -149,39 +159,70 @@ export async function searchByEmbedding(
           if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
           if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
           if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
-
-          let _embedding = node.embedding;
-          if (row.embedding_blob) {
-            _embedding = blobToEmbedding(row.embedding_blob);
-          }
-
-          const semanticScore = hnswScoreMap.get(node.id) ?? 0;
-
+          const semanticScore = vecScoreMap.get(node.id) ?? 0;
           out.push({ node, semanticScore });
         }
       }
+      if (out.length > 0) return { candidates: out, resultCount: totalResults };
     }
 
-    return { candidates: out, hnswResultCount: hnswResults.length };
+    // Fallback: legacy HNSW (kept until fully removed)
+    try {
+      const hnsw = getHNSWIndex();
+      const hnswResults = await hnsw.search(query, poolSize, scopes[0]);
+      const candidateIds = new Set(hnswResults.map((r) => r.id));
+      const hnswScoreMap = new Map<string, number>();
+      for (const r of hnswResults) {
+        const existing = hnswScoreMap.get(r.id) ?? -Infinity;
+        if (r.score > existing) hnswScoreMap.set(r.id, r.score);
+      }
+      for (const scope of scopes) {
+        const db = await getDb(scope);
+        const projectFilter = options?.projectName !== undefined && scope === "project";
+        if (candidateIds.size === 0) continue;
+        const placeholders = Array.from(candidateIds).map(() => "?").join(",");
+        const sql = `SELECT * FROM memory_nodes WHERE id IN (${placeholders}) AND (embedding IS NOT NULL OR embedding_blob IS NOT NULL) AND (expires_at IS NULL OR expires_at > ?) AND scope = ?${projectFilter ? " AND project_name = ?" : ""} ${DUMP_EXCLUSION_SQL}`;
+        const params: (string | number)[] = [...Array.from(candidateIds), Date.now(), scope];
+        if (projectFilter) params.push(options!.projectName!);
+        const rows = db.query(sql).all(...params) as SqliteNode[];
+        for (const row of rows) {
+          const level = row.level as MemoryNodeLevel;
+          const node = rowToNode(row);
+          if (!node.embedding) continue;
+          if (options?.minLevel !== undefined && level < options.minLevel) continue;
+          if (options?.maxLevel !== undefined && level > options.maxLevel) continue;
+          if (options?.minUsefulness !== undefined && (node.usefulnessScore ?? 0) < options.minUsefulness) continue;
+          if (options?.categoryFilter !== undefined && node.category !== options.categoryFilter) continue;
+          if (options?.typeFilter !== undefined && node.type !== options.typeFilter) continue;
+          if (options?.domainFilter !== undefined && node.domain !== options.domainFilter) continue;
+          if (!matchesTagsFilter(node.tags, options?.tagsFilter)) continue;
+          let _embedding = node.embedding;
+          if (row.embedding_blob) _embedding = blobToEmbedding(row.embedding_blob);
+          const semanticScore = hnswScoreMap.get(node.id) ?? 0;
+          out.push({ node, semanticScore });
+        }
+      }
+      if (out.length > 0) return { candidates: out, resultCount: hnswResults.length };
+      return { candidates: out, resultCount: hnswResults.length };
+    } catch {
+      return { candidates: out, resultCount: totalResults };
+    }
   };
 
-  // HNSW returns the top-K by similarity across ALL levels/scopes. If strict
-  // filters (level band, tags, type) exclude every neighbor, widen the pool so
-  // sparse levels (e.g. summaries) or small projects get a chance before we
-  // concede to the insertion-order fallback.
+  // Use maxPool based on candidate count; vec search doesn't need widening but keep loop for HNSW fallback filters.
+  const maxPool = Math.max(limit * 5, 1500);
   let candidates: RankCandidate[] = [];
   for (let poolSize = limit * 5; poolSize <= maxPool && candidates.length === 0; poolSize *= 2) {
-    const { candidates: collected, hnswResultCount } = await collectCandidates(poolSize);
+    const { candidates: collected, resultCount } = await collectCandidates(poolSize);
     candidates = collected;
-    if (hnswResultCount === 0) break;
+    if (resultCount === 0) break;
   }
 
   if (candidates.length === 0) {
     fallbackCount++;
     if (!fallbackLogged || fallbackCount % 20 === 0) {
-      memLog("warn", "search", "HNSW returned no candidates — falling back to insertion-order pool", {
+      memLog("warn", "search", "Vector search returned no candidates — falling back to insertion-order pool", {
         fallbackCount,
-        hnswSize: hnsw.getStats().globalNodes + hnsw.getStats().projectNodes,
         queryLen: query.length,
       });
       fallbackLogged = true;

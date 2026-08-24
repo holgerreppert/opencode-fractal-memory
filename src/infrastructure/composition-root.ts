@@ -2,7 +2,6 @@ import { createSqliteMemoryStore, type MemoryStore } from "../storage/sqlite";
 import type { MemConfig } from "./config/config";
 import { loadMemConfig } from "./config/config";
 import { generateEmbeddingWithSegments } from "./llm/embeddings";
-import { loadHNSWIndexFromDisk, persistHNSWIndex, getHNSWIndex } from "./vector/hnsw-index";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
 import { createAutoRetrieveHook } from "../application";
 import { startManagementServer } from "../management-server";
@@ -79,30 +78,10 @@ async function initializeStore(directory: string, globalDbPath?: string): Promis
   await store.ensureSeed();
   await ensureSeedRules(store);
 
-  memLog("info", "init", "Restoring HNSW index", { rssMB: rss() });
-  const loaded = await loadHNSWIndexFromDisk();
-  if (loaded) {
-    const stats = loaded.getStats();
-    memLog("info", "init", "HNSW index loaded from disk", { globalNodes: stats.globalNodes, projectNodes: stats.projectNodes, rssMB: rss() });
-  } else {
-    memLog("info", "init", "No HNSW index on disk — rebuilding from DB embeddings", { rssMB: rss() });
-  }
-
-  memLog("info", "init", "Reconciling HNSW index with DB", { rssMB: rss() });
-  const before = getHNSWIndex().getStats();
-  await store.rebuildHNSWIndex("all");
-  const after = getHNSWIndex().getStats();
-  const changed = before.globalNodes !== after.globalNodes || before.projectNodes !== after.projectNodes;
-  const persisted = persistHNSWIndex();
-  memLog("info", "init", "HNSW index reconciled", {
-    beforeGlobal: before.globalNodes,
-    beforeProject: before.projectNodes,
-    afterGlobal: after.globalNodes,
-    afterProject: after.projectNodes,
-    changed,
-    persisted,
-    rssMB: rss(),
-  });
+  // Vector search now uses sqlite-vec brute-force (vec_distance_cosine) directly
+  // on memory_nodes.embedding_blob — no separate HNSW graph or JSON persistence.
+  // Extension is loaded lazily per-DB in search (vecBruteSearch). No startup rebuild.
+  memLog("info", "init", "Vector search: sqlite-vec brute-force (no HNSW rebuild)", { rssMB: rss() });
 
   return store;
 }

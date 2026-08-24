@@ -82,6 +82,7 @@ const NESTED_DEPS = [
   "@opentui/solid",
   "solid-js",
   "entities",
+  "sqlite-vec",
 ];
 
 const SKIP_BUILD = process.argv.includes("--skip-build");
