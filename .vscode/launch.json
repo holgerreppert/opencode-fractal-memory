@@ -61,6 +61,29 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Plugin Clean (all install copies, dry-run)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "scripts/clean-plugin-installs.ts", "--dry-run"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Plugin Clean (DELETE + wasgehtbesser)",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "run",
+        "scripts/clean-plugin-installs.ts",
+        "--project",
+        "${env:HOME}/Documents/projects/wasgehtbesser"
+      ],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Build Project",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "build"],
