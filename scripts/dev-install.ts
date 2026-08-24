@@ -133,16 +133,19 @@ async function copyNestedDeps(target: string): Promise<void> {
  */
 async function ensureGlobalTuiRegistration(): Promise<void> {
   const globalTui = path.join(homedir(), ".config", "opencode", "tui.json");
-  const entry = path.join(TARGETS[1], "dist", "tui.js");
-  if (!existsSync(entry)) {
-    log(`WARN: ${entry} missing — cannot register TUI plugin`);
+  const entry = "opencode-fractal-memory";
+  const distEntry = path.join(TARGETS[1], "dist", "tui.js");
+  if (!existsSync(distEntry)) {
+    log(`WARN: ${distEntry} missing — cannot register TUI plugin`);
     return;
   }
   let json: { $schema?: string; plugin?: string[] } = {};
   try {
     if (existsSync(globalTui)) json = JSON.parse(await readFile(globalTui, "utf-8"));
   } catch { /* corrupt file — start fresh */ }
-  const plugins = new Set(json.plugin ?? []);
+  // Migrate: drop legacy absolute dist/tui.js entries (caused duplicate boxes)
+  const cleaned = (json.plugin ?? []).filter((p) => !p.includes("dist/tui.js"));
+  const plugins = new Set(cleaned);
   plugins.add(entry);
   json.$schema ??= "https://opencode.ai/tui.json";
   json.plugin = [...plugins];
