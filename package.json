@@ -13,7 +13,8 @@
     "agent",
     "commands",
     "management",
-    "scripts"
+    "scripts",
+    "tui.json"
   ],
   "keywords": [
     "opencode",
