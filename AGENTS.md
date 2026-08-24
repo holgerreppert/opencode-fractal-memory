@@ -5,7 +5,7 @@ Plugin providing infinite context memory for OpenCode via SQLite, embeddings, an
 ## Architecture
 
 - **Layers**: domain ports (`src/domain/ports/` — interfaces only) ← infrastructure (`src/storage/`, `src/infrastructure/`) ← application logic (`src/application/`) ← plugin adapters (`src/plugin/hooks/`). Composition root at `src/infrastructure/composition-root.ts` wires everything.
-- **Storage**: SQLite (`~/.config/opencode/memory.db`), sqlite-vec (cosine sim), FTS5 (BM25)
+- **Storage**: SQLite (`~/.config/opencode/memory.db`), sqlite-vec brute-force `vec_distance_cosine` on `memory_nodes.embedding_blob` (cosine sim, `src/infrastructure/vector/sqlite-vec-adapter.ts`, `v0.1.9`; `hnsw-index.ts` kept as fallback), FTS5 (BM25)
 - **Hooks** (`tool.execute.before`/`after`, `experimental.chat.system.transform`, `experimental.chat.messages.transform`, `chat.message`, `event`): ~20 extracted handlers in `src/plugin/hooks/`, orchestrated by `src/plugin/hooks.ts`
 - **Management app**: served on `http://localhost:8787`, spawned as subprocess. API at `src/management/routes.ts`, UI at `management/public/`
 - **Config**: `~/.config/opencode/opencode-mem.json`, Zod schema at `src/infrastructure/config/config.ts`

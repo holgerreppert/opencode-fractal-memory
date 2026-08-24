@@ -23,7 +23,11 @@ copyFiles("commands", "commands");
 // ~/.config/opencode/tui.json — a manifest inside this package is never discovered.
 function registerGlobalTui() {
   try {
-    const tuiEntry = require.resolve("./dist/tui.js");
+    // Use npm spec "opencode-fractal-memory" (resolved via node_modules), not absolute path.
+    // Absolute dist/tui.js entries cause duplicate boxes when both global + project configs merge.
+    const expectedDist = require.resolve("./dist/tui.js");
+    if (!require("fs").existsSync(expectedDist)) throw new Error("dist/tui.js missing");
+    const tuiEntry = "opencode-fractal-memory";
     const globalDir = path.join(process.env.HOME || process.env.USERPROFILE || "", ".config", "opencode");
     const globalTui = path.join(globalDir, "tui.json");
     fs.mkdirSync(globalDir, { recursive: true });
@@ -31,7 +35,8 @@ function registerGlobalTui() {
     try {
       if (fs.existsSync(globalTui)) json = JSON.parse(fs.readFileSync(globalTui, "utf8"));
     } catch (e) { /* corrupt file — start fresh */ }
-    const plugins = new Set(Array.isArray(json.plugin) ? json.plugin : []);
+    const cleaned = (Array.isArray(json.plugin) ? json.plugin : []).filter((p) => !String(p).includes("dist/tui.js"));
+    const plugins = new Set(cleaned);
     plugins.add(tuiEntry);
     if (!json.$schema) json.$schema = "https://opencode.ai/tui.json";
     json.plugin = [...plugins];
