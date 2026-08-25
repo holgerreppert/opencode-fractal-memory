@@ -61,3 +61,32 @@ describe("rankCandidates RRF fusion", () => {
     expect(clamped.map(r => r.importance)).toEqual(k1.map(r => r.importance));
   });
 });
+
+describe("rankCandidates subtask boost", () => {
+  const mkNode = (id: string, subtask: string | null) =>
+    ({ ...node(id, 0.5), subtask }) as import("../../storage/types").MemoryNode;
+
+  test("matching subtask boosts importance by 1.3x", () => {
+    const candidates: RankCandidate[] = [
+      { node: mkNode("match", "editing"), semanticScore: 0.5 },
+      { node: mkNode("nomatch", "analysis"), semanticScore: 0.5 },
+    ];
+    const ranked = rankCandidates(candidates, { subtask: "editing" });
+    const byId = new Map(ranked.map(r => [r.node.id, r]));
+    expect(byId.get("match")!.importance).toBeGreaterThan(byId.get("nomatch")!.importance);
+    expect(byId.get("match")!.components.subtaskWeight).toBe(1.3);
+    expect(byId.get("nomatch")!.components.subtaskWeight).toBe(1.0);
+  });
+
+  test("no query subtask → weight 1.0 everywhere", () => {
+    const candidates: RankCandidate[] = [{ node: mkNode("a", "editing"), semanticScore: 0.5 }];
+    const ranked = rankCandidates(candidates, {});
+    expect(ranked[0]!.components.subtaskWeight).toBe(1.0);
+  });
+
+  test("node without subtask stays neutral", () => {
+    const candidates: RankCandidate[] = [{ node: mkNode("a", null), semanticScore: 0.5 }];
+    const ranked = rankCandidates(candidates, { subtask: "validation" });
+    expect(ranked[0]!.components.subtaskWeight).toBe(1.0);
+  });
+});
