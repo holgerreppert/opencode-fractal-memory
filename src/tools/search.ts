@@ -70,7 +70,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
       domain_filter: tool.schema.enum(["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"]).optional().describe("Filter to specific memory domain"),
-      type: tool.schema.enum(["storedcontext"]).optional().describe("Filter by memory node type (e.g. storedcontext)"),
+      type: tool.schema.enum(["storedcontext", "workflow"]).optional().describe("Filter by memory node type (e.g. storedcontext, workflow)"),
       project_name: tool.schema.string().optional().describe("Project to search (defaults to the current project)"),
     },
     async execute(args) {

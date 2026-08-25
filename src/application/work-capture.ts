@@ -65,6 +65,10 @@ export async function captureSessionWork(
 
   let content = lines.join("\n");
 
+  // Abstract transferables (Kim 2604.14004 + ReasoningBank): alongside the raw
+  // work node (filenames, session-bound), distill a portable workflow node —
+  // procedure + validation + insight with NO filenames, transferable across
+  // projects. Only when LLM summarization is enabled.
   if (config.useLlm && client?.session?.prompt) {
     try {
       const filesList = filesTouched.join(", ");
@@ -87,6 +91,47 @@ Produce a concise "What was done" summary (2-4 sentences) describing the most pl
       const response = await (await result.text()).trim();
       if (response) {
         content += `\n### What Was Done (LLM)\n${response}\n`;
+      }
+
+      const wfPrompt = `From this coding-agent session, extract an ABSTRACT, TRANSFERABLE workflow — reusable in ANY project. Do NOT mention filenames, paths, or session IDs.
+
+Files touched (context only): ${filesList || "none"}
+Tools used: ${toolsList}
+Summary of what was done: ${response || "unavailable"}
+
+Format EXACTLY as:
+## Procedure
+- (3-6 concrete steps describing HOW this class of task is done)
+## Validation
+- (how to verify such work succeeds)
+## Insight
+- (1-2 sentences: when to apply this workflow, and the non-obvious lesson)`;
+
+      const wfResult = await client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          noReply: true,
+          parts: [{ type: "text", text: wfPrompt }],
+        },
+      });
+      const wfResponse = await (await wfResult.text()).trim();
+      if (wfResponse && wfResponse.includes("## Procedure")) {
+        const wfLabel = `workflow:${Date.now()}`;
+        await store.createNode({
+          scope: "global",
+          label: wfLabel,
+          content: wfResponse,
+          level: 0,
+          importance: 0.75,
+          type: "workflow",
+          parentIds: null,
+          source: "auto_extract",
+          subtask: inferSubtask(stats.toolCalls.filter(tc => tc.success === true)),
+          tags: ["workflow", "auto_extract", "transferable", sessionTag],
+          metadata: { sessionId, derivedFromLabel: label },
+        });
+        memLog("info", "work", `Captured workflow node ${wfLabel}`);
+        content += `\n(Abstract workflow distilled: ${wfLabel})`;
       }
     } catch (error) {
       memLog("error", "work", "LLM work summary failed:", { error });
