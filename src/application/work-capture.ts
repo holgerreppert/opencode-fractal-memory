@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
+import { inferSubtask } from "./subtask";
 
 export interface AutoCaptureConfig {
   enabled: boolean;
@@ -101,6 +102,7 @@ Produce a concise "What was done" summary (2-4 sentences) describing the most pl
     type: "knowledge",
     parentIds: null,
     source: "auto_extract",
+    subtask: inferSubtask(stats.toolCalls.filter(tc => tc.success === true)),
     tags: ["knowledge", "work", "auto_extract", sessionTag],
     metadata: {
       sessionId,

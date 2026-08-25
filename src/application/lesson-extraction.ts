@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
+import { inferSubtask } from "./subtask";
 
 export interface AutoLessonsConfig {
   enabled: boolean;
@@ -124,6 +125,7 @@ Your lessons:`;
     type: "lesson",
     parentIds: null,
     source: "auto_extract",
+    subtask: inferSubtask(failedCalls),
     tags: ["lesson", "auto_extract", `sig:${signature}`],
     metadata: {
       sessionId,
