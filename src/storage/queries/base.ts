@@ -39,10 +39,11 @@ export interface SqliteNode {
   valid_until: number | null;
   supersedes_id: string | null;
   content_hash: string | null;
+  subtask: string | null;
 }
 
-import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain } from "../../storage/types";
-export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain } from "../../storage/types";
+import type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain, MemorySubtask } from "../../storage/types";
+export type { MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryNode, MemoryCategory, MemorySupertype, MemoryDomain, MemorySubtask } from "../../storage/types";
 
 export function blobToEmbedding(blob: Buffer | null): number[] | null {
   if (!blob) return null;
@@ -111,5 +112,6 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     validUntil: row.valid_until ? new Date(row.valid_until) : null,
     supersedesId: row.supersedes_id ?? null,
     contentHash: row.content_hash ?? null,
+    subtask: (row.subtask as MemorySubtask | null) ?? null,
   };
 }

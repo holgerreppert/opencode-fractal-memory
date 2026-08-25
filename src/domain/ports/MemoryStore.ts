@@ -12,6 +12,8 @@ export type MemorySupertype = "declarative" | "procedural" | "experiential" | "m
 export type MemoryDomain = "architecture" | "operations" | "knowledge" | "rules" | "history" | "patterns" | "preferences" | null;
 export type SearchIntent = "read" | "edit" | "debug" | "discovery";
 
+export type MemorySubtask = "analysis" | "localization" | "editing" | "validation";
+
 export type MemoryNode = {
   id: string;
   scope: MemoryScope;
@@ -51,6 +53,7 @@ export type MemoryNode = {
   validUntil: Date | null;
   supersedesId: string | null;
   contentHash: string | null;
+  subtask: MemorySubtask | null;
 };
 
 export type CreateNodeInput = {
@@ -85,6 +88,7 @@ export type CreateNodeInput = {
   validUntil?: Date | null | undefined;
   supersedesId?: string | null | undefined;
   contentHash?: string | null | undefined;
+  subtask?: MemorySubtask | null | undefined;
 };
 
 export type TemporalEdge = {
