@@ -330,6 +330,9 @@ export async function searchByEmbedding(
   }
 
   // Unified scoring: feature-weighted linear model (or RRF when rrfK is set), recency tiebreak only + provenance trace
+  // When reranking, keep the MMR-selected pool wide (≥2×topK): capping to `limit`
+  // left rerank() with candidates.length === topK → early return → silent no-op.
+  const mmrCap = doRerank ? Math.max(limit * 2, 24) : limit;
   const ranked = rankCandidates(candidates, {
     weights,
     levelWeights: options?.levelWeights,
@@ -337,7 +340,7 @@ export async function searchByEmbedding(
     rrfK: options?.rrfK,
     // MMR diversity when limit suggests top-10 injection (prevents >2 nodes from same project/session)
     mmrLambda: limit >= 10 && candidates.length > limit ? 0.3 : undefined,
-    mmrMaxResults: limit >= 10 && candidates.length > limit ? limit : undefined,
+    mmrMaxResults: limit >= 10 && candidates.length > limit ? mmrCap : undefined,
   })
   // Log trace for live feed / debug (components include features+weights+intent/level multipliers)
   if (ranked.length > 0) {
