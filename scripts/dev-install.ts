@@ -33,6 +33,7 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { registerTuiEntry } from "../src/infrastructure/tui-self-register";
 
 const HOME = homedir();
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -139,18 +140,8 @@ async function ensureGlobalTuiRegistration(): Promise<void> {
     log(`WARN: ${distEntry} missing — cannot register TUI plugin`);
     return;
   }
-  let json: { $schema?: string; plugin?: string[] } = {};
-  try {
-    if (existsSync(globalTui)) json = JSON.parse(await readFile(globalTui, "utf-8"));
-  } catch { /* corrupt file — start fresh */ }
-  // Migrate: drop legacy absolute dist/tui.js entries (caused duplicate boxes)
-  const cleaned = (json.plugin ?? []).filter((p) => !p.includes("dist/tui.js"));
-  const plugins = new Set(cleaned);
-  plugins.add(entry);
-  json.$schema ??= "https://opencode.ai/tui.json";
-  json.plugin = [...plugins];
-  await writeFile(globalTui, `${JSON.stringify(json, null, 2)}\n`);
-  log(`TUI registered in ${globalTui}`);
+  const changed = registerTuiEntry(globalTui, entry);
+  log(changed ? `TUI registered in ${globalTui}` : `TUI already registered in ${globalTui}`);
 }
 
 async function main(): Promise<void> {
