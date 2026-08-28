@@ -91,10 +91,11 @@ document.addEventListener('alpine:init', () => {
       if (!s) return;
       this.availableLevels = Object.keys(s.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
       const types = new Set(Object.keys(s.nodesPerType || {}));
-      // Ensure dot is discoverable even if stats scope split hides it — check nodeData directly
+      // Dot is a first-class type — always show the filter chip so diagrams are discoverable in any scope.
+      // Also add if any loaded nodeData contains it (covers scope-split where global stats hides project dots).
+      types.add('dot');
+      types.add('workflow');
       if (window.nodeData && window.nodeData.some(n => n.type === 'dot')) types.add('dot');
-      else if ((s.nodesPerType || {}).dot == null && types.size > 0) { /* keep as is */ }
-      // Always keep dot in list if any dot node exists in any scope (global fallback)
       this.availableTypes = [...types].sort();
       this.availableSupertypes = Object.keys(s.nodesPerSupertype || {}).sort();
       this.availableDomains = Object.keys(s.nodesPerDomain || {}).sort();

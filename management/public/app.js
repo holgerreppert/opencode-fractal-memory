@@ -1617,6 +1617,29 @@ async function loadData() {
     linkData = await linksRes.json();
     temporalEdgeData = temporalRes.ok ? await temporalRes.json() : [];
     statsData = await statsRes.json();
+
+    // Dot diagrams are project-scoped but must be discoverable in any view.
+    // If current scope has no dots, merge them from the opposite scope so the ◈ dot filter is never empty.
+    try {
+      const hasDot = nodeData.some(n => n.type === "dot");
+      if (!hasDot) {
+        const altScope = currentScope === "global" ? "project" : "global";
+        const altQ = `?scope=${altScope}${currentProjectName ? `&project_name=${encodeURIComponent(currentProjectName)}` : ""}`;
+        const altRes = await fetch(`/api/nodes${altQ}`);
+        if (altRes.ok) {
+          const altNodes = await altRes.json();
+          const dots = altNodes.filter(n => n.type === "dot");
+          if (dots.length) {
+            nodeData = [...nodeData, ...dots];
+            // Merge dot counts into stats so the filter chip count is accurate
+            statsData.nodesPerType = statsData.nodesPerType || {};
+            statsData.nodesPerType.dot = (statsData.nodesPerType.dot || 0) + dots.length;
+            statsData.totalNodes = (statsData.totalNodes || nodeData.length) + dots.length;
+            console.log(`[data] Merged ${dots.length} dot nodes from ${altScope} scope for discoverability`);
+          }
+        }
+      }
+    } catch (e) { console.warn("[data] dot merge failed", e); }
     const versionData = await versionRes.json();
     document.getElementById("version").textContent = `v${versionData.version}`;
 
