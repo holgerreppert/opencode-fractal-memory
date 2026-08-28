@@ -103,7 +103,15 @@ async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore
       scope: queryScope,
     };
     if (projectName !== undefined) opts.projectName = projectName;
-    const nodes = await searchNodes(store, generateEmbedding, q, opts);
+    let nodes = await searchNodes(store, generateEmbedding, q, opts);
+    // Dot discoverability: when user searches for dot, bring dot nodes to front (they have no embedding, rank low otherwise)
+    if (q.toLowerCase().includes("dot")) {
+      nodes = [...nodes].sort((a, b) => {
+        const da = a.type === "dot" ? 1 : 0, db = b.type === "dot" ? 1 : 0;
+        if (da !== db) return db - da;
+        return (b.importance ?? 0) - (a.importance ?? 0);
+      });
+    }
     return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
   } catch (e) {
     memLog("error", "management", "[api] Search error:", { error: e instanceof Error ? e.message : String(e) });

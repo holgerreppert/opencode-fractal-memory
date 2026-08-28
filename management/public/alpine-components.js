@@ -90,7 +90,12 @@ document.addEventListener('alpine:init', () => {
       const s = window.statsData;
       if (!s) return;
       this.availableLevels = Object.keys(s.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
-      this.availableTypes = Object.keys(s.nodesPerType || {}).sort();
+      const types = new Set(Object.keys(s.nodesPerType || {}));
+      // Ensure dot is discoverable even if stats scope split hides it — check nodeData directly
+      if (window.nodeData && window.nodeData.some(n => n.type === 'dot')) types.add('dot');
+      else if ((s.nodesPerType || {}).dot == null && types.size > 0) { /* keep as is */ }
+      // Always keep dot in list if any dot node exists in any scope (global fallback)
+      this.availableTypes = [...types].sort();
       this.availableSupertypes = Object.keys(s.nodesPerSupertype || {}).sort();
       this.availableDomains = Object.keys(s.nodesPerDomain || {}).sort();
       this.availableSources = Object.keys(s.nodesPerSource || {}).sort();
