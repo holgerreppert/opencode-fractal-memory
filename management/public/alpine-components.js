@@ -312,6 +312,19 @@ document.addEventListener('alpine:init', () => {
 
     isLevelActive(l) { return this.levels.length === 0 || this.levels.includes(l); },
     isTypeActive(t) { return this.types.length === 0 || this.types.includes(t); },
+
+    toggleDotFilter() {
+      if (this.types.length === 1 && this.types[0] === 'dot') {
+        this.types = [];
+      } else {
+        this.types = ['dot'];
+      }
+      this._syncFiltersToEngine();
+    },
+    clearDotFilter() {
+      this.types = [];
+      this._syncFiltersToEngine();
+    },
   }));
 
   // ==================== Settings Panel ====================

@@ -36,6 +36,8 @@ const TYPE_SHAPES = {
   review: "sphere",
   session: "sphere",
   playbook_version: "torus",
+  dot: "torus",
+  workflow: "torus",
   unknown: "sphere",
 };
 
@@ -55,6 +57,8 @@ const TYPE_COLORS = {
   summary: 0xfb923c,
   bug: 0xff6b6b,
   fix: 0x34d399,
+  dot: 0x06b6d4,
+  workflow: 0x22d3ee,
 };
 
 const CUSTOM_TYPE_COLORS = {
@@ -1737,6 +1741,8 @@ function buildLegend() {
   html += `<div class="legend-item"><div class="legend-dot" style="background: #f472b6; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Icosahedron = Skill / Rule</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus (orange) = Playbook</span></div>`;
   html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus (red) = Middle-Term</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #06b6d4; border-radius: 50%; border: 1px dashed #fff;"></div><span class="legend-label">Torus (cyan) = Diagram — dot</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #22d3ee; border-radius: 50%;"></div><span class="legend-label">Torus (light cyan) = Workflow</span></div>`;
   html += `<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0;">`;
   html += `<div style="margin-bottom:6px; font-weight: 600; color: #aaa; font-size:11px;">Temporal Edges:</div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #22c55e; border-radius: 1px; flex-shrink: 0;"></div><span class="legend-label">NEXT (sequence)</span></div>`;
