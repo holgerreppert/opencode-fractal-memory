@@ -80,6 +80,7 @@ interface NodeLike {
   source: string | null;
   status: string | null;
   supersedesId: string | null;
+  subtask?: string | null;
 }
 
 export const MIME_TYPES: Record<string, string> = {

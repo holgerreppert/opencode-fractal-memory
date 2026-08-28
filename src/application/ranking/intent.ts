@@ -1,4 +1,18 @@
-import type { SearchIntent } from "../../storage/types";
+import type { SearchIntent, MemorySubtask } from "../../storage/types";
+
+/**
+ * Subtask-aligned boost (Shen 2602.21611): when a query declares which coding
+ * phase it belongs to (analysis/localization/editing/validation), memories
+ * captured during the same phase get a multiplicative bump. Orthogonal to
+ * intent — multiplies alongside computeIntentWeight in the pipeline.
+ */
+export function computeSubtaskWeight(
+  querySubtask: MemorySubtask | undefined,
+  nodeSubtask: string | null,
+): number {
+  if (!querySubtask || !nodeSubtask) return 1.0;
+  return querySubtask === nodeSubtask ? 1.3 : 1.0;
+}
 
 /**
  * Intent-based category/type boost. Purpose-centric types dominate their

@@ -5,6 +5,7 @@ import type {
   MemoryNodeLevel,
   MemoryNodeType,
   MemoryScope,
+  MemorySubtask,
   SearchIntent,
 } from "../domain/ports/MemoryStore";
 import type { SearchStore } from "../domain/ports/SearchStore";
@@ -45,6 +46,7 @@ export async function searchNodes(
     featureWeights?: Partial<RankWeights> | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
+    subtask?: MemorySubtask | undefined;
     categoryFilter?: MemoryCategory | undefined;
     domainFilter?: MemoryDomain | undefined;
     typeFilter?: MemoryNodeType | undefined;
@@ -84,6 +86,7 @@ export async function searchNodes(
     projectName?: string | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
+    subtask?: MemorySubtask | undefined;
     categoryFilter?: MemoryCategory | undefined;
     domainFilter?: MemoryDomain | undefined;
     typeFilter?: MemoryNodeType | undefined;
@@ -99,6 +102,7 @@ export async function searchNodes(
   if (opts.projectName !== undefined) options.projectName = projectName;
   if (opts.temporalHops !== undefined && opts.temporalHops > 0) options.temporalHops = opts.temporalHops;
   if (opts.intent !== undefined) options.intent = opts.intent;
+  if (opts.subtask !== undefined) options.subtask = opts.subtask;
   if (opts.categoryFilter !== undefined) options.categoryFilter = opts.categoryFilter;
   if (opts.domainFilter !== undefined) options.domainFilter = opts.domainFilter;
   if (opts.typeFilter !== undefined) options.typeFilter = opts.typeFilter;
@@ -109,4 +113,4 @@ export async function searchNodes(
   return store.searchByEmbedding(embedding, limit, options);
 }
 
-export type { MemoryScope, MemoryNode, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, MemoryNodeLevel };
+export type { MemoryScope, MemoryNode, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, MemorySubtask, MemoryNodeLevel };

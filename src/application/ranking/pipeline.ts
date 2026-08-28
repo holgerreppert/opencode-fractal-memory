@@ -1,9 +1,9 @@
-import type { MemoryNode, MemoryNodeLevel, SearchIntent } from "../../storage/types";
+import type { MemoryNode, MemoryNodeLevel, SearchIntent, MemorySubtask } from "../../storage/types";
 import { extractFeatures, type RankFeatures } from "./features";
 import { fuseScore, normalizeFusedScore } from "./fusion";
 import type { RankWeights } from "./weights";
 import { DEFAULT_RANK_WEIGHTS } from "./weights";
-import { computeIntentWeight } from "./intent";
+import { computeIntentWeight, computeSubtaskWeight } from "./intent";
 import { computeRecencyScore } from "../../storage/queries/search-helpers";
 import { cosineSimilarity } from "../../math";
 import { memLog } from "../../logging";
@@ -22,6 +22,7 @@ export interface RankOptions {
   rrfK?: number | undefined;
   levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
   intent?: SearchIntent | undefined;
+  subtask?: MemorySubtask | undefined;
   recencyRole?: "tiebreak" | "off" | undefined;
   recencyAnchor?: (node: MemoryNode) => Date | null | undefined;
   /** MMR lambda in [0,1] — when set, results are re-ordered by MMR diversity: score = relevance - lambda * maxSimilarity */
@@ -34,6 +35,7 @@ export interface RankComponents {
   weights: RankWeights;
   rawScore: number;
   intentWeight: number;
+  subtaskWeight: number;
   levelWeight: number;
   contextual: number;
 }
@@ -78,8 +80,9 @@ export function rankCandidates(candidates: RankCandidate[], options: RankOptions
     const rawScore = fuseScore(features, weights);
 
     const intentWeight = computeIntentWeight(options.intent, node.category, node.type, node.supertype);
+    const subtaskWeight = computeSubtaskWeight(options.subtask, node.subtask ?? null);
     const levelWeight = levelWeights[(node.level ?? 0) as MemoryNodeLevel] ?? 1;
-    const contextual = rawScore * intentWeight * levelWeight;
+    const contextual = rawScore * intentWeight * subtaskWeight * levelWeight;
     const importance = normalizeFusedScore(contextual, weights);
 
     return {
@@ -92,6 +95,7 @@ export function rankCandidates(candidates: RankCandidate[], options: RankOptions
         weights,
         rawScore,
         intentWeight,
+        subtaskWeight,
         levelWeight,
         contextual,
       },
@@ -193,6 +197,7 @@ function rankByRRF(candidates: RankCandidate[], options: RankOptions): RankedRes
         weights,
         rawScore,
         intentWeight: 1,
+        subtaskWeight: 1,
         levelWeight: 1,
         contextual: rrfScore,
       },

@@ -43,6 +43,7 @@ const CreateNodeSchema = z.object({
   validUntil: z.number().nullable().optional(),
   supersedesId: z.string().nullable().optional(),
   contentHash: z.string().nullable().optional(),
+  subtask: z.enum(["analysis", "localization", "editing", "validation"]).nullable().optional(),
 });
 
 export function queryListProjectNames(db: Database, scope: MemoryScope): string[] {
@@ -179,9 +180,10 @@ export async function queryCreateNode(
   const validUntil = node.validUntil ? (node.validUntil instanceof Date ? node.validUntil.getTime() : node.validUntil) : null;
   const supersedesId = node.supersedesId ?? null;
   const contentHash = node.contentHash ?? createHash("sha256").update(node.content).digest("hex");
+  const subtask = node.subtask ?? null;
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name, derived_from, derivation, status, valid_from, valid_until, supersedes_id, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name, derived_from, derivation, status, valid_from, valid_until, supersedes_id, content_hash, subtask) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
@@ -221,6 +223,7 @@ export async function queryCreateNode(
       validUntil,
       supersedesId,
       contentHash,
+      subtask,
     ],
   );
 
@@ -301,6 +304,7 @@ export async function queryCreateNode(
     validUntil: validUntil ? new Date(validUntil) : null,
     supersedesId: supersedesId,
     contentHash: contentHash,
+    subtask: subtask,
   };
 }
 
@@ -344,12 +348,13 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
   validUntil: (v) => [["valid_until = ?", v ? (v instanceof Date ? v.getTime() : v as number) : null]],
   supersedesId: (v) => [["supersedes_id = ?", v as string | null]],
   contentHash: (v) => [["content_hash = ?", v as string | null]],
+  subtask: (v) => [["subtask = ?", v as string | null]],
 };
 
 export async function queryUpdateNode(
   db: Database,
   id: string,
-  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful" | "derivedFrom" | "derivation" | "status" | "validFrom" | "validUntil" | "supersedesId" | "contentHash">>
+  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful" | "derivedFrom" | "derivation" | "status" | "validFrom" | "validUntil" | "supersedesId" | "contentHash" | "subtask">>
 ): Promise<void> {
   const setClauses: string[] = ["updated_at = ?"];
   const params: (string | number | Buffer | null)[] = [Date.now()];

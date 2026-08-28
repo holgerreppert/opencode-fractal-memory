@@ -3,6 +3,7 @@ import type { Provider, Model } from "@opencode-ai/sdk/v2";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createApplication, createAutoRetrieve, scheduleBackgroundEmbeddings } from "../infrastructure/composition-root";
+import { selfRegisterTui } from "../infrastructure/tui-self-register";
 import { createHookHandlers } from "./hooks";
 import { createToolMap } from "./tools";
 import { memLog, perfNow } from "../logging";
@@ -39,6 +40,15 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     entryFile: import.meta.path,
     version: loadPluginVersion(),
   });
+
+  // Self-heal TUI registration: OpenCode installs packages with --ignore-scripts,
+  // so postinstall never runs for registry installs. Ensure the npm spec is in
+  // ~/.config/opencode/tui.json + resolvable via node_modules link. Non-fatal.
+  try {
+    const pkgRoot = path.resolve(import.meta.dir, "..", "..");
+    const pkg = JSON.parse(readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as { name?: string };
+    if (pkg.name) selfRegisterTui(pkgRoot, pkg.name);
+  } catch { /* non-fatal */ }
 
   let t = perfNow();
   let store!: import("../storage/sqlite").MemoryStore;

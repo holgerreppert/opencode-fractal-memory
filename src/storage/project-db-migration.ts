@@ -12,12 +12,20 @@ export async function migrateFromProjectDb(
   const oldDbPath = path.join(dbProvider.projectDirectory, ".opencode", "memory.db");
   if (!existsSync(oldDbPath)) return 0;
 
-  memLog("info", "storage", "Migrating project DB to unified storage", { path: oldDbPath, projectName });
-
   const oldDb = new Database(oldDbPath);
-  let migrated = 0;
 
+  // Some projects carry an empty/legacy .opencode/memory.db with no schema
+  // (e.g. BewerberApp) — migrating from it must be a no-op, not an init crash.
   try {
+    if (!hasTable(oldDb, "memory_nodes")) {
+      memLog("info", "storage", "Project DB has no memory_nodes table — skipping migration", { path: oldDbPath, projectName });
+      return 0;
+    }
+
+    memLog("info", "storage", "Migrating project DB to unified storage", { path: oldDbPath, projectName });
+
+    let migrated = 0;
+
     const oldNodes = oldDb.query("SELECT * FROM memory_nodes").all() as SqliteNode[];
     for (const oldRow of oldNodes) {
       const existing = unifiedDb.query("SELECT id FROM memory_nodes WHERE id = ?").get(oldRow.id) as { id: string } | null;
@@ -40,37 +48,51 @@ export async function migrateFromProjectDb(
         ],
       );
 
-      const bm25Rows = oldDb.query("SELECT * FROM bm25_index WHERE node_id = ?").all(oldRow.id) as Array<{ term: string; node_id: string; frequency: number; scope: string }>;
-      for (const bm25 of bm25Rows) {
-        unifiedDb.run(
-          "INSERT OR IGNORE INTO bm25_index (term, node_id, frequency, scope, project_name) VALUES (?, ?, ?, ?, ?)",
-          [bm25.term, bm25.node_id, bm25.frequency, bm25.scope, projectName],
-        );
+      if (hasTable(oldDb, "bm25_index")) {
+        const bm25Rows = oldDb.query("SELECT * FROM bm25_index WHERE node_id = ?").all(oldRow.id) as Array<{ term: string; node_id: string; frequency: number; scope: string }>;
+        for (const bm25 of bm25Rows) {
+          unifiedDb.run(
+            "INSERT OR IGNORE INTO bm25_index (term, node_id, frequency, scope, project_name) VALUES (?, ?, ?, ?, ?)",
+            [bm25.term, bm25.node_id, bm25.frequency, bm25.scope, projectName],
+          );
+        }
       }
 
-      const docStats = oldDb.query("SELECT * FROM bm25_doc_stats WHERE node_id = ?").get(oldRow.id) as { node_id: string; token_count: number; scope: string } | null;
-      if (docStats) {
-        unifiedDb.run(
-          "INSERT OR IGNORE INTO bm25_doc_stats (node_id, token_count, scope, project_name) VALUES (?, ?, ?, ?)",
-          [docStats.node_id, docStats.token_count, docStats.scope, projectName],
-        );
+      if (hasTable(oldDb, "bm25_doc_stats")) {
+        const docStats = oldDb.query("SELECT * FROM bm25_doc_stats WHERE node_id = ?").get(oldRow.id) as { node_id: string; token_count: number; scope: string } | null;
+        if (docStats) {
+          unifiedDb.run(
+            "INSERT OR IGNORE INTO bm25_doc_stats (node_id, token_count, scope, project_name) VALUES (?, ?, ?, ?)",
+            [docStats.node_id, docStats.token_count, docStats.scope, projectName],
+          );
+        }
       }
 
       migrated++;
     }
 
-    const oldLinks = oldDb.query("SELECT * FROM memory_links").all() as Array<{ source_id: string; target_label: string; target_id: string | null }>;
-    for (const link of oldLinks) {
-      unifiedDb.run(
-        "INSERT OR IGNORE INTO memory_links (source_id, target_label, target_id) VALUES (?, ?, ?)",
-        [link.source_id, link.target_label, link.target_id],
-      );
+    if (hasTable(oldDb, "memory_links")) {
+      const oldLinks = oldDb.query("SELECT * FROM memory_links").all() as Array<{ source_id: string; target_label: string; target_id: string | null }>;
+      for (const link of oldLinks) {
+        unifiedDb.run(
+          "INSERT OR IGNORE INTO memory_links (source_id, target_label, target_id) VALUES (?, ?, ?)",
+          [link.source_id, link.target_label, link.target_id],
+        );
+      }
     }
 
     memLog("info", "storage", "Project DB migration complete", { migrated });
+    return migrated;
   } finally {
     oldDb.close();
   }
+}
 
-  return migrated;
+function hasTable(db: Database, name: string): boolean {
+  try {
+    const row = db.query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) as { n: number };
+    return !!row.n;
+  } catch {
+    return false;
+  }
 }

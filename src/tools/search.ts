@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType } from "../storage/types";
+import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType, MemorySubtask } from "../storage/types";
 import { estimateTokens, generateEmbedding } from "../infrastructure/llm/embeddings";
 import { searchNodes } from "../application/search";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking, lastSearchResults } from "./shared";
@@ -65,11 +65,12 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       temporal_hops: tool.schema.number().int().min(0).max(5).optional().describe("Multi-hop temporal expansion depth (0=off, 1-5 for depth)"),
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
       rerank_mode: tool.schema.enum(["keyword", "cross-encoder"]).optional().describe("Rerank strategy: keyword (default) or cross-encoder (local ONNX model, better relevance)"),
+      subtask: tool.schema.enum(["analysis", "localization", "editing", "validation"]).optional().describe("Coding phase of this query — boosts memories captured during the same phase"),
       expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
       expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
       domain_filter: tool.schema.enum(["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"]).optional().describe("Filter to specific memory domain"),
-      type: tool.schema.enum(["storedcontext"]).optional().describe("Filter by memory node type (e.g. storedcontext)"),
+      type: tool.schema.enum(["storedcontext", "workflow"]).optional().describe("Filter by memory node type (e.g. storedcontext, workflow)"),
       project_name: tool.schema.string().optional().describe("Project to search (defaults to the current project)"),
     },
     async execute(args) {
@@ -79,6 +80,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
         minUsefulness?: number;
         rerank?: boolean;
         rerankMode?: "keyword" | "cross-encoder";
+        subtask?: MemorySubtask;
         projectName?: string;
         categoryFilter?: "episodic" | "semantic";
         domainFilter?: MemoryDomain;
@@ -89,6 +91,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       };
       if (args.rerank_mode !== undefined) options.rerankMode = args.rerank_mode;
       else if (defaultRerankMode !== undefined) options.rerankMode = defaultRerankMode;
+      if (args.subtask !== undefined) options.subtask = args.subtask as MemorySubtask;
       if (args.min_level !== undefined) options.minLevel = args.min_level as MemoryNodeLevel;
       if (args.max_level !== undefined) options.maxLevel = args.max_level as MemoryNodeLevel;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;

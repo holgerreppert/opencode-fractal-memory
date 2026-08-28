@@ -725,4 +725,17 @@ export const MIGRATIONS: Migration[] = [
       try { db.run("CREATE INDEX IF NOT EXISTS idx_index_state_type ON index_state(index_type)"); } catch { /* ignore */ }
     },
   },
+  {
+    version: 37,
+    name: "add-subtask-column",
+    up: (db) => {
+      // Subtask-aligned retrieval (Shen 2602.21611): phase tag on memory nodes —
+      // "analysis" | "localization" | "editing" | "validation" | null
+      const hasSubtask = db
+        .query("SELECT COUNT(*) AS n FROM pragma_table_info('memory_nodes') WHERE name = 'subtask'")
+        .get() as { n: number };
+      if (!hasSubtask.n) db.run("ALTER TABLE memory_nodes ADD COLUMN subtask TEXT");
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_subtask ON memory_nodes(subtask)"); } catch { /* ignore */ }
+    },
+  },
 ];
