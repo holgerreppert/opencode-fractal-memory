@@ -602,8 +602,8 @@
                  style="padding:6px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;display:flex;justify-content:space-between;align-items:center;"
                  :style="window.sceneCtrl?.selectedNode?.userData?.nodeId === r.id ? 'background:rgba(100,150,255,0.2);' : ''">
               <div>
-                <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" x-text="r.label || 'Unnamed'"></div>
-                <div style="color:#666;font-size:10px;" x-text="`L${r.level} · ${r.type || 'unknown'} · ${r.importance?.toFixed(2) || ''}`"></div>
+                <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;"><span x-show="r.type === 'dot'" style="color:#06b6d4; margin-right:3px;">◈</span><span x-text="r.label || 'Unnamed'"></span></div>
+                <div style="color:#666;font-size:10px;" x-text="`L${r.level} · ${r.type || 'unknown'}${r.type === 'dot' ? ' ◈' : ''} · ${r.importance?.toFixed(2) || ''}`"></div>
               </div>
               <span x-show="r.score" style="color:#4f4;font-size:10px;" x-text="(r.score * 100).toFixed(0) + '%'"></span>
             </div>
@@ -647,7 +647,8 @@
           <div class="filter-group" style="max-height:120px;overflow-y:auto;">
             <template x-for="t in availableTypes">
               <button class="filter-btn" :class="{ active: isTypeActive(t) }"
-                      @click="toggleType(t)" x-text="t"></button>
+                      :style="t === 'dot' ? 'border-color: rgba(6,182,212,0.4); font-weight:600;' : ''"
+                      @click="toggleType(t)" x-text="t === 'dot' ? '◈ dot' : t"></button>
             </template>
           </div>
         </div>
@@ -711,8 +712,8 @@
                style="padding:4px 8px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);font-size:11px;display:flex;justify-content:space-between;align-items:center;"
                :style="window.sceneCtrl?.selectedNode?.userData?.nodeId === n.id ? 'background:rgba(100,150,255,0.2);' : ''">
             <div style="flex:1;min-width:0;">
-              <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" x-text="n.label || 'Unnamed'"></div>
-              <div style="color:#666;font-size:10px;" x-text="`L${n.level} · ${n.type || 'unknown'} · imp: ${n.importance?.toFixed(2) || '?'}`"></div>
+              <div style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span x-show="n.type === 'dot'" style="color:#06b6d4; margin-right:3px;">◈</span><span x-text="n.label || 'Unnamed'"></span></div>
+              <div style="color:#666;font-size:10px;" x-text="`L${n.level} · ${n.type || 'unknown'}${n.type === 'dot' ? ' ◈' : ''} · imp: ${n.importance?.toFixed(2) || '?'}`"></div>
             </div>
             <span x-show="n.score" style="color:#4f4;font-size:10px;flex-shrink:0;margin-left:4px;" x-text="(n.score * 100).toFixed(0) + '%'"></span>
           </div>
