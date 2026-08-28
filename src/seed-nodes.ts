@@ -301,6 +301,23 @@ At session idle, the plugin distills a \`work:<ts>\` knowledge node (type \`know
 
   },
   {
+    label: "rule:feature:dot-nodes",
+    tag: "rule:feature",
+    content: `Graphviz DOT Diagram Nodes
+tag: rule:feature
+
+To create a diagram node: memory(mode="set", type="dot", label="dot:<name>", content="digraph G { ... }").
+The 'dot' type forces sticky (survives compression) and skips embedding generation (DOT is not semantic text — diagrams are browsed, not searched by vector).
+Label MUST start with "dot:" prefix (e.g. "dot:auth-flow", "dot:context-compress-architecture") — the management app uses this prefix to identify and render DOT nodes.
+content is raw Graphviz DOT source — use \\\\n for newlines if passing as a single string. Example:
+
+  memory(mode="set", type="dot", label="dot:auth-flow", content="digraph G {\\n  rankdir=LR;\\n  node [shape=box, style=rounded];\\n  A -> B -> C;\\n}")
+
+The ◈ Open Diagram button in the management app detail panel renders DOT nodes in-browser using viz.js WASM (no server needed).
+Labels with "dot:" prefix receive the ×1.25 quality multiplier in ranking (same as lesson:/decision:/convention:/fact:).
+DOT nodes are NOT retrievable by semantic search — this is intentional: architecture diagrams are browsed visually, not retrieved by keyword.`,
+  },
+  {
     label: "rule:feature:domain-classification",
     tag: "rule:feature",
     content: `Domain Classification Feature

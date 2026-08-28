@@ -63,7 +63,7 @@ export function MemoryList(store: MemoryStore) {
 
 export function MemorySet(store: MemoryStore) {
   const t = tool({
-    description: "Create or update a memory node. If label is provided and a node with that label exists, updates it instead of creating new. Embeddings are auto-generated for semantic search (use no_embedding=true to disable). Use sticky=true to prevent a node from being compressed. Worth storing: architecture decisions (why), bug root causes, project conventions, user preferences, config workarounds, anti-patterns. Skip: code content (already in files), verbose logs, ephemeral chat details.",
+    description: "Create or update a memory node. If label is provided and a node with that label exists, updates it instead of creating new. Embeddings are auto-generated for semantic search (use no_embedding=true to disable). Use sticky=true to prevent a node from being compressed. Use type='dot' to store Graphviz DOT source (rendered as ◈ Open Diagram in management app; label must start with 'dot:'). Worth storing: architecture decisions (why), bug root causes, project conventions, user preferences, config workarounds, anti-patterns, dot diagrams for architecture/code-flow. Skip: code content (already in files), verbose logs, ephemeral chat details.",
     args: {
       scope: tool.schema.enum(["global", "project"]).optional(),
       label: tool.schema.string().optional(),
@@ -72,7 +72,7 @@ export function MemorySet(store: MemoryStore) {
       level: tool.schema.number().int().nonnegative().optional(),
       parent_ids: tool.schema.string().optional(),
       importance: tool.schema.number().optional(),
-      type: tool.schema.string().optional(),
+      type: tool.schema.enum(["event", "episode", "concept", "summary", "core", "note", "skill", "playbook", "fact", "lesson", "knowledge", "storedcontext", "contexthistory", "dot", "workflow"]).optional().describe("Node type. 'dot' = Graphviz DOT source (label must start with 'dot:', forces sticky, no embedding). 'workflow' = transferable procedure/insight. 'lesson' = distilled failure. 'knowledge' = work summary."),
       domain: tool.schema.enum(["architecture", "operations", "knowledge", "rules", "history", "patterns", "preferences"]).optional().describe("Domain for memory classification — auto-derived from type if omitted"),
       ttl_days: tool.schema.number().int().min(0).optional(),
       no_embedding: tool.schema.boolean().optional(),
@@ -103,7 +103,7 @@ export function MemorySet(store: MemoryStore) {
             content: normalizeContent(args.content),
             ...(args.summary !== undefined ? { summary: args.summary } : {}),
             ...(args.level !== undefined ? { level: args.level as 0 | 1 | 2 | 3 | 4 | 5 } : {}),
-            ...(args.type !== undefined ? { type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "dot" } : {}),
+            ...(args.type !== undefined ? { type: args.type } : {}),
             ...(args.domain !== undefined ? { domain: args.domain } : {}),
             sticky,
             ...(embedding !== null ? { embedding } : {}),
@@ -136,7 +136,7 @@ export function MemorySet(store: MemoryStore) {
         parentIds,
         embedding,
         importance: args.importance ?? 0.5,
-        type: args.type as "event" | "episode" | "concept" | "summary" | "core" | "note" | "skill" | "dot" | null,
+        type: args.type ?? null,
         domain: args.domain as "architecture" | "operations" | "knowledge" | "rules" | "history" | "patterns" | "preferences" | null | undefined,
         metadata,
         sticky,
