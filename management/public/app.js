@@ -8,57 +8,78 @@ const LEVEL_COLORS = {
 };
 
 const TYPE_SHAPES = {
-  note: "sphere",
-  event: "box",
-  episode: "box",
-  concept: "octahedron",
-  summary: "octahedron",
-  core: "dodecahedron",
-  improvement: "sphere",
-  howto: "sphere",
-  skill: "icosahedron",
-  playbook: "torus",
+  // Family A — Crystalline (faceted, knowledge/declarative)
   fact: "octahedron",
-  lesson: "dodecahedron",
-  rule: "icosahedron",
-  decision: "dodecahedron",
-  architecture: "box",
-  preference: "sphere",
-  convention: "box",
+  concept: "octahedron",
   knowledge: "octahedron",
   research: "octahedron",
-  bug: "box",
-  fix: "box",
-  plan: "torus",
+  core: "dodecahedron",
+  summary: "octahedron",
+  decision: "dodecahedron",
+  lesson: "dodecahedron",
+  review: "tetrahedron",
+  // Family B — Constructed (architectural, meta/prescriptive)
+  architecture: "box",
+  convention: "box",
+  rule: "icosahedron",
+  skill: "icosahedron",
+  plan: "cylinder",
+  workflow: "cone",
+  // Family C — Organic pill (episodic, experiential, soft states)
+  note: "sphere",
   task: "sphere",
-  exploration: "box",
-  "debug-investigation": "box",
-  review: "sphere",
   session: "sphere",
+  preference: "sphere",
+  improvement: "capsule",
+  howto: "capsule",
+  exploration: "capsule",
+  "debug-investigation": "capsule",
+  event: "tetrahedron",
+  episode: "tetrahedron",
+  bug: "tetrahedron",
+  fix: "tetrahedron",
+  // Family D — Looped procedural (cycles, diagrams)
+  playbook: "torus",
   playbook_version: "torus",
-  dot: "torus",
-  workflow: "torus",
+  dot: "torusKnot",
   unknown: "sphere",
 };
 
 const TYPE_COLORS = {
-  skill: 0xfbbf24,
-  playbook: 0xff8c00,
+  // Family A — teal/green crystalline
   fact: 0x34d399,
-  lesson: 0xa78bfa,
-  rule: 0xf472b6,
-  decision: 0xfb923c,
-  architecture: 0x4a9eff,
   concept: 0x34d399,
-  core: 0xfbbf24,
   knowledge: 0x34d399,
   research: 0x34d399,
-  howto: 0x4a9eff,
-  summary: 0xfb923c,
+  summary: 0x34d399,
+  core: 0xfbbf24,
+  decision: 0xfb923c,
+  lesson: 0xa78bfa,
+  review: 0xc4b5fd,
+  // Family B — blue constructed / meta
+  architecture: 0x4a9eff,
+  convention: 0x4a9eff,
+  rule: 0xf472b6,
+  skill: 0xf472b6,
+  plan: 0x60a5fa,
+  workflow: 0x22d3ee,
+  // Family C — warm organic
+  note: 0x9ca3af,
+  task: 0x9ca3af,
+  session: 0x9ca3af,
+  preference: 0xf472b6,
+  improvement: 0x34d399,
+  howto: 0x34d399,
+  exploration: 0x06b6d4,
+  "debug-investigation": 0x06b6d4,
+  event: 0xff6b6b,
+  episode: 0xff6b6b,
   bug: 0xff6b6b,
   fix: 0x34d399,
+  // Family D — cyan/orange procedural loops
+  playbook: 0xff8c00,
+  playbook_version: 0xff8c00,
   dot: 0x06b6d4,
-  workflow: 0x22d3ee,
 };
 
 const CUSTOM_TYPE_COLORS = {
@@ -1668,7 +1689,12 @@ function getGeometry(shape, size) {
     case "octahedron": return new THREE.OctahedronGeometry(size);
     case "dodecahedron": return new THREE.DodecahedronGeometry(size);
     case "icosahedron": return new THREE.IcosahedronGeometry(size);
-    case "torus": return new THREE.TorusGeometry(size, size * 0.4, 16, 100);
+    case "tetrahedron": return new THREE.TetrahedronGeometry(size * 1.2);
+    case "cylinder": return new THREE.CylinderGeometry(size * 0.7, size * 0.7, size * 1.8, 12);
+    case "cone": return new THREE.ConeGeometry(size * 0.9, size * 1.8, 8);
+    case "capsule": return new THREE.CapsuleGeometry(size * 0.6, size * 0.8, 4, 12);
+    case "torus": return new THREE.TorusGeometry(size * 0.9, size * 0.35, 12, 24);
+    case "torusKnot": return new THREE.TorusKnotGeometry(size * 0.7, size * 0.22, 32, 8, 2, 3);
     default: return new THREE.SphereGeometry(size, 16, 16);
   }
 }
@@ -1733,16 +1759,25 @@ function buildLegend() {
     }
   }
   html += `<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0;">`;
-  html += `<div style="margin-bottom:6px; font-weight: 600; color: #aaa; font-size:11px;">Shapes by type:</div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 50%;"></div><span class="legend-label">Sphere = Note / Task / Session / Preference</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Event / Episode / Architecture / Convention / Bug / Fix</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #34d399; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Octahedron = Fact / Concept / Knowledge / Research</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #a78bfa; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);"></div><span class="legend-label">Dodecahedron = Lesson / Decision</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #f472b6; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Icosahedron = Skill / Rule</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%;"></div><span class="legend-label">Torus (orange) = Playbook</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%;"></div><span class="legend-label">Torus (red) = Middle-Term</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #06b6d4; border-radius: 50%; border: 1px dashed #fff;"></div><span class="legend-label">Torus (cyan) = Diagram — dot</span></div>`;
-  html += `<div class="legend-item"><div class="legend-dot" style="background: #22d3ee; border-radius: 50%;"></div><span class="legend-label">Torus (light cyan) = Workflow</span></div>`;
+  html += `<div style="margin-bottom:4px; font-weight: 600; color: #aaa; font-size:11px;">Families — shape = supertype, color = type</div>`;
+  html += `<div style="margin-bottom:6px; font-size:10px; color:#666;">A Crystalline (knowledge) · B Constructed (meta) · C Organic (episodic) · D Looped (procedural)</div>`;
+  html += `<div style="margin-bottom:6px; font-weight: 600; color: #aaa; font-size:11px;">A · Crystalline — faceted (knowledge)</div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #34d399; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);"></div><span class="legend-label">Octahedron = Fact / Concept / Knowledge / Research / Summary</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #fbbf24; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);"></div><span class="legend-label">Dodecahedron = Core / Decision / Lesson</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #a78bfa; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); filter: brightness(1.2);"></div><span class="legend-label">Tetrahedron = Review / Bug / Fix (pointy)</span></div>`;
+  html += `<div style="margin-top:6px; font-weight: 600; color: #aaa; font-size:11px;">B · Constructed — architectural (meta)</div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #4a9eff; border-radius: 2px;"></div><span class="legend-label">Box = Architecture / Convention</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #f472b6; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div><span class="legend-label">Icosahedron = Rule / Skill</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #60a5fa; border-radius: 30% 30% 0 0;"></div><span class="legend-label">Cylinder = Plan</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #22d3ee; clip-path: polygon(50% 0%, 0% 100%, 100% 100%);"></div><span class="legend-label">Cone = Workflow (directional)</span></div>`;
+  html += `<div style="margin-top:6px; font-weight: 600; color: #aaa; font-size:11px;">C · Organic — soft/elongated (episodic)</div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #9ca3af; border-radius: 50%;"></div><span class="legend-label">Sphere = Note / Task / Session / Preference</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #34d399; border-radius: 999px; width: 16px;"></div><span class="legend-label">Capsule = Howto / Improvement / Exploration</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); opacity:0.9;"></div><span class="legend-label">Tetrahedron (red) = Event / Episode</span></div>`;
+  html += `<div style="margin-top:6px; font-weight: 600; color: #aaa; font-size:11px;">D · Looped — procedural cycles</div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff8c00; border-radius: 50%; border: 2px solid #ff8c00;"></div><span class="legend-label">Torus (orange) = Playbook</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #ff6b6b; border-radius: 50%; border: 1px solid #600;"></div><span class="legend-label">Torus (red) = Middle-Term</span></div>`;
+  html += `<div class="legend-item"><div class="legend-dot" style="background: #06b6d4; border-radius: 40% 60% 60% 40% / 40% 40% 60% 60%; border: 1px dashed #fff;"></div><span class="legend-label">TorusKnot (cyan) = Diagram — dot</span></div>`;
   html += `<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:8px 0;">`;
   html += `<div style="margin-bottom:6px; font-weight: 600; color: #aaa; font-size:11px;">Temporal Edges:</div>`;
   html += `<div class="legend-item"><div style="width: 14px; height: 3px; background: #22c55e; border-radius: 1px; flex-shrink: 0;"></div><span class="legend-label">NEXT (sequence)</span></div>`;
