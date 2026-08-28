@@ -32,6 +32,11 @@ document.addEventListener('alpine:init', () => {
     availableDomains: [],
     availableSources: [],
 
+    _debounceTimer: null,
+    _searchAbort: null,
+    _searchSeq: 0,
+    _suppressSync: false,
+
     init() {
       const saved = localStorage.getItem('mgmt-node-sort');
       if (saved) {
@@ -41,9 +46,41 @@ document.addEventListener('alpine:init', () => {
           if (p.sortDir) this.sortDir = p.sortDir;
         } catch { /* ignore */ }
       }
+      // Hydrate from URL (single source of truth) if searchState is available
+      if (window.searchState) {
+        const ss = window.searchState;
+        this.query = ss.q || "";
+        this.mode = ss.mode || "auto";
+        this.levels = [...ss.levels];
+        this.types = [...ss.types];
+        this.supertype = ss.supertype || "";
+        this.domain = ss.domain || "";
+        this.source = ss.source || "";
+        ss.onChange(() => {
+          this._suppressSync = true;
+          this.query = ss.q || "";
+          this.mode = ss.mode || "auto";
+          this.levels = [...ss.levels];
+          this.types = [...ss.types];
+          this.supertype = ss.supertype || "";
+          this.domain = ss.domain || "";
+          this.source = ss.source || "";
+          this._suppressSync = false;
+          this._syncFiltersToEngine();
+          // Re-trigger search if q/mode changed via URL (back button)
+          if (ss.q) this.doSearch();
+          else { this.results = []; this.info = ""; this._updateNodeList(); }
+        });
+      }
+      this._suppressSync = false;
       this._refreshOptions();
       this._updateNodeList();
       window.addEventListener(STATS_LOADED_EVENT, () => {
+        this._refreshOptions();
+        this._updateNodeList();
+      });
+      // Also refresh options when stats are reloaded via scope switch (extra event name)
+      window.addEventListener('stats:reloaded', () => {
         this._refreshOptions();
         this._updateNodeList();
       });
@@ -160,6 +197,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     _syncFiltersToEngine() {
+      if (this._suppressSync) return;
       const fe = window.filterEngine;
       if (!fe) return;
       fe.selectAll();
@@ -180,6 +218,20 @@ document.addEventListener('alpine:init', () => {
       fe.changed();
       if (window.sceneCtrl) window.sceneCtrl.updateVisibility(fe);
       this._updateNodeList();
+      // Mirror to URL (single source of truth)
+      if (window.searchState && !this._suppressSync) {
+        const ss = window.searchState;
+        ss.q = this.query;
+        ss.mode = this.mode;
+        ss.levels = [...this.levels];
+        ss.types = [...this.types];
+        ss.supertype = this.supertype || null;
+        ss.domain = this.domain || null;
+        ss.source = this.source || null;
+        ss.scope = window.currentScope || ss.scope;
+        ss.projectName = window.currentProjectName || ss.projectName;
+        ss.push();
+      }
     },
 
     toggleLevel(l) {
@@ -245,9 +297,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     onQueryInput() {
-      if (this.mode === 'auto' || this.mode === 'text') {
-        this.doSearch();
-      }
+      if (this._debounceTimer) clearTimeout(this._debounceTimer);
+      this._debounceTimer = setTimeout(() => {
+        this._debounceTimer = null;
+        if (this.mode === 'auto' || this.mode === 'text') {
+          this.doSearch();
+        }
+      }, 180);
     },
 
     _detectMode() {
@@ -257,9 +313,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     async _serverSearch(query, mode) {
+      const seq = ++this._searchSeq;
+      if (this._searchAbort) { try { this._searchAbort.abort(); } catch { /* ignore */ } }
+      this._searchAbort = new AbortController();
+      const signal = this._searchAbort.signal;
       try {
         const scope = window.currentScope || 'global';
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${mode}&scope=${scope}`);
+        const proj = window.currentProjectName ? `&project_name=${encodeURIComponent(window.currentProjectName)}` : '';
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${mode}&scope=${scope}${proj}`, { signal });
         if (!res.ok) {
           this.info = 'Search error';
           this.results = [];
@@ -267,6 +328,7 @@ document.addEventListener('alpine:init', () => {
           return;
         }
         const data = await res.json();
+        if (seq !== this._searchSeq) return; // stale response — ignore
         if (Array.isArray(data)) {
           this.results = data.slice(0, 50);
           this.info = `${data.length} result${data.length !== 1 ? 's' : ''}`;
@@ -281,12 +343,13 @@ document.addEventListener('alpine:init', () => {
           this.info = 'No results';
         }
         this._updateNodeList();
-      } catch {
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // cancelled by newer search — not an error
         this.info = 'Search failed';
         this.results = [];
       } finally {
+        if (seq === this._searchSeq) this.loading = false;
         this._updateNodeList();
-        this.loading = false;
       }
     },
 
@@ -297,6 +360,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     clearAll() {
+      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+      if (this._searchAbort) { try { this._searchAbort.abort(); } catch { /* ignore */ } this._searchAbort = null; }
       this.query = '';
       this.results = [];
       this.info = '';
@@ -305,6 +370,8 @@ document.addEventListener('alpine:init', () => {
       this.supertype = '';
       this.domain = '';
       this.source = '';
+      window.filterEngine.searchQuery = '';
+      window.filterEngine.serverSearchIds = null;
       window.filterEngine.selectAll();
       if (window.sceneCtrl) window.sceneCtrl.updateVisibility(window.filterEngine);
       this._updateNodeList();

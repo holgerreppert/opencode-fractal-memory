@@ -82,18 +82,24 @@ async function handleStats(ctx: { scope: string; url: URL }, store: MemoryStore)
 
 async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const q = ctx.url.searchParams.get("q") || "";
-  const mode = ctx.url.searchParams.get("mode") || "hybrid";
+  const rawMode = ctx.url.searchParams.get("mode") || "hybrid";
   const scope = ctx.url.searchParams.get("scope") as MemoryScope | "all" | null;
   const queryScope = scope ?? ctx.scope as MemoryScope;
   const projectName = queryScope === "project" ? getProjectName() : undefined;
   if (!q.trim()) return jsonResponse([]);
+
+  const modeMap: Record<string, "hybrid" | "bm25" | "text"> = { hybrid: "hybrid", bm25: "bm25", text: "text", embedding: "hybrid", auto: "hybrid" };
+  if (!(rawMode in modeMap)) {
+    return jsonResponse({ error: `Invalid mode '${rawMode}'. Valid: hybrid, bm25, text, embedding, auto` }, 400);
+  }
+  const mode = modeMap[rawMode]!;
 
   try {
     const { searchNodes } = await import("../../application/search");
     const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
     const opts: { limit: number; mode: "hybrid" | "bm25" | "text"; scope: MemoryScope | "all"; projectName?: string | undefined } = {
       limit: 100,
-      mode: (mode === "embedding" ? "hybrid" : mode) as "hybrid" | "bm25" | "text",
+      mode,
       scope: queryScope,
     };
     if (projectName !== undefined) opts.projectName = projectName;

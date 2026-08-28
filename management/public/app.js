@@ -245,10 +245,11 @@ class NodeFilterEngine {
       if (!this.projects.has(p)) return false;
     }
 
-    // New filters
-    if (this.supertypeFilter && node.supertype !== this.supertypeFilter) return false;
-    if (this.sourceFilter && node.source !== this.sourceFilter) return false;
-    if (this.domainFilter && node.domain !== this.domainFilter) return false;
+    // New filters — normalize null/''/undefined as "All" (no filter), and treat missing node fields as null
+    const norm = (v) => (v == null || v === "" ? null : v);
+    if (norm(this.supertypeFilter) !== null && norm(node.supertype) !== norm(this.supertypeFilter)) return false;
+    if (norm(this.sourceFilter) !== null && norm(node.source) !== norm(this.sourceFilter)) return false;
+    if (norm(this.domainFilter) !== null && norm(node.domain) !== norm(this.domainFilter)) return false;
 
     if (this.searchQuery) {
       if (this.searchMode === "text") {
@@ -1350,7 +1351,13 @@ function init() {
   sceneCtrl = new SceneController();
   window.filterEngine = filterEngine;
   window.sceneCtrl = sceneCtrl;
+  // Hydrate scope from URL (searchState is single source of truth)
+  if (window.searchState) {
+    currentScope = window.searchState.scope || currentScope;
+    currentProjectName = window.searchState.projectName;
+  }
   window.currentScope = currentScope;
+  window.currentProjectName = currentProjectName;
 
   // Wire filter engine to trigger view updates
   filterEngine.onUpdate = () => {
@@ -1439,7 +1446,20 @@ function setupEventListeners() {
     const labelEl = document.getElementById("scope-dropdown-label");
     if (labelEl) labelEl.textContent = scopeLabel(scope, projectName);
     closeScopeDropdown();
+    // Scope switch — update URL state, clear server search, and reload data
+    if (window.searchState) {
+      window.searchState.scope = scope;
+      window.searchState.projectName = projectName;
+      window.searchState.push();
+    }
     filterEngine.clearAll();
+    filterEngine.serverSearchIds = null;
+    filterEngine.searchQuery = "";
+    try {
+      const alpineEl = document.getElementById("visualize-panel");
+      const alpineData = alpineEl && alpineEl._x_dataStack && alpineEl._x_dataStack[0];
+      if (alpineData && typeof alpineData.clearAll === "function") alpineData.clearAll();
+    } catch { /* no Alpine yet — filterEngine already cleared */ }
     loadData();
   });
 
@@ -1629,6 +1649,7 @@ async function loadData() {
     window.nodeData = nodeData;
     filterEngine.initFromStats(statsData);
     window.dispatchEvent(new CustomEvent('alpine:stats-loaded', { detail: { stats: statsData } }));
+    window.dispatchEvent(new CustomEvent('stats:reloaded', { detail: { stats: statsData } }));
 
     // Double-ensure filter engine is in clean state
     filterEngine.selectAll();
