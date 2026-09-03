@@ -30,7 +30,11 @@ document.addEventListener('alpine:init', () => {
     availableTypes: [],
     availableSupertypes: [],
     availableDomains: [],
-    availableSources: [],
+     availableSources: [],
+    typeCounts: {},
+    levelCounts: {},
+    typeCountsUnfiltered: {},
+    levelCountsUnfiltered: {},
 
     _debounceTimer: null,
     _searchAbort: null,
@@ -91,8 +95,6 @@ document.addEventListener('alpine:init', () => {
       if (!s) return;
       this.availableLevels = Object.keys(s.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
       const types = new Set(Object.keys(s.nodesPerType || {}));
-      // Dot is a first-class type — always show the filter chip so diagrams are discoverable in any scope.
-      // Also add if any loaded nodeData contains it (covers scope-split where global stats hides project dots).
       types.add('dot');
       types.add('workflow');
       if (window.nodeData && window.nodeData.some(n => n.type === 'dot')) types.add('dot');
@@ -100,6 +102,26 @@ document.addEventListener('alpine:init', () => {
       this.availableSupertypes = Object.keys(s.nodesPerSupertype || {}).sort();
       this.availableDomains = Object.keys(s.nodesPerDomain || {}).sort();
       this.availableSources = Object.keys(s.nodesPerSource || {}).sort();
+      // Compute per-facet counts for the UI (how many nodes would remain if you added/kept each value)
+      this._updateFacetCounts();
+    },
+
+    _updateFacetCounts() {
+      const nd = window.nodeData || [];
+      if (!nd.length) { this.typeCounts = {}; this.levelCounts = {}; return; }
+      // Base filter is current filterEngine without the facet group being counted (so counts show "if you add this value")
+      // For simplicity, counts are of the currently filtered set per value (visible nodes per type/level)
+      const fe = window.filterEngine;
+      const filtered = fe ? nd.filter(n => fe.matches(n)) : nd;
+      const tc = {}; const lc = {};
+      for (const t of this.availableTypes) tc[t] = filtered.filter(n => (n.type || 'unknown') === t).length;
+      for (const l of this.availableLevels) lc[l] = filtered.filter(n => n.level === l).length;
+      // Also compute unfiltered counts per value (for disabled hint) — nodes per type without any filter
+      const utc = {}; const ulc = {};
+      for (const t of this.availableTypes) utc[t] = nd.filter(n => (n.type || 'unknown') === t).length;
+      for (const l of this.availableLevels) ulc[l] = nd.filter(n => n.level === l).length;
+      this.typeCounts = tc; this.levelCounts = lc;
+      this.typeCountsUnfiltered = utc; this.levelCountsUnfiltered = ulc;
     },
 
     _updateNodeList() {
@@ -202,7 +224,7 @@ document.addEventListener('alpine:init', () => {
       this._syncFiltersToEngine();
     },
 
-    _syncFiltersToEngine() {
+     _syncFiltersToEngine() {
       if (this._suppressSync) return;
       const fe = window.filterEngine;
       if (!fe) return;
@@ -210,11 +232,16 @@ document.addEventListener('alpine:init', () => {
 
       if (this.levels.length > 0) {
         const valid = new Set(this.levels);
-        for (const l of fe.levels) { if (!valid.has(l)) fe.levels.delete(l); }
+        fe.levels = new Set([...fe.levels].filter(l => valid.has(l)));
+      } else {
+        // No level filter → show all → clear to empty meaning no restriction (matches() checks size>0)
+        fe.levels.clear();
       }
       if (this.types.length > 0) {
         const valid = new Set(this.types);
-        for (const t of fe.types) { if (!valid.has(t)) fe.types.delete(t); }
+        fe.types = new Set([...fe.types].filter(t => valid.has(t)));
+      } else {
+        fe.types.clear();
       }
 
       fe.supertypeFilter = this.supertype || null;
@@ -224,6 +251,7 @@ document.addEventListener('alpine:init', () => {
       fe.changed();
       if (window.sceneCtrl) window.sceneCtrl.updateVisibility(fe);
       this._updateNodeList();
+      this._updateFacetCounts();
       // Mirror to URL (single source of truth)
       if (window.searchState && !this._suppressSync) {
         const ss = window.searchState;
