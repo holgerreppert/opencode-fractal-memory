@@ -229,17 +229,19 @@ document.addEventListener('alpine:init', () => {
       const fe = window.filterEngine;
       if (!fe) return;
       fe.selectAll();
+      // Shapes/customTypes/projects are not exposed in this panel — keep them unrestricted.
+      // selectAll() filled them from stale stats (missing new shapes like torusKnot/cylinder), which would hide those nodes.
+      fe.shapes.clear();
+      fe.customTypes.clear();
+      fe.projects.clear();
 
       if (this.levels.length > 0) {
-        const valid = new Set(this.levels);
-        fe.levels = new Set([...fe.levels].filter(l => valid.has(l)));
+        fe.levels = new Set(this.levels);
       } else {
-        // No level filter → show all → clear to empty meaning no restriction (matches() checks size>0)
         fe.levels.clear();
       }
       if (this.types.length > 0) {
-        const valid = new Set(this.types);
-        fe.types = new Set([...fe.types].filter(t => valid.has(t)));
+        fe.types = new Set(this.types);
       } else {
         fe.types.clear();
       }
