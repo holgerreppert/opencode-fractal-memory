@@ -636,9 +636,7 @@
           <div class="filter-group">
             <template x-for="l in availableLevels">
               <button class="filter-btn" :class="{ active: isLevelActive(l) }"
-                      :disabled="(levelCountsUnfiltered[l] || 0) === 0"
-                      :title="(levelCountsUnfiltered[l] || 0) === 0 ? 'No nodes' : ((levelCounts[l] || 0) + ' visible / ' + (levelCountsUnfiltered[l] || 0) + ' total')"
-                      @click="toggleLevel(l)" x-text="'L' + l + ' (' + (levelCountsUnfiltered[l] || 0) + ')'"></button>
+                      @click="toggleLevel(l)" x-text="'L' + l"></button>
             </template>
           </div>
         </div>
@@ -650,9 +648,8 @@
             <template x-for="t in availableTypes">
               <button class="filter-btn" :class="{ active: isTypeActive(t) }"
                       :style="t === 'dot' ? 'border-color: rgba(6,182,212,0.4); font-weight:600;' : ''"
-                      :disabled="(typeCountsUnfiltered[t] || 0) === 0"
                       :title="(typeCountsUnfiltered[t] || 0) === 0 ? 'No nodes of this type in current scope' : ((typeCounts[t] || 0) + ' visible / ' + (typeCountsUnfiltered[t] || 0) + ' total')"
-                      @click="toggleType(t)" x-text="(t === 'dot' ? '◈ dot' : t) + ' (' + (typeCountsUnfiltered[t] || 0) + ')'"></button>
+                      @click="toggleType(t)" x-text="t === 'dot' ? '◈ dot' : t"></button>
             </template>
           </div>
         </div>
