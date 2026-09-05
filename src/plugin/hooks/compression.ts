@@ -4,6 +4,7 @@ import { recordInjection } from "../../application/injection-visibility";
 import { memLog } from "../../logging";
 import { writeCompressLog } from "../../logging";
 import { compressCommandOutput, addContentDedup, tryDeltaCompression, updateDeltaCache, ollamaExtract, enqueueExtraction, pendingExtractionCount, type FuzzyDedupConfig } from "../../application/command-compression";
+import { squeezExtract } from "../../application/command-compression/squeez";
 import { stashOriginal } from "../../application/tool-compression";
 import {
   DEDUP_CACHE, DELTA_CACHE, contentSnippet, contentPreview, offloadOutput, offloadPathFor,
@@ -133,6 +134,29 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
           } catch {
             // Best-effort — fall through to no compression
           }
+        }
+      }
+      // Try Squeez task-conditioned extraction (KRLabsOrg/squeez-2b, 0.86 recall vs 0.22 BM25).
+      // When deferToIdle=true (default) banner already deferred — sync hit only when explicitly
+      // set to false (local vLLM/Ollama). Query = intentTerms join (task) — Squeez's 11pt edge over 35B.
+      if (!compressed && compressConfig?.squeezExtraction?.enabled) {
+        const sq = compressConfig.squeezExtraction;
+        if (sq.deferToIdle === false) {
+          try {
+            const query = intentTerms.length > 0 ? intentTerms.join(" ") : cmd;
+            const extracted = await squeezExtract(raw, query, sq);
+            if (extracted !== null) {
+              if (extracted.trim().length === 0) {
+                compressed = { output: "(no relevant lines for query — empty as intended [squeez-negative])", strategy: "squeez-empty" };
+              } else {
+                compressed = { output: extracted, strategy: "squeez" };
+              }
+            }
+          } catch {
+            // Fails open
+          }
+        } else {
+          trace("squeez-deferred-unavailable", { note: "set squeezExtraction.deferToIdle=false for sync" });
         }
       }
 

@@ -14,6 +14,7 @@ export interface CompressConfig {
   deltaMaxCacheSize?: number;
   deltaMinSimilarity?: number;
   ollamaExtraction?: OllamaExtractionConfig | undefined;
+  squeezExtraction?: SqueezExtractionConfig | undefined;
   netWinMinTokens?: number;
   verbatimBelowLines?: number;
   benignThreshold?: number;
@@ -64,6 +65,18 @@ export interface OllamaExtractionConfig {
   maxQueueSize?: number;
 }
 
+export interface SqueezExtractionConfig {
+  enabled: boolean;
+  /** Squeez server base URL (vLLM/Ollama compat), e.g. http://localhost:8000 */
+  baseUrl: string;
+  /** Model id, e.g. KRLabsOrg/squeez-2b */
+  model: string;
+  minOutputChars: number;
+  timeoutMs: number;
+  /** Defer to session.idle like ollamaExtraction (default true) — when true, sync path is no-op */
+  deferToIdle?: boolean;
+}
+
 export interface FuzzyDedupConfig {
   enabled: boolean;
   similarityThreshold: number;
@@ -81,4 +94,13 @@ export const DEFAULT_OLLAMA_EXTRACTION: OllamaExtractionConfig = {
   deferToIdle: true,
   keepAlive: "30m",
   maxQueueSize: 20,
+};
+
+export const DEFAULT_SQUEEZ_EXTRACTION: SqueezExtractionConfig = {
+  enabled: false,
+  baseUrl: "http://localhost:8000",
+  model: "KRLabsOrg/squeez-2b",
+  minOutputChars: 2000,
+  timeoutMs: 5000,
+  deferToIdle: true,
 };

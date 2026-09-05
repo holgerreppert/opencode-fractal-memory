@@ -55,6 +55,14 @@ export interface MemConfig {
       keepAlive: string;
       maxQueueSize: number;
     } | undefined;
+    squeezExtraction?: {
+      enabled: boolean;
+      baseUrl: string;
+      model: string;
+      minOutputChars: number;
+      timeoutMs: number;
+      deferToIdle: boolean;
+    } | undefined;
   } | undefined;
   autoRetrieve?: {
     enabled: boolean;
@@ -326,6 +334,15 @@ const OllamaExtractionSchema = z.object({
   maxQueueSize: z.number().positive().int().default(20),
 });
 
+const SqueezExtractionSchema = z.object({
+  enabled: z.boolean().default(false),
+  baseUrl: z.string().default("http://localhost:8000"),
+  model: z.string().default("KRLabsOrg/squeez-2b"),
+  minOutputChars: z.number().positive().int().default(2000),
+  timeoutMs: z.number().positive().int().default(5000),
+  deferToIdle: z.boolean().default(true),
+});
+
 const CommandCompressionSchema = z.object({
   enabled: z.boolean().default(true),
   maxLines: z.number().positive().int().default(50),
@@ -352,6 +369,7 @@ const CommandCompressionSchema = z.object({
   essentialColumns: z.record(z.string(), z.array(z.string())).default({}),
   perTool: z.record(z.string(), z.object({ maxTokens: z.number().positive().int().optional(), strategy: z.enum(["error-first", "names", "json-sample", "generic"]).optional(), errorThreshold: z.number().positive().int().optional() })).optional(),
   ollamaExtraction: OllamaExtractionSchema.optional(),
+  squeezExtraction: SqueezExtractionSchema.optional(),
 });
 
 const SessionLogSchema = z.object({
