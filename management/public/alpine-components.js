@@ -30,7 +30,16 @@ document.addEventListener('alpine:init', () => {
     availableTypes: [],
     availableSupertypes: [],
     availableDomains: [],
-    availableSources: [],
+     availableSources: [],
+    typeCounts: {},
+    levelCounts: {},
+    typeCountsUnfiltered: {},
+    levelCountsUnfiltered: {},
+
+    _debounceTimer: null,
+    _searchAbort: null,
+    _searchSeq: 0,
+    _suppressSync: false,
 
     init() {
       const saved = localStorage.getItem('mgmt-node-sort');
@@ -41,9 +50,41 @@ document.addEventListener('alpine:init', () => {
           if (p.sortDir) this.sortDir = p.sortDir;
         } catch { /* ignore */ }
       }
+      // Hydrate from URL (single source of truth) if searchState is available
+      if (window.searchState) {
+        const ss = window.searchState;
+        this.query = ss.q || "";
+        this.mode = ss.mode || "auto";
+        this.levels = [...ss.levels];
+        this.types = [...ss.types];
+        this.supertype = ss.supertype || "";
+        this.domain = ss.domain || "";
+        this.source = ss.source || "";
+        ss.onChange(() => {
+          this._suppressSync = true;
+          this.query = ss.q || "";
+          this.mode = ss.mode || "auto";
+          this.levels = [...ss.levels];
+          this.types = [...ss.types];
+          this.supertype = ss.supertype || "";
+          this.domain = ss.domain || "";
+          this.source = ss.source || "";
+          this._suppressSync = false;
+          this._syncFiltersToEngine();
+          // Re-trigger search if q/mode changed via URL (back button)
+          if (ss.q) this.doSearch();
+          else { this.results = []; this.info = ""; this._updateNodeList(); }
+        });
+      }
+      this._suppressSync = false;
       this._refreshOptions();
       this._updateNodeList();
       window.addEventListener(STATS_LOADED_EVENT, () => {
+        this._refreshOptions();
+        this._updateNodeList();
+      });
+      // Also refresh options when stats are reloaded via scope switch (extra event name)
+      window.addEventListener('stats:reloaded', () => {
         this._refreshOptions();
         this._updateNodeList();
       });
@@ -53,10 +94,61 @@ document.addEventListener('alpine:init', () => {
       const s = window.statsData;
       if (!s) return;
       this.availableLevels = Object.keys(s.nodesPerLevel || {}).map(Number).sort((a, b) => a - b);
-      this.availableTypes = Object.keys(s.nodesPerType || {}).sort();
+      const types = new Set(Object.keys(s.nodesPerType || {}));
+      types.add('dot');
+      types.add('workflow');
+      if (window.nodeData && window.nodeData.some(n => n.type === 'dot')) types.add('dot');
+      this.availableTypes = [...types].sort();
       this.availableSupertypes = Object.keys(s.nodesPerSupertype || {}).sort();
       this.availableDomains = Object.keys(s.nodesPerDomain || {}).sort();
       this.availableSources = Object.keys(s.nodesPerSource || {}).sort();
+      // Compute per-facet counts for the UI (how many nodes would remain if you added/kept each value)
+      this._updateFacetCounts();
+    },
+
+    _updateFacetCounts() {
+      const nd = window.nodeData || [];
+      if (!nd.length) {
+        const s = window.statsData || {};
+        const utc2 = {}; const ulc2 = {};
+        for (const t of this.availableTypes) utc2[t] = (s.nodesPerType || {})[t] || 0;
+        for (const l of this.availableLevels) ulc2[l] = (s.nodesPerLevel || {})[l] || 0;
+        // ensure 'dot'/'workflow' injected types still show 0 until data arrives
+        this.typeCounts = { ...utc2 }; this.levelCounts = { ...ulc2 };
+        this.typeCountsUnfiltered = { ...utc2 }; this.levelCountsUnfiltered = { ...ulc2 };
+        return;
+      }
+      // Faceted counts: exclude the facet being counted (OR inside facet, AND across facets)
+      const fe = window.filterEngine;
+      // unfiltered totals for tooltip (no filter at all)
+      const utc = {}; const ulc = {};
+      for (const t of this.availableTypes) utc[t] = nd.filter(n => (n.type || 'unknown') === t).length;
+      for (const l of this.availableLevels) ulc[l] = nd.filter(n => n.level === l).length;
+
+      if (!fe) {
+        this.typeCounts = { ...utc }; this.levelCounts = { ...ulc };
+        this.typeCountsUnfiltered = utc; this.levelCountsUnfiltered = ulc;
+        return;
+      }
+
+      // Level counts: ignore level filter, respect everything else (type + search + supertype/domain/source)
+      const savedLevels = new Set(fe.levels);
+      fe.levels.clear();
+      const forLevel = nd.filter(n => fe.matches(n));
+      const lc = {};
+      for (const l of this.availableLevels) lc[l] = forLevel.filter(n => n.level === l).length;
+      fe.levels.clear(); savedLevels.forEach(v => fe.levels.add(v));
+
+      // Type counts: ignore type filter, respect everything else
+      const savedTypes = new Set(fe.types);
+      fe.types.clear();
+      const forType = nd.filter(n => fe.matches(n));
+      const tc = {};
+      for (const t of this.availableTypes) tc[t] = forType.filter(n => (n.type || 'unknown') === t).length;
+      fe.types.clear(); savedTypes.forEach(v => fe.types.add(v));
+
+      this.typeCounts = tc; this.levelCounts = lc;
+      this.typeCountsUnfiltered = utc; this.levelCountsUnfiltered = ulc;
     },
 
     _updateNodeList() {
@@ -159,18 +251,26 @@ document.addEventListener('alpine:init', () => {
       this._syncFiltersToEngine();
     },
 
-    _syncFiltersToEngine() {
+     _syncFiltersToEngine() {
+      if (this._suppressSync) return;
       const fe = window.filterEngine;
       if (!fe) return;
       fe.selectAll();
+      // Shapes/customTypes/projects are not exposed in this panel — keep them unrestricted.
+      // selectAll() filled them from stale stats (missing new shapes like torusKnot/cylinder), which would hide those nodes.
+      fe.shapes.clear();
+      fe.customTypes.clear();
+      fe.projects.clear();
 
       if (this.levels.length > 0) {
-        const valid = new Set(this.levels);
-        for (const l of fe.levels) { if (!valid.has(l)) fe.levels.delete(l); }
+        fe.levels = new Set(this.levels);
+      } else {
+        fe.levels.clear();
       }
       if (this.types.length > 0) {
-        const valid = new Set(this.types);
-        for (const t of fe.types) { if (!valid.has(t)) fe.types.delete(t); }
+        fe.types = new Set(this.types);
+      } else {
+        fe.types.clear();
       }
 
       fe.supertypeFilter = this.supertype || null;
@@ -180,6 +280,21 @@ document.addEventListener('alpine:init', () => {
       fe.changed();
       if (window.sceneCtrl) window.sceneCtrl.updateVisibility(fe);
       this._updateNodeList();
+      this._updateFacetCounts();
+      // Mirror to URL (single source of truth)
+      if (window.searchState && !this._suppressSync) {
+        const ss = window.searchState;
+        ss.q = this.query;
+        ss.mode = this.mode;
+        ss.levels = [...this.levels];
+        ss.types = [...this.types];
+        ss.supertype = this.supertype || null;
+        ss.domain = this.domain || null;
+        ss.source = this.source || null;
+        ss.scope = window.currentScope || ss.scope;
+        ss.projectName = window.currentProjectName || ss.projectName;
+        ss.push();
+      }
     },
 
     toggleLevel(l) {
@@ -220,6 +335,7 @@ document.addEventListener('alpine:init', () => {
         window.filterEngine.serverSearchIds = null;
         window.filterEngine.changed();
         this._updateNodeList();
+        this._updateFacetCounts();
         return;
       }
 
@@ -237,6 +353,7 @@ document.addEventListener('alpine:init', () => {
         this.results = filtered.slice(0, 50);
         this.info = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
         this._updateNodeList();
+        this._updateFacetCounts();
         this.loading = false;
       } else {
         this.loading = true;
@@ -245,9 +362,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     onQueryInput() {
-      if (this.mode === 'auto' || this.mode === 'text') {
-        this.doSearch();
-      }
+      if (this._debounceTimer) clearTimeout(this._debounceTimer);
+      this._debounceTimer = setTimeout(() => {
+        this._debounceTimer = null;
+        if (this.mode === 'auto' || this.mode === 'text') {
+          this.doSearch();
+        }
+      }, 180);
     },
 
     _detectMode() {
@@ -257,9 +378,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     async _serverSearch(query, mode) {
+      const seq = ++this._searchSeq;
+      if (this._searchAbort) { try { this._searchAbort.abort(); } catch { /* ignore */ } }
+      this._searchAbort = new AbortController();
+      const signal = this._searchAbort.signal;
       try {
         const scope = window.currentScope || 'global';
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${mode}&scope=${scope}`);
+        const proj = window.currentProjectName ? `&project_name=${encodeURIComponent(window.currentProjectName)}` : '';
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${mode}&scope=${scope}${proj}`, { signal });
         if (!res.ok) {
           this.info = 'Search error';
           this.results = [];
@@ -267,6 +393,7 @@ document.addEventListener('alpine:init', () => {
           return;
         }
         const data = await res.json();
+        if (seq !== this._searchSeq) return; // stale response — ignore
         if (Array.isArray(data)) {
           this.results = data.slice(0, 50);
           this.info = `${data.length} result${data.length !== 1 ? 's' : ''}`;
@@ -276,17 +403,21 @@ document.addEventListener('alpine:init', () => {
           window.filterEngine.setSearchQuery(query);
           if (window.sceneCtrl) window.sceneCtrl.updateVisibility(window.filterEngine);
           this._updateNodeList();
+          this._updateFacetCounts();
         } else {
           this.results = [];
           this.info = 'No results';
         }
         this._updateNodeList();
-      } catch {
+        this._updateFacetCounts();
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // cancelled by newer search — not an error
         this.info = 'Search failed';
         this.results = [];
       } finally {
+        if (seq === this._searchSeq) this.loading = false;
         this._updateNodeList();
-        this.loading = false;
+        this._updateFacetCounts();
       }
     },
 
@@ -297,6 +428,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     clearAll() {
+      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+      if (this._searchAbort) { try { this._searchAbort.abort(); } catch { /* ignore */ } this._searchAbort = null; }
       this.query = '';
       this.results = [];
       this.info = '';
@@ -305,9 +438,12 @@ document.addEventListener('alpine:init', () => {
       this.supertype = '';
       this.domain = '';
       this.source = '';
+      window.filterEngine.searchQuery = '';
+      window.filterEngine.serverSearchIds = null;
       window.filterEngine.selectAll();
       if (window.sceneCtrl) window.sceneCtrl.updateVisibility(window.filterEngine);
       this._updateNodeList();
+      this._updateFacetCounts();
     },
 
     isLevelActive(l) { return this.levels.length === 0 || this.levels.includes(l); },

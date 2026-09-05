@@ -245,10 +245,11 @@ class NodeFilterEngine {
       if (!this.projects.has(p)) return false;
     }
 
-    // New filters
-    if (this.supertypeFilter && node.supertype !== this.supertypeFilter) return false;
-    if (this.sourceFilter && node.source !== this.sourceFilter) return false;
-    if (this.domainFilter && node.domain !== this.domainFilter) return false;
+    // New filters — normalize null/''/undefined as "All" (no filter), and treat missing node fields as null
+    const norm = (v) => (v == null || v === "" ? null : v);
+    if (norm(this.supertypeFilter) !== null && norm(node.supertype) !== norm(this.supertypeFilter)) return false;
+    if (norm(this.sourceFilter) !== null && norm(node.source) !== norm(this.sourceFilter)) return false;
+    if (norm(this.domainFilter) !== null && norm(node.domain) !== norm(this.domainFilter)) return false;
 
     if (this.searchQuery) {
       if (this.searchMode === "text") {
@@ -1350,7 +1351,13 @@ function init() {
   sceneCtrl = new SceneController();
   window.filterEngine = filterEngine;
   window.sceneCtrl = sceneCtrl;
+  // Hydrate scope from URL (searchState is single source of truth)
+  if (window.searchState) {
+    currentScope = window.searchState.scope || currentScope;
+    currentProjectName = window.searchState.projectName;
+  }
   window.currentScope = currentScope;
+  window.currentProjectName = currentProjectName;
 
   // Wire filter engine to trigger view updates
   filterEngine.onUpdate = () => {
@@ -1439,7 +1446,20 @@ function setupEventListeners() {
     const labelEl = document.getElementById("scope-dropdown-label");
     if (labelEl) labelEl.textContent = scopeLabel(scope, projectName);
     closeScopeDropdown();
+    // Scope switch — update URL state, clear server search, and reload data
+    if (window.searchState) {
+      window.searchState.scope = scope;
+      window.searchState.projectName = projectName;
+      window.searchState.push();
+    }
     filterEngine.clearAll();
+    filterEngine.serverSearchIds = null;
+    filterEngine.searchQuery = "";
+    try {
+      const alpineEl = document.getElementById("visualize-panel");
+      const alpineData = alpineEl && alpineEl._x_dataStack && alpineEl._x_dataStack[0];
+      if (alpineData && typeof alpineData.clearAll === "function") alpineData.clearAll();
+    } catch { /* no Alpine yet — filterEngine already cleared */ }
     loadData();
   });
 
@@ -1597,6 +1617,29 @@ async function loadData() {
     linkData = await linksRes.json();
     temporalEdgeData = temporalRes.ok ? await temporalRes.json() : [];
     statsData = await statsRes.json();
+
+    // Dot diagrams are project-scoped but must be discoverable in any view.
+    // If current scope has no dots, merge them from the opposite scope so the ◈ dot filter is never empty.
+    try {
+      const hasDot = nodeData.some(n => n.type === "dot");
+      if (!hasDot) {
+        const altScope = currentScope === "global" ? "project" : "global";
+        const altQ = `?scope=${altScope}${currentProjectName ? `&project_name=${encodeURIComponent(currentProjectName)}` : ""}`;
+        const altRes = await fetch(`/api/nodes${altQ}`);
+        if (altRes.ok) {
+          const altNodes = await altRes.json();
+          const dots = altNodes.filter(n => n.type === "dot");
+          if (dots.length) {
+            nodeData = [...nodeData, ...dots];
+            // Merge dot counts into stats so the filter chip count is accurate
+            statsData.nodesPerType = statsData.nodesPerType || {};
+            statsData.nodesPerType.dot = (statsData.nodesPerType.dot || 0) + dots.length;
+            statsData.totalNodes = (statsData.totalNodes || nodeData.length) + dots.length;
+            console.log(`[data] Merged ${dots.length} dot nodes from ${altScope} scope for discoverability`);
+          }
+        }
+      }
+    } catch (e) { console.warn("[data] dot merge failed", e); }
     const versionData = await versionRes.json();
     document.getElementById("version").textContent = `v${versionData.version}`;
 
@@ -1629,6 +1672,7 @@ async function loadData() {
     window.nodeData = nodeData;
     filterEngine.initFromStats(statsData);
     window.dispatchEvent(new CustomEvent('alpine:stats-loaded', { detail: { stats: statsData } }));
+    window.dispatchEvent(new CustomEvent('stats:reloaded', { detail: { stats: statsData } }));
 
     // Double-ensure filter engine is in clean state
     filterEngine.selectAll();

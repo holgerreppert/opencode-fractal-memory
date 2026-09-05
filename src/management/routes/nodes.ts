@@ -82,22 +82,36 @@ async function handleStats(ctx: { scope: string; url: URL }, store: MemoryStore)
 
 async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore): Promise<Response> {
   const q = ctx.url.searchParams.get("q") || "";
-  const mode = ctx.url.searchParams.get("mode") || "hybrid";
+  const rawMode = ctx.url.searchParams.get("mode") || "hybrid";
   const scope = ctx.url.searchParams.get("scope") as MemoryScope | "all" | null;
   const queryScope = scope ?? ctx.scope as MemoryScope;
   const projectName = queryScope === "project" ? getProjectName() : undefined;
   if (!q.trim()) return jsonResponse([]);
+
+  const modeMap: Record<string, "hybrid" | "bm25" | "text"> = { hybrid: "hybrid", bm25: "bm25", text: "text", embedding: "hybrid", auto: "hybrid" };
+  if (!(rawMode in modeMap)) {
+    return jsonResponse({ error: `Invalid mode '${rawMode}'. Valid: hybrid, bm25, text, embedding, auto` }, 400);
+  }
+  const mode = modeMap[rawMode]!;
 
   try {
     const { searchNodes } = await import("../../application/search");
     const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
     const opts: { limit: number; mode: "hybrid" | "bm25" | "text"; scope: MemoryScope | "all"; projectName?: string | undefined } = {
       limit: 100,
-      mode: (mode === "embedding" ? "hybrid" : mode) as "hybrid" | "bm25" | "text",
+      mode,
       scope: queryScope,
     };
     if (projectName !== undefined) opts.projectName = projectName;
-    const nodes = await searchNodes(store, generateEmbedding, q, opts);
+    let nodes = await searchNodes(store, generateEmbedding, q, opts);
+    // Dot discoverability: when user searches for dot, bring dot nodes to front (they have no embedding, rank low otherwise)
+    if (q.toLowerCase().includes("dot")) {
+      nodes = [...nodes].sort((a, b) => {
+        const da = a.type === "dot" ? 1 : 0, db = b.type === "dot" ? 1 : 0;
+        if (da !== db) return db - da;
+        return (b.importance ?? 0) - (a.importance ?? 0);
+      });
+    }
     return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
   } catch (e) {
     memLog("error", "management", "[api] Search error:", { error: e instanceof Error ? e.message : String(e) });

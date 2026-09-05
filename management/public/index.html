@@ -636,7 +636,8 @@
           <div class="filter-group">
             <template x-for="l in availableLevels">
               <button class="filter-btn" :class="{ active: isLevelActive(l) }"
-                      @click="toggleLevel(l)" x-text="'L' + l"></button>
+                      :title="(levelCountsUnfiltered[l] || 0) + ' total / ' + (levelCounts[l] || 0) + ' visible'"
+                      @click="toggleLevel(l)" x-text="'L' + l + ' (' + ((levelCounts[l] !== undefined ? levelCounts[l] : levelCountsUnfiltered[l]) || 0) + ')'"></button>
             </template>
           </div>
         </div>
@@ -648,7 +649,8 @@
             <template x-for="t in availableTypes">
               <button class="filter-btn" :class="{ active: isTypeActive(t) }"
                       :style="t === 'dot' ? 'border-color: rgba(6,182,212,0.4); font-weight:600;' : ''"
-                      @click="toggleType(t)" x-text="t === 'dot' ? '◈ dot' : t"></button>
+                      :title="(typeCountsUnfiltered[t] || 0) === 0 ? 'No nodes of this type in current scope' : ((typeCounts[t] || 0) + ' visible / ' + (typeCountsUnfiltered[t] || 0) + ' total')"
+                      @click="toggleType(t)" x-text="(t === 'dot' ? '◈ dot' : t) + ' (' + ((typeCounts[t] !== undefined ? typeCounts[t] : typeCountsUnfiltered[t]) || 0) + ')'"></button>
             </template>
           </div>
         </div>
@@ -705,6 +707,9 @@
         </select>
         <button class="filter-btn" @click="toggleSortDir()" title="Toggle sort direction"
                 style="flex-shrink:0;padding:3px 8px;" x-text="sortDir === 'desc' ? '\u25BC' : '\u25B2'"></button>
+      </div>
+      <div x-show="nodeListItems.length === 0 && activeFilterCount > 0" style="padding:12px;text-align:center;color:#f66;font-size:11px;border:1px dashed rgba(255,100,100,0.3);border-radius:6px;margin-bottom:6px;">
+        No results for current filters — <button @click="clearAll" style="background:none;border:none;color:#6af;cursor:pointer;text-decoration:underline;">clear all</button> or remove one chip above. Try <span x-text="availableTypes.includes('dot') ? 'type: dot' : 'fewer filters'"></span>.
       </div>
       <div class="node-list-container" style="max-height:250px;overflow-y:auto;border:1px solid rgba(255,255,255,0.08);border-radius:6px;">
         <template x-for="n in nodeListItems.slice(0, nodeListLimit)">
@@ -1816,6 +1821,7 @@
   <script src="graph-viz.js"></script>
   <script src="glb-loader.js"></script>
   <script src="vendor/viz-global.js"></script>
+  <script src="search-state.js"></script>
   <script src="app.js"></script>
   <script src="alpine-components.js"></script>
 </body>
