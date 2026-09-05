@@ -20,15 +20,22 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
   let created = 0;
   let updated = 0;
   let errors = 0;
+  const updatedLabels: string[] = [];
   for (const seed of SEED_NODES) {
     try {
       const existing = await store.getNodeByLabel("global", seed.label);
-      if (existing.content !== seed.content) {
+      const needsUpdate =
+        (existing.content ?? "") !== (seed.content ?? "") ||
+        (existing.summary ?? null) !== (seed.summary ?? null);
+      if (needsUpdate) {
         await store.updateNode(existing.id, {
           content: seed.content,
           summary: seed.summary ?? undefined,
-        });
+          // clear embedding — old vector stale after content change, background task will re-embed
+          embedding: null as unknown as number[],
+        } as unknown as Parameters<typeof store.updateNode>[1]);
         updated++;
+        updatedLabels.push(seed.label);
       }
     } catch {
       try {
@@ -40,6 +47,7 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
           sticky: true,
         });
         updated++;
+        updatedLabels.push(`${seed.label}:revived`);
       } catch {
         try {
           await store.createNode({
@@ -62,7 +70,11 @@ async function ensureSeedRules(store: MemoryStore): Promise<void> {
       }
     }
   }
-  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created, updated, errors });
+  memLog("info", "init", "Seed nodes checked", { total: SEED_NODES.length, created, updated, errors, updatedLabels: updatedLabels.slice(0, 10) });
+  if (updated > 0) {
+    // Force ruleCache refresh on next system.transform
+    memLog("info", "init", "Seed rules updated — ruleCache will refresh on next turn", { updatedLabels });
+  }
 }
 
 async function initializeStore(directory: string, globalDbPath?: string): Promise<MemoryStore> {
