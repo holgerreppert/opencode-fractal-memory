@@ -11,7 +11,9 @@ import { loadMemConfig } from "./infrastructure/config/config";
 
 const port = parseInt(process.env.MGMT_PORT || "8787");
 const projectDir = process.env.MGMT_PROJECT_DIR || process.cwd();
-const publicDir = path.join(__dirname, "..", "management", "public");
+const publicDir = process.env.MGMT_PUBLIC_DIR
+  ? path.resolve(process.env.MGMT_PUBLIC_DIR)
+  : path.join(__dirname, "..", "management", "public");
 
 // Apply the configured log level (defaults to "info" when unset).
 loadMemConfig(projectDir).then((cfg) => setLogLevel(cfg.logLevel ?? "info")).catch(() => { /* keep default */ });
