@@ -1,5 +1,7 @@
-export type { CompressConfig, FuzzyDedupConfig, OllamaExtractionConfig } from "./config";
-export { DEFAULT_OLLAMA_EXTRACTION } from "./config";
+import { squeezExtract, squeezExtractSync } from "./squeez";
+export type { CompressConfig, FuzzyDedupConfig, OllamaExtractionConfig, SqueezExtractionConfig } from "./config";
+export { DEFAULT_OLLAMA_EXTRACTION, DEFAULT_SQUEEZ_EXTRACTION } from "./config";
+export { squeezExtract, squeezExtractSync };
 export { compressLs } from "./strategies/ls";
 export { compressTestOutput } from "./strategies/test";
 export { compressGrep } from "./strategies/grep";

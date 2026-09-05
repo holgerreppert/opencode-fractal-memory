@@ -5,6 +5,7 @@ import { compressRelevantGeneric } from "./strategies/generic";
 import { applyShapeCompression } from "./shape";
 import { trimByRelevance } from "./relevance";
 import { compressErrorFirst } from "./strategies/error";
+import { compressByType } from "./output-types";
 import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix, applyWordAbbreviations, estimateTokens } from "./utils";
 
 const ERROR_MARKERS = /error|panic|traceback|FAILED|failed|exception|fatal/i;
@@ -47,7 +48,12 @@ export function compressCommandOutput(
   };
 
   if (!config.enabled) return logSkip("disabled");
-  if (config.alwaysFullOnFailure && failed) return logSkip("always-full-on-failure");
+  if (config.alwaysFullOnFailure && failed) {
+    const _per = config.perTool ?? DEFAULT_PER_TOOL;
+    const _hasError = /error|panic|traceback|FAILED|failed|exception|fatal/i.test(rawOutput);
+    const _isErrorFirstCmd = _hasError || Object.keys(_per).some((k) => cmd.startsWith(k)) || /test|pytest|jest|vitest|cargo|go test/.test(cmd);
+    if (!_isErrorFirstCmd) return logSkip("always-full-on-failure");
+  }
 
   for (const excl of config.excludeCommands) {
     if (cmd.startsWith(excl)) return logSkip("exclude-command", { exclude: excl });
@@ -60,7 +66,7 @@ export function compressCommandOutput(
   const prefix = getCommandPrefix(cmd);
   if (prefix.length === 0) return logSkip("no-command-prefix");
 
-  if (!isPayloadPreserving(prefix) && isSignalOutput(out)) return logSkip("signal-output", { chars: out.length });
+  if (!isPayloadPreserving(prefix) && isSignalOutput(out) && !(failed || ERROR_MARKERS.test(out))) return logSkip("signal-output", { chars: out.length });
 
   // ── Tier 0: verbatim pass-through ────────────────────────────────────────
   // Small outputs stay intact: the payload IS the answer. Only genuinely large
@@ -107,7 +113,7 @@ export function compressCommandOutput(
     : (config.benignThreshold ?? DEFAULT_TIERED.benignThreshold);
   const exceedsTier3 = outLines.length > tier3Threshold || out.length > 12000;
   // If failing or error-marked, try error-first projection before generic shape
-  const shouldTryErrorFirst = (failed || ERROR_MARKERS.test(out)) && (perTool?.strategy === "error-first" || /test|pytest|jest|vitest|cargo|go test/.test(prefix));
+  const shouldTryErrorFirst = failed || ERROR_MARKERS.test(out);
   if (shouldTryErrorFirst) {
     const err = compressErrorFirst(out, effectiveMaxTokens ?? 2500);
     if (accepts(err)) {
@@ -121,6 +127,27 @@ export function compressCommandOutput(
       return { output: abbreviated, strategy: "error-first" };
     }
     compressTrace(cmd, `error-first-rejected-net-win`, { candidateChars: err.length, originalChars: out.length });
+  }
+
+  // ── Content-type router (before registry) — JSON/logs/tabular/coverage/npm ─
+  // Skip for payload-preserving commands where registry (ls/grep/test/git) is more precise
+  let typed: ReturnType<typeof compressByType> = null;
+  if (!isPayloadPreserving(prefix)) {
+    typed = compressByType(out, config.maxLines ?? 50);
+  }
+  if (typed && typed.type !== "raw-text" && typed.compressed.length < out.length) {
+    // compressByType already is type-aware (compiler-diagnostics/test-output/npm-install/coverage)
+    // Use net-win gate like other strategies
+    if (accepts(typed.compressed)) {
+      const abbreviated = applyWordAbbreviations(typed.compressed);
+      compressTrace(cmd, `compressed strategy=typed:${typed.type}`, {
+        originalChars: out.length,
+        compressedChars: abbreviated.length,
+        saving: `${Math.round((1 - abbreviated.length / Math.max(out.length, 1)) * 100)}%`,
+      });
+      return { output: abbreviated, strategy: `typed:${typed.type}` };
+    }
+    compressTrace(cmd, `typed-rejected-net-win type=${typed.type}`, { candidateChars: typed.compressed.length, originalChars: out.length });
   }
 
   // Respect per-tool errorThreshold for benign vs error gate

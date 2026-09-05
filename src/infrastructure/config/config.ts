@@ -55,6 +55,14 @@ export interface MemConfig {
       keepAlive: string;
       maxQueueSize: number;
     } | undefined;
+    squeezExtraction?: {
+      enabled: boolean;
+      baseUrl: string;
+      model: string;
+      minOutputChars: number;
+      timeoutMs: number;
+      deferToIdle: boolean;
+    } | undefined;
   } | undefined;
   autoRetrieve?: {
     enabled: boolean;
@@ -326,6 +334,15 @@ const OllamaExtractionSchema = z.object({
   maxQueueSize: z.number().positive().int().default(20),
 });
 
+const SqueezExtractionSchema = z.object({
+  enabled: z.boolean().default(false),
+  baseUrl: z.string().default("http://localhost:8000"),
+  model: z.string().default("KRLabsOrg/squeez-2b"),
+  minOutputChars: z.number().positive().int().default(2000),
+  timeoutMs: z.number().positive().int().default(5000),
+  deferToIdle: z.boolean().default(true),
+});
+
 const CommandCompressionSchema = z.object({
   enabled: z.boolean().default(true),
   maxLines: z.number().positive().int().default(50),
@@ -352,6 +369,7 @@ const CommandCompressionSchema = z.object({
   essentialColumns: z.record(z.string(), z.array(z.string())).default({}),
   perTool: z.record(z.string(), z.object({ maxTokens: z.number().positive().int().optional(), strategy: z.enum(["error-first", "names", "json-sample", "generic"]).optional(), errorThreshold: z.number().positive().int().optional() })).optional(),
   ollamaExtraction: OllamaExtractionSchema.optional(),
+  squeezExtraction: SqueezExtractionSchema.optional(),
 });
 
 const SessionLogSchema = z.object({
@@ -545,6 +563,14 @@ const DEFAULT_CONFIG: MemConfig = {
     keepNames: 50,
     keepRows: 20,
     essentialColumns: {},
+    squeezExtraction: {
+      enabled: false,
+      baseUrl: "http://localhost:8000",
+      model: "KRLabsOrg/squeez-2b",
+      minOutputChars: 2000,
+      timeoutMs: 5000,
+      deferToIdle: true,
+    },
   },
   toolDedup: {
     enabled: false,
@@ -725,7 +751,22 @@ export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {
     // the DEFAULT_CONFIG fallback only applies when the whole parse fails.
     // Shallow-merge over DEFAULT_CONFIG so absent keys get their defaults while
     // present keys keep their parsed (field-level defaulted) values.
-    return { ...DEFAULT_CONFIG, ...parsed } as MemConfig;
+    // Deep-merge commandCompression so new defaults (e.g. squeezExtraction) survive
+    // when user's file has commandCompression without that key (load would otherwise clobber).
+    const merged: MemConfig = { ...DEFAULT_CONFIG, ...parsed } as MemConfig;
+    if (DEFAULT_CONFIG.commandCompression && parsed.commandCompression) {
+      merged.commandCompression = {
+        ...DEFAULT_CONFIG.commandCompression,
+        ...parsed.commandCompression,
+        // preserve nested defaults if missing
+        ...(DEFAULT_CONFIG.commandCompression.squeezExtraction && !parsed.commandCompression.squeezExtraction
+          ? { squeezExtraction: DEFAULT_CONFIG.commandCompression.squeezExtraction }
+          : {}),
+      };
+    } else if (DEFAULT_CONFIG.commandCompression && !parsed.commandCompression) {
+      merged.commandCompression = DEFAULT_CONFIG.commandCompression;
+    }
+    return merged;
   } catch (err) {
     memLog("warn", "config", "Failed to load config, using defaults", { error: String(err), configPath });
     return DEFAULT_CONFIG;
