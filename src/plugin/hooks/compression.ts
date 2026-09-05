@@ -239,7 +239,7 @@ export function createCompressionHandler(store: MemoryStore, config: MemConfig):
             }
           }
 
-          const reversibleNote = stashPath ? `\n[Original stashed — use \`cat ${stashPath}\`]` : "";
+          const reversibleNote = stashPath ? `\n[Original stashed — cat ${stashPath} or expand(ref="${stashPath}" filter="error" slice="tail")]` : "";
           out.output = banner + finalOutput + reversibleNote + idsNote;
           out.metadata = {
             ...((out.metadata as Record<string, unknown>) ?? {}),

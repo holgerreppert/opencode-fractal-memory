@@ -10,6 +10,7 @@ import { createGraphPluginTool } from "../tools/graph";
 import { createSkeletonizeTool } from "../tools/consolidated/skeletonize";
 import { createContextCompressTool } from "../tools/context-compress";
 import { createSessionMessagesTool } from "../tools/session-messages";
+import { createExpandTool } from "../tools/expand";
 import { ToastService } from "../infrastructure/toast-service";
 import type { JournalStore, JournalContext } from "../application/journal";
 
@@ -32,6 +33,7 @@ export function createToolMap(
   });
   const map = {
     archivecontext: compressTool,
+    expand: createExpandTool(),
     memory: createMemoryTool(store, rerankMode),
     context: createContextTool(store, client),
     learn: createLearnTool(store, client),

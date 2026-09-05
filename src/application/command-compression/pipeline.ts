@@ -1,9 +1,10 @@
 import { memLog } from "../../logging";
-import { DEFAULT_TIERED, type CompressConfig } from "./config";
+import { DEFAULT_TIERED, DEFAULT_PER_TOOL, type CompressConfig } from "./config";
 import { createStrategyRegistry, type StrategyContext } from "./strategy";
 import { compressRelevantGeneric } from "./strategies/generic";
 import { applyShapeCompression } from "./shape";
 import { trimByRelevance } from "./relevance";
+import { compressErrorFirst } from "./strategies/error";
 import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix, applyWordAbbreviations, estimateTokens } from "./utils";
 
 const ERROR_MARKERS = /error|panic|traceback|FAILED|failed|exception|fatal/i;
@@ -78,13 +79,6 @@ export function compressCommandOutput(
     return estimateTokens(out) - estimateTokens(candidate) >= netWin;
   };
 
-  // ── Benign-aware threshold: clean output stays verbatim much longer ──────
-  const hasErrors = ERROR_MARKERS.test(out);
-  const tier3Threshold = hasErrors
-    ? (config.errorThreshold ?? DEFAULT_TIERED.errorThreshold)
-    : (config.benignThreshold ?? DEFAULT_TIERED.benignThreshold);
-  const exceedsTier3 = outLines.length > tier3Threshold || out.length > 12000;
-
   const keepMatches = config.keepMatches ?? DEFAULT_TIERED.keepMatches;
   const keepNames = config.keepNames ?? DEFAULT_TIERED.keepNames;
   const keepRows = config.keepRows ?? DEFAULT_TIERED.keepRows;
@@ -92,12 +86,52 @@ export function compressCommandOutput(
   const cmdFamily = (prefix.split(/\s+/)[0] ?? "").toLowerCase();
   const essentialColumns = config.essentialColumns?.[cmdFamily];
 
+  // ── Per-tool + error-first fast path (failing outputs) ─────────────────
+  const perTool = (() => {
+    const pt = config.perTool ?? DEFAULT_PER_TOOL;
+    // longest prefix match (e.g., "bun test" beats "bun")
+    let best: { key: string; val: typeof pt[string] } | null = null;
+    for (const [k, v] of Object.entries(pt)) {
+      if (cmd.startsWith(k) || prefix.startsWith(k)) {
+        if (!best || k.length > best.key.length) best = { key: k, val: v };
+      }
+    }
+    return best?.val ?? null;
+  })();
+  const effectiveErrorThreshold = perTool?.errorThreshold ?? (config.errorThreshold ?? DEFAULT_TIERED.errorThreshold);
+  const effectiveMaxTokens = perTool?.maxTokens;
+  // ── Benign-aware threshold: clean output stays verbatim much longer ──────
+  const hasErrors = ERROR_MARKERS.test(out);
+  const tier3Threshold = hasErrors
+    ? effectiveErrorThreshold
+    : (config.benignThreshold ?? DEFAULT_TIERED.benignThreshold);
+  const exceedsTier3 = outLines.length > tier3Threshold || out.length > 12000;
+  // If failing or error-marked, try error-first projection before generic shape
+  const shouldTryErrorFirst = (failed || ERROR_MARKERS.test(out)) && (perTool?.strategy === "error-first" || /test|pytest|jest|vitest|cargo|go test/.test(prefix));
+  if (shouldTryErrorFirst) {
+    const err = compressErrorFirst(out, effectiveMaxTokens ?? 2500);
+    if (accepts(err)) {
+      const abbreviated = applyWordAbbreviations(err);
+      compressTrace(cmd, `compressed strategy=error-first`, {
+        originalChars: out.length,
+        compressedChars: abbreviated.length,
+        saving: `${Math.round((1 - abbreviated.length / Math.max(out.length, 1)) * 100)}%`,
+        perTool: perTool ? 1 : 0,
+      });
+      return { output: abbreviated, strategy: "error-first" };
+    }
+    compressTrace(cmd, `error-first-rejected-net-win`, { candidateChars: err.length, originalChars: out.length });
+  }
+
+  // Respect per-tool errorThreshold for benign vs error gate
+  // (recomputed verbatim below but we already have hasErrors)
+
   // ── Strategy dispatch: first matching registry entry wins ────────────────
   const ctx: StrategyContext = {
     cmd,
     raw: out,
     lines: outLines,
-    config,
+    config: { ...config, errorThreshold: effectiveErrorThreshold } as CompressConfig,
     keepMatches,
     keepNames,
     keepRows,

@@ -44,6 +44,7 @@ export interface MemConfig {
     keepNames: number;
     keepRows: number;
     essentialColumns: Record<string, string[]>;
+    perTool?: Record<string, { maxTokens?: number; strategy?: "error-first" | "names" | "json-sample" | "generic"; errorThreshold?: number }>;
     ollamaExtraction?: {
       enabled: boolean;
       baseUrl: string;
@@ -349,6 +350,7 @@ const CommandCompressionSchema = z.object({
   keepNames: z.number().positive().int().default(50),
   keepRows: z.number().positive().int().default(20),
   essentialColumns: z.record(z.string(), z.array(z.string())).default({}),
+  perTool: z.record(z.string(), z.object({ maxTokens: z.number().positive().int().optional(), strategy: z.enum(["error-first", "names", "json-sample", "generic"]).optional(), errorThreshold: z.number().positive().int().optional() })).optional(),
   ollamaExtraction: OllamaExtractionSchema.optional(),
 });
 

@@ -22,7 +22,23 @@ export interface CompressConfig {
   keepNames?: number;
   keepRows?: number;
   essentialColumns?: Record<string, string[]>;
+  perTool?: Record<string, { maxTokens?: number; strategy?: "error-first" | "names" | "json-sample" | "generic"; errorThreshold?: number }>;
 }
+
+export const DEFAULT_PER_TOOL: Record<string, { maxTokens: number; strategy: "error-first" | "names" | "json-sample" | "generic"; errorThreshold: number }> = {
+  "test": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "bun test": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "pytest": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "vitest": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "jest": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "cargo test": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "go test": { maxTokens: 2500, strategy: "error-first", errorThreshold: 500 },
+  "ls": { maxTokens: 800, strategy: "names", errorThreshold: 800 },
+  "tree": { maxTokens: 800, strategy: "names", errorThreshold: 800 },
+  "grep": { maxTokens: 1200, strategy: "generic", errorThreshold: 500 },
+  "git diff": { maxTokens: 2000, strategy: "generic", errorThreshold: 500 },
+  "git log": { maxTokens: 1500, strategy: "generic", errorThreshold: 500 },
+};
 
 export const DEFAULT_TIERED = {
   netWinMinTokens: 24,

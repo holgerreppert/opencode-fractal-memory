@@ -201,6 +201,23 @@ WORKFLOW: search → get/fetch → set/delete`,
     })
   );
 
+  // ==================== Expand Tool (stashed output) ====================
+  const { createExpandTool } = await import("../tools/expand");
+  const expandTool = createExpandTool();
+  server.registerTool(
+    "expand",
+    {
+      description: (expandTool as { description?: string }).description ?? "Retrieve stashed tool output",
+      inputSchema: ((expandTool as { args?: Record<string, unknown> }).args ?? {}) as Record<string, z.ZodTypeAny>,
+    },
+    withMcpLogging("expand", async (args) => {
+      const exec = (expandTool as unknown as { execute?: (a: unknown, ctx: unknown) => Promise<unknown> }).execute;
+      if (!exec) return { content: [{ type: "text" as const, text: "expand tool not available" }], isError: true } as const;
+      const res = await exec(args, {} as unknown);
+      return { content: [{ type: "text" as const, text: String(res) }] };
+    }),
+  );
+
   // ==================== Graph Tool ====================
 
   server.registerTool(
