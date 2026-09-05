@@ -29,29 +29,42 @@ export function createMemoryTool(store: MemoryStore, defaultRerankMode?: "keywor
   };
 
   const t = tool({
-    description: `USE BEFORE READING FILES — search existing knowledge first (costs 100x less than reading codebase cold).
+    description: `PERSISTENT MEMORY — search existing knowledge first (100× cheaper than reading codebase cold). Unified tool with 9 modes + 4 verb aliases (memory_search, memory_fetch, memory_get, memory_set).
 
-MODES:
-  search    — Find relevant memories by keyword. ALWAYS FIRST before reading files or editing
-  get       — Get a node by UUID id (from search results) OR by exact label; scope defaults to project
-  set       — Store new information as a memory node. Use AFTER every significant tool result
-  delete    — Remove a memory node by UUID id or label
-  list      — Survey available nodes (scope, level, importance)
-  drilldown — Get full context with fractal source chain (use after search)
-  drilldown_query — Top-down drilldown by keyword
-  fetch     — Quick lookup by exact label (scope defaults to project)
-  replace   — Fix outdated content in a node (by UUID id or label)
+WHEN vs WHAT — decision per your task:
+  Have a question or need context BEFORE reading/editing? → search (ALWAYS FIRST). Use concise keywords, NOT the raw user message. Example: query="auth JWT verification" not "what did we do about JWT?".
+  Have a UUID from search/list? → get (id="6fb185e2-..."). Have an exact label like "fact:opencode-fractal-memory-hub" or "rule:mandatory:memory"? → fetch (label="..."). get accepts id OR label; fetch/drilldown use label; replace needs newText+oldText after get.
+  Want to save what you just learned? → set (label + content + type) AFTER significant tool result — WHY it helps (prevents re-discovery). Verify with learn(mode=verify) after.
+  Want to see what's stored? → list (survey by scope/level/importance).
+  Need full graph with sources? → drilldown (after search) or drilldown_query (keyword top-down).
 
-NOTE: the 'id' param is the UUID shown in search/list results (e.g. 6fb185e2-...), NOT the label.
-Labels (e.g. 'fact:opencode-fractal-memory-hub') go in the 'label' param.
-Both get/replace/delete accept either; fetch and drilldown use label.
+MODES — what + how + when + example:
+  search — Find memories by keyword. Use BEFORE any edit/bash/write. Params: query (required, concise), limit (default 5), tagsFilter (intersection), rerank, rerank_mode "keyword"|"cross-encoder", intent. Ex: memory(mode="search", query="auth flow", limit=5) or memory_search(query="auth flow"). Also via alias: memory_search(query="auth flow"). Workflow: search → if >50% match then drilldown/get → set/verify.
+  get — Get one node by UUID id (preferred) OR exact label. Scope defaults to project. Ex: memory(mode="get", id="6fb185e2-...") or memory_get(id="..."). Alias: memory_get.
+  fetch — Quick lookup by exact label (sticky, dot:, rule:, fact:). Scope defaults to project. Ex: memory(mode="fetch", label="fact:svelte-stack") or memory_fetch(label="fact:svelte-stack").
+  drilldown — Full context with fractal source chain for a node found via search. Param: label (exact) or id. Use AFTER search when relevance >50%. Ex: memory(mode="drilldown", label="fact:opencode-fractal-memory-hub").
+  drilldown_query — Top-down drilldown by keyword (no id needed). Ex: memory(mode="drilldown_query", query="ranking").
+  set — Store new node. Required: label, content, type (semantic: fact/lesson/concept/decision/knowledge/how_to...; episodic: event/note/session...). Optional: summary, level, importance, sticky, usefulness_score, tags via metadata. Ex: memory(mode="set", label="fact:auth-decision", content="We chose JWT via ...", type="fact") or memory_set(label="...", content="...", type="fact").
+  replace — Fix outdated node. Must re-read with get/fetch first to get current text. Params: id OR label + oldText + newText. Ex: memory(mode="replace", label="fact:x", oldText="old", newText="new").
+  delete — Remove node by id or label. Verify via memory(mode="delete", label="..."); check existence before delete.
+  list — Survey nodes: scope global|project|all, level, type_filter, limit. Ex: memory(mode="list", scope="project", limit=10).
 
-WORKFLOW:
+ALIASES — distinct tools for discoverability (same handlers, clearer intent):
+  memory_search(query, limit, tagsFilter) — alias for mode="search"
+  memory_fetch(label) — alias for mode="fetch"
+  memory_get(id|label) — alias for mode="get"
+  memory_set(label, content, type, ...) — alias for mode="set"
+
+WORKFLOW (always):
   search → drilldown/get → set/verify/replace
+  NEVER drilldown with vague query — search first with concise keywords.
+  BEFORE memory(mode="replace") re-read with get/fetch to ensure current content.
+  AFTER set, run learn(mode=verify, label="...") to certify (diminishing returns 0.2/(1+verificationCount)).
 
-TIP: memory(mode="search") BEFORE any edit, bash, or write — saves retracing past work.
-TIP: After storing, verify correctness with learn(mode=verify).
-TIP: For context pressure, use context tool.`,
+TIPS:
+  - memory(mode="search") BEFORE any edit/bash/write saves retracing past work (100×).
+  - For context pressure >60%: context(mode="check") → compress; for facts/conventions keep semantic type (365d) not episodic (7d).
+  - See also: graph(relation="search", query="Symbol") for code, context tool for compression, learn tool for verification.`,
     args: {
       mode: tool.schema.enum(["search", "get", "set", "delete", "list", "drilldown", "drilldown_query", "fetch", "replace"]).describe("Which memory operation to perform"),
 

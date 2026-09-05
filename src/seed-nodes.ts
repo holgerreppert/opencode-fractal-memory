@@ -146,12 +146,17 @@ never_strip: true
 - NEVER use bash + sqlite3 for memory node CRUD (search/get/set/delete/list/drilldown) — use the memory tool. Bash triggers output compression → scratch file stash → pipe tangles. Memory tool is purpose-built and avoids all overhead.
 - BEFORE reaching for any generic bash command, ask: "Is there a purpose-built consolidated tool (memory/graph/context/learn/journal) for this?" If yes, use that instead.
 
-### memory (consolidated tool)
-- USE memory(mode="search") FIRST before any get/drilldown
-- NEVER drilldown with vague queries - search first
-- After search/memory, then use memory(mode="get") or memory(mode="drilldown")
-- Before memory(mode="replace"), re-read with memory(mode="get") first
-- USE memory(mode="search") BEFORE edit/bash/write to find relevant context
+### memory (consolidated tool) + 4 verb aliases memory_search/fetch/get/set (prefer aliases for clarity — fewer tokens short but more tokens is OK per plan, clarity > brevity)
+- USE memory(mode="search") or memory_search(query="concise keywords") FIRST BEFORE any get/drilldown — search is 100× cheaper than read/grep. NEVER drilldown with vague queries — search first with concise keywords (not raw user message). Example: search="auth JWT verification" not "what did we do about JWT?". Ex: memory_search(query="auth flow", limit=5)
+- AFTER search, then use memory_get(id="uuid from search") or memory(mode="get", id="...") OR memory_fetch(label="fact:exact-label") for known labels (fact:, rule:, dot:, lesson:). Both get/fetch accept id OR label; fetch/drilldown prefer label. Use drilldown after search when relevance >50% for full fractal source chain.
+- BEFORE memory(mode="replace") MUST re-read with memory_get/memory(mode="get") first to ensure current content — provide oldText + newText.
+- USE memory_search/memory(mode="search") BEFORE every edit/bash/write to find relevant context — saves retracing. AFTER significant tool result → memory_set(label="fact:...", content="what+why", type="fact") and verify with learn(mode=verify).
+- ALIASES (distinct tools, same handlers, Anthropic namespacing):
+  - memory_search(query, limit, tagsFilter) — alias for mode="search" — USE WHEN you need context BEFORE answering.
+  - memory_fetch(label) — alias for mode="fetch" — USE WHEN you know exact label.
+  - memory_get(id|label) — alias for mode="get" — USE WHEN you have UUID from search/list.
+  - memory_set(label, content, type) — alias for mode="set" — USE WHEN storing new knowledge (semantic 365d: fact/lesson/concept/decision/knowledge vs episodic 7d: event/note/session). Verify after with learn(mode=verify).
+- See also: graph(relation="search", query="Symbol") for code, context(mode="check") for pressure, learn(mode="verify") after set.
 
 ### context (consolidated tool)
 - USE context(mode="check") at start of complex tasks (>3 steps)
