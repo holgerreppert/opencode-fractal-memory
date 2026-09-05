@@ -84,7 +84,7 @@ Args:
         const snippet = m.text.replace(/\s+/g, " ").trim().slice(0, SNIPPET_MAX);
         if (snippet) lines.push(`    ${snippet}${m.text.length > SNIPPET_MAX ? "…" : ""}`);
       }
-      lines.push("", "Compress any of these with archivecontext (messageId = the id shown above). Originals are preserved.");
+      lines.push("", "Compress any of these with archivecontext (messageId = the id shown above) or a block with archivecontext(range=\"msg_A:msg_B\"). Originals are preserved.");
       return lines.join("\n");
     },
   });
