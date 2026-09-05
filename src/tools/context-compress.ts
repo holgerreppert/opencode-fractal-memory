@@ -67,12 +67,19 @@ Args:
     messageId: the raw message id (the marker shown on the message)
     topic: per-message sub-topic
     description: SMALL (1-3 lines) description of the message content — shown in the compressed placeholder and stored as the archive summary
+  range: inclusive msgId range, e.g. "msg_abc:msg_def" or "msg_abc-msg_def" — archives every message between the two ids in view order (inclusive), inclusive bounds. Combine with fromTime/toTime/pattern to narrow.
+  fromTime/toTime: ISO timestamp bounds (inclusive)
+  pattern: substring filter (applied after range/time)
 
 The plugin replaces the pruned messages with a compact placeholder: [Compressed conversation section] TOPIC: DESCRIPTION with a footer linking to the saved node.`,
     args: {
       topic: tool.schema.string().describe("Short label for this compression batch"),
-      content: tool.schema.string().describe("JSON-encoded array of messages to compress, each with messageId, topic, description"),
+      content: tool.schema.string().optional().describe("JSON-encoded array of messages to compress, each with messageId, topic, description"),
       allFlagged: tool.schema.boolean().optional().describe("Archive every nudge-flagged HIGH-priority message (>= 5000 tokens, max 10) in one call. Auto-generates topic/description from content. Overrides content."),
+      range: tool.schema.string().optional().describe("Inclusive msgId range, e.g. \"msg_abc:msg_def\" or \"msg_abc-msg_def\" — archives every message between the two ids in view order (inclusive). Auto-generates description from content. Use to archive a contiguous block without listing each id."),
+      fromTime: tool.schema.string().optional().describe("ISO timestamp lower bound (inclusive) — only messages at/after this time are considered."),
+      toTime: tool.schema.string().optional().describe("ISO timestamp upper bound (inclusive) — only messages at/before this time are considered."),
+      pattern: tool.schema.string().optional().describe("Substring filter — only messages whose text contains this string are archived (combines with range/time)."),
     },
     async execute(args, toolCtx) {
       const ccConfig = config.contextCompression;
@@ -132,9 +139,78 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
         if (targets.length === 0) {
           return `allFlagged: no messages above the ${ALL_FLAGGED_MIN_TOKENS.toLocaleString()}-token floor (already-compressed excluded). Nothing to archive.`;
         }
+      } else if (args.range || args.fromTime || args.toTime || args.pattern) {
+        // Range / time / pattern mode: deterministic expansion, auto-descriptions
+        let candidateIds: string[] = [];
+
+        if (args.range) {
+          const raw = args.range.trim();
+          // Support "A:B", "A-B", "A..B" (colon/dash/dotdot)
+          let sep = raw.includes(":") ? ":" : raw.includes("..") ? ".." : "-";
+          const parts = raw.split(sep);
+          if (parts.length !== 2 || !parts[0] || !parts[1]) {
+            return `Error: range must be "START:END" (inclusive), e.g. "msg_abc:msg_def". Got "${args.range}".`;
+          }
+          const a = parts[0].trim();
+          const b = parts[1].trim();
+          // Resolve indices in view order (messages array order = chronological view)
+          const idxOf = (needle: string): number => {
+            const exact = messages.findIndex((m) => m.info?.id === needle);
+            if (exact !== -1) return exact;
+            // prefix match (nudge shows full id but allow short prefix)
+            const pref = messages.findIndex((m) => (m.info?.id ?? "").startsWith(needle) || needle.startsWith(m.info?.id ?? "___"));
+            return pref;
+          };
+          const ia = idxOf(a);
+          const ib = idxOf(b);
+          if (ia === -1) return `Error: range start "${a}" not found in current view.`;
+          if (ib === -1) return `Error: range end "${b}" not found in current view.`;
+          if (ib < ia) return `Error: range is reversed — "${a}" appears after "${b}" in view order. Use "START:END" in view order.`;
+          candidateIds = messages.slice(ia, ib + 1).map((m) => m.info?.id).filter((x): x is string => Boolean(x));
+        } else {
+          candidateIds = messages.map((m) => m.info?.id).filter((x): x is string => Boolean(x));
+        }
+
+        // Time bounds (inclusive)
+        const fromMs = args.fromTime ? Date.parse(args.fromTime) : NaN;
+        const toMs = args.toTime ? Date.parse(args.toTime) : NaN;
+        if (args.fromTime && Number.isNaN(fromMs)) return `Error: fromTime is not a valid ISO timestamp: "${args.fromTime}".`;
+        if (args.toTime && Number.isNaN(toMs)) return `Error: toTime is not a valid ISO timestamp: "${args.toTime}".`;
+
+        const pattern = args.pattern ?? null;
+
+        targets = [];
+        for (const id of candidateIds) {
+          if (skipIds.has(id)) continue;
+          const msg = byId.get(id);
+          if (!msg) continue;
+          const role = msg.info?.role;
+          if (role !== "user" && role !== "assistant") continue;
+          // time filter
+          if (!Number.isNaN(fromMs) || !Number.isNaN(toMs)) {
+            const t = msg.info?.time?.created;
+            const ms = typeof t === "number" ? t : typeof t === "string" ? Date.parse(t) : NaN;
+            if (!Number.isNaN(fromMs) && (Number.isNaN(ms) || ms < fromMs)) continue;
+            if (!Number.isNaN(toMs) && (Number.isNaN(ms) || ms > toMs)) continue;
+          }
+          // pattern filter
+          const textForFilter = msg.parts?.map((p) => partPayloadText(p as Parameters<typeof partPayloadText>[0])).filter(Boolean).join(" ").trim() ?? "";
+          if (pattern && !textForFilter.includes(pattern)) continue;
+          if (!textForFilter) continue; // skip no-text like already handled
+          targets.push({
+            messageId: id,
+            topic: args.topic ?? "range-archive",
+            description: `range (${textForFilter.slice(0, AUTO_DESC_CHARS).replace(/\s+/g, " ").trim()}${textForFilter.length > AUTO_DESC_CHARS ? "…" : ""})`,
+          });
+        }
+
+        if (targets.length === 0) {
+          return `range: no messages matched (range=${args.range ?? "-"} pattern=${pattern ?? "-"} fromTime=${args.fromTime ?? "-"} toTime=${args.toTime ?? "-"}). Nothing to archive.`;
+        }
       } else {
+        if (!args.content) return "Error: provide content (JSON array), or range/pattern/fromTime/toTime, or allFlagged:true.";
         try {
-          targets = JSON.parse(args.content ?? "[]") as Array<{ messageId: string; topic?: string; description: string }>;
+          targets = JSON.parse(args.content) as Array<{ messageId: string; topic?: string; description: string }>;
         } catch {
           return "Error: content must be a JSON-encoded array of {messageId, topic, description} objects.";
         }

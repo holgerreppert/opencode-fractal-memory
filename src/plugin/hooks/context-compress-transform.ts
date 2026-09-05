@@ -155,11 +155,11 @@ function buildNudgeLine(
     lines.push(`  MEDIUM priority: ${medium.join(", ")}`);
   }
   if (high.length > 0 || medium.length > 0) {
-    lines.push("  Use the message ids above (markers on the messages) as messageId args, or archive all HIGH at once with archivecontext(allFlagged:true).");
+    lines.push("  Use the message ids above (markers on the messages) as messageId args, or archive all HIGH at once with archivecontext(allFlagged:true), or a contiguous block with archivecontext(range=\"msg_A:msg_B\") / range=\"msg_A-msg_B\" (inclusive, auto-descriptions).");
   }
   if (underPressure) {
     lines.push(
-      `  PRESSURE at ~${pressurePct}% of the ${CONTEXT_LIMIT_TOKENS.toLocaleString()}-token limit. Archive now: call archivecontext(allFlagged:true) (or pass the messageIds above). Consolidate-then-prune — archive completed investigations, obsolete context and superseded decisions, not just the largest ones; keep task-critical context. Originals are permanently saved; nothing is lost.`,
+      `  PRESSURE at ~${pressurePct}% of the ${CONTEXT_LIMIT_TOKENS.toLocaleString()}-token limit. Archive now: call archivecontext(allFlagged:true) (or pass the messageIds above, or range="msg_A:msg_B" for a contiguous block). Consolidate-then-prune — archive completed investigations, obsolete context and superseded decisions, not just the largest ones; keep task-critical context. Originals are permanently saved; nothing is lost.`,
     );
   }
   return lines.join("\n");
