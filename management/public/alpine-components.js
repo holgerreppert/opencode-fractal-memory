@@ -108,18 +108,45 @@ document.addEventListener('alpine:init', () => {
 
     _updateFacetCounts() {
       const nd = window.nodeData || [];
-      if (!nd.length) { this.typeCounts = {}; this.levelCounts = {}; return; }
-      // Base filter is current filterEngine without the facet group being counted (so counts show "if you add this value")
-      // For simplicity, counts are of the currently filtered set per value (visible nodes per type/level)
+      if (!nd.length) {
+        const s = window.statsData || {};
+        const utc2 = {}; const ulc2 = {};
+        for (const t of this.availableTypes) utc2[t] = (s.nodesPerType || {})[t] || 0;
+        for (const l of this.availableLevels) ulc2[l] = (s.nodesPerLevel || {})[l] || 0;
+        // ensure 'dot'/'workflow' injected types still show 0 until data arrives
+        this.typeCounts = { ...utc2 }; this.levelCounts = { ...ulc2 };
+        this.typeCountsUnfiltered = { ...utc2 }; this.levelCountsUnfiltered = { ...ulc2 };
+        return;
+      }
+      // Faceted counts: exclude the facet being counted (OR inside facet, AND across facets)
       const fe = window.filterEngine;
-      const filtered = fe ? nd.filter(n => fe.matches(n)) : nd;
-      const tc = {}; const lc = {};
-      for (const t of this.availableTypes) tc[t] = filtered.filter(n => (n.type || 'unknown') === t).length;
-      for (const l of this.availableLevels) lc[l] = filtered.filter(n => n.level === l).length;
-      // Also compute unfiltered counts per value (for disabled hint) — nodes per type without any filter
+      // unfiltered totals for tooltip (no filter at all)
       const utc = {}; const ulc = {};
       for (const t of this.availableTypes) utc[t] = nd.filter(n => (n.type || 'unknown') === t).length;
       for (const l of this.availableLevels) ulc[l] = nd.filter(n => n.level === l).length;
+
+      if (!fe) {
+        this.typeCounts = { ...utc }; this.levelCounts = { ...ulc };
+        this.typeCountsUnfiltered = utc; this.levelCountsUnfiltered = ulc;
+        return;
+      }
+
+      // Level counts: ignore level filter, respect everything else (type + search + supertype/domain/source)
+      const savedLevels = new Set(fe.levels);
+      fe.levels.clear();
+      const forLevel = nd.filter(n => fe.matches(n));
+      const lc = {};
+      for (const l of this.availableLevels) lc[l] = forLevel.filter(n => n.level === l).length;
+      fe.levels.clear(); savedLevels.forEach(v => fe.levels.add(v));
+
+      // Type counts: ignore type filter, respect everything else
+      const savedTypes = new Set(fe.types);
+      fe.types.clear();
+      const forType = nd.filter(n => fe.matches(n));
+      const tc = {};
+      for (const t of this.availableTypes) tc[t] = forType.filter(n => (n.type || 'unknown') === t).length;
+      fe.types.clear(); savedTypes.forEach(v => fe.types.add(v));
+
       this.typeCounts = tc; this.levelCounts = lc;
       this.typeCountsUnfiltered = utc; this.levelCountsUnfiltered = ulc;
     },
@@ -308,6 +335,7 @@ document.addEventListener('alpine:init', () => {
         window.filterEngine.serverSearchIds = null;
         window.filterEngine.changed();
         this._updateNodeList();
+        this._updateFacetCounts();
         return;
       }
 
@@ -325,6 +353,7 @@ document.addEventListener('alpine:init', () => {
         this.results = filtered.slice(0, 50);
         this.info = `${filtered.length} result${filtered.length !== 1 ? 's' : ''}`;
         this._updateNodeList();
+        this._updateFacetCounts();
         this.loading = false;
       } else {
         this.loading = true;
@@ -374,11 +403,13 @@ document.addEventListener('alpine:init', () => {
           window.filterEngine.setSearchQuery(query);
           if (window.sceneCtrl) window.sceneCtrl.updateVisibility(window.filterEngine);
           this._updateNodeList();
+          this._updateFacetCounts();
         } else {
           this.results = [];
           this.info = 'No results';
         }
         this._updateNodeList();
+        this._updateFacetCounts();
       } catch (e) {
         if (e && e.name === 'AbortError') return; // cancelled by newer search — not an error
         this.info = 'Search failed';
@@ -386,6 +417,7 @@ document.addEventListener('alpine:init', () => {
       } finally {
         if (seq === this._searchSeq) this.loading = false;
         this._updateNodeList();
+        this._updateFacetCounts();
       }
     },
 
@@ -411,6 +443,7 @@ document.addEventListener('alpine:init', () => {
       window.filterEngine.selectAll();
       if (window.sceneCtrl) window.sceneCtrl.updateVisibility(window.filterEngine);
       this._updateNodeList();
+      this._updateFacetCounts();
     },
 
     isLevelActive(l) { return this.levels.length === 0 || this.levels.includes(l); },
