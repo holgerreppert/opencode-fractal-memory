@@ -48,7 +48,12 @@ export function compressCommandOutput(
   };
 
   if (!config.enabled) return logSkip("disabled");
-  if (config.alwaysFullOnFailure && failed) return logSkip("always-full-on-failure");
+  if (config.alwaysFullOnFailure && failed) {
+    const _per = config.perTool ?? DEFAULT_PER_TOOL;
+    const _hasError = /error|panic|traceback|FAILED|failed|exception|fatal/i.test(rawOutput);
+    const _isErrorFirstCmd = _hasError || Object.keys(_per).some((k) => cmd.startsWith(k)) || /test|pytest|jest|vitest|cargo|go test/.test(cmd);
+    if (!_isErrorFirstCmd) return logSkip("always-full-on-failure");
+  }
 
   for (const excl of config.excludeCommands) {
     if (cmd.startsWith(excl)) return logSkip("exclude-command", { exclude: excl });
@@ -61,7 +66,7 @@ export function compressCommandOutput(
   const prefix = getCommandPrefix(cmd);
   if (prefix.length === 0) return logSkip("no-command-prefix");
 
-  if (!isPayloadPreserving(prefix) && isSignalOutput(out)) return logSkip("signal-output", { chars: out.length });
+  if (!isPayloadPreserving(prefix) && isSignalOutput(out) && !(failed || ERROR_MARKERS.test(out))) return logSkip("signal-output", { chars: out.length });
 
   // ── Tier 0: verbatim pass-through ────────────────────────────────────────
   // Small outputs stay intact: the payload IS the answer. Only genuinely large
@@ -108,7 +113,7 @@ export function compressCommandOutput(
     : (config.benignThreshold ?? DEFAULT_TIERED.benignThreshold);
   const exceedsTier3 = outLines.length > tier3Threshold || out.length > 12000;
   // If failing or error-marked, try error-first projection before generic shape
-  const shouldTryErrorFirst = (failed || ERROR_MARKERS.test(out)) && (perTool?.strategy === "error-first" || /test|pytest|jest|vitest|cargo|go test/.test(prefix));
+  const shouldTryErrorFirst = failed || ERROR_MARKERS.test(out);
   if (shouldTryErrorFirst) {
     const err = compressErrorFirst(out, effectiveMaxTokens ?? 2500);
     if (accepts(err)) {
