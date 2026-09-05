@@ -5,6 +5,7 @@ import { compressRelevantGeneric } from "./strategies/generic";
 import { applyShapeCompression } from "./shape";
 import { trimByRelevance } from "./relevance";
 import { compressErrorFirst } from "./strategies/error";
+import { compressByType } from "./output-types";
 import { isSignalOutput, stripAnsi, smartFilter, getCommandPrefix, applyWordAbbreviations, estimateTokens } from "./utils";
 
 const ERROR_MARKERS = /error|panic|traceback|FAILED|failed|exception|fatal/i;
@@ -121,6 +122,27 @@ export function compressCommandOutput(
       return { output: abbreviated, strategy: "error-first" };
     }
     compressTrace(cmd, `error-first-rejected-net-win`, { candidateChars: err.length, originalChars: out.length });
+  }
+
+  // ── Content-type router (before registry) — JSON/logs/tabular/coverage/npm ─
+  // Skip for payload-preserving commands where registry (ls/grep/test/git) is more precise
+  let typed: ReturnType<typeof compressByType> = null;
+  if (!isPayloadPreserving(prefix)) {
+    typed = compressByType(out, config.maxLines ?? 50);
+  }
+  if (typed && typed.type !== "raw-text" && typed.compressed.length < out.length) {
+    // compressByType already is type-aware (compiler-diagnostics/test-output/npm-install/coverage)
+    // Use net-win gate like other strategies
+    if (accepts(typed.compressed)) {
+      const abbreviated = applyWordAbbreviations(typed.compressed);
+      compressTrace(cmd, `compressed strategy=typed:${typed.type}`, {
+        originalChars: out.length,
+        compressedChars: abbreviated.length,
+        saving: `${Math.round((1 - abbreviated.length / Math.max(out.length, 1)) * 100)}%`,
+      });
+      return { output: abbreviated, strategy: `typed:${typed.type}` };
+    }
+    compressTrace(cmd, `typed-rejected-net-win type=${typed.type}`, { candidateChars: typed.compressed.length, originalChars: out.length });
   }
 
   // Respect per-tool errorThreshold for benign vs error gate
