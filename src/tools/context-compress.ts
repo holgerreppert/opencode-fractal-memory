@@ -196,11 +196,16 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
           // pattern filter
           const textForFilter = msg.parts?.map((p) => partPayloadText(p as Parameters<typeof partPayloadText>[0])).filter(Boolean).join(" ").trim() ?? "";
           if (pattern && !textForFilter.includes(pattern)) continue;
-          if (!textForFilter) continue; // skip no-text like already handled
+          const descText = textForFilter || (() => {
+            const tok = (() => {
+              try { const r = realMessageTokens(msg as unknown as SizableMessage); return r !== null ? `${r.toLocaleString()} tok` : ""; } catch { return ""; }
+            })();
+            return tok ? `(${tok} ${role})` : `(${role} message)`;
+          })();
           targets.push({
             messageId: id,
             topic: args.topic ?? "range-archive",
-            description: `range (${textForFilter.slice(0, AUTO_DESC_CHARS).replace(/\s+/g, " ").trim()}${textForFilter.length > AUTO_DESC_CHARS ? "…" : ""})`,
+            description: `range (${descText.slice(0, AUTO_DESC_CHARS).replace(/\s+/g, " ").trim()}${descText.length > AUTO_DESC_CHARS ? "…" : ""})`,
           });
         }
 
@@ -235,10 +240,11 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
           continue;
         }
 
-        const messageEntry = formatMessageEntry(msg);
+        let messageEntry = formatMessageEntry(msg);
         if (!messageEntry) {
-          skipped.push(`${target.messageId} (no text content)`);
-          continue;
+          // Fallback for tool-output/binary messages that have tokens but no extractable text
+          const tok = (() => { try { const r = realMessageTokens(msg as unknown as SizableMessage); return r !== null ? `${r.toLocaleString()} tok` : ""; } catch { return ""; } })();
+          messageEntry = `[${msg.info?.role ?? "unknown"} ${msg.info?.id ?? target.messageId} ${tok}] (no extractable text — archived by range)`;
         }
         removedChars += messageEntry.length;
         summaryChars += (target.description ?? "").length;
