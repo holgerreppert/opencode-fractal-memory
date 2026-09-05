@@ -21,3 +21,4 @@ tests/dbs/synthetic-seeded/
 *.tgz
 build_output.txt
 docs/questions/
+docs/sqlitesqls/

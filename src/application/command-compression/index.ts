@@ -1,5 +1,7 @@
+import { squeezExtract, squeezExtractSync } from "./squeez";
 export type { CompressConfig, FuzzyDedupConfig, OllamaExtractionConfig, SqueezExtractionConfig } from "./config";
 export { DEFAULT_OLLAMA_EXTRACTION, DEFAULT_SQUEEZ_EXTRACTION } from "./config";
+export { squeezExtract, squeezExtractSync };
 export { compressLs } from "./strategies/ls";
 export { compressTestOutput } from "./strategies/test";
 export { compressGrep } from "./strategies/grep";
@@ -12,4 +14,3 @@ export { tryDeltaCompression, updateDeltaCache } from "./delta";
 export { addContentDedup, trigramJaccard } from "./dedup";
 export { isSignalOutput, stripAnsi, contentPreview, getCommandPrefix, smartFilter, scoreLine, extractQueryTerms, SIGNAL_WORDS } from "./utils";
 export { ollamaExtract, enqueueExtraction, drainPendingExtractions, pendingExtractionCount, warmupExtractionModel } from "./ollama-extract";
-export * from "./squeez";
