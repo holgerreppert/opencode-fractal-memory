@@ -15,20 +15,23 @@
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.55.0",
+		"@skeletonlabs/skeleton": "^5.0.1",
 		"@sveltejs/adapter-static": "^3.0.8",
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tailwindcss/vite": "^4.2.0",
+		"jsdom": "^26.0.0",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
+		"tailwindcss": "^4.2.0",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.16",
-		"vitest": "^3.2.4",
-		"jsdom": "^26.0.0",
-		"@tailwindcss/vite": "^4.2.0",
-		"tailwindcss": "^4.2.0"
+		"vitest": "^3.2.4"
 	},
 	"dependencies": {
-		"@skeletonlabs/skeleton-svelte": "4.13.0",
-		"svelte-i18n": "4.0.1"
+		"@skeletonlabs/skeleton-svelte": "^5.0.0",
+		"@viz-js/viz": "^3.30.0",
+		"svelte-i18n": "4.0.1",
+		"three": "^0.185.1"
 	}
 }

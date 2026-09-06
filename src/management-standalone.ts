@@ -101,10 +101,29 @@ async function sendWebResponse(res: http.ServerResponse, webRes: Response): Prom
 }
 
 const server = http.createServer(async (req, res) => {
+  // CORS for parallel Svelte UI on :8788 fetching :8787 API
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   try {
+    // favicon.ico fallback -> favicon.svg (static build has only svg)
+    const rawUrl = req.url || "/";
+    if (rawUrl === "/favicon.ico" || rawUrl.startsWith("/favicon.ico?")) {
+      const svgRes = serveFile(path.join(publicDir, "favicon.svg"));
+      // serve as svg but browser accepts it for ico request
+      await sendWebResponse(res, svgRes);
+      return;
+    }
     const webReq = await toWebRequest(req);
     const result = await router.handle(webReq);
     if (result) {
+      // ensure CORS on API responses (router handlers may overwrite)
+      result.headers.set("Access-Control-Allow-Origin", "*");
       await sendWebResponse(res, result);
       return;
     }

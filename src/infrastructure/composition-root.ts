@@ -149,7 +149,8 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
     if (svelteBuild) {
       memLog("info", "init", "Starting Svelte management server (parallel)", { sveltePort, svelteBuild, directory });
       try {
-        const standalonePath = path.join(__dirname, "management-standalone.js");
+        const standalonePathCandidates = [path.join(__dirname, "..", "management-standalone.js"), path.join(__dirname, "management-standalone.js")];
+        const standalonePath = standalonePathCandidates.find((p) => fs.existsSync(p)) ?? standalonePathCandidates[0];
         if (fs.existsSync(standalonePath)) {
           const bunPath = (() => { try { return execSync("which bun").toString().trim(); } catch { return null; } })();
           const runner = bunPath || process.execPath;

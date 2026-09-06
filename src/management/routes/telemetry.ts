@@ -11,6 +11,7 @@ export function registerTelemetryRoutes(router: Router, store: MemoryStore): voi
   router.get(/^\/api\/context-pressure$/, (req) => handleContextPressure(req, store));
   router.get(/^\/api\/context-archive$/, (req) => handleContextArchive(req, store));
   router.post(/^\/api\/inject$/, (req) => handleInject(req, store));
+  router.get(/^\/api\/telemetry$/, () => handleContextDashboard(store));
 }
 
 async function handleCompressionStats(req: Request, store: MemoryStore): Promise<Response> {

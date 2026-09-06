@@ -4,6 +4,8 @@
   import NodeList from '$lib/components/NodeList.svelte';
 </script>
 
-<h1>{$t('nav.memory')}</h1>
+<div class="space-y-4 card p-4">
+<h1 class="h3">{$t('nav.memory')}</h1>
 <NodeFilter />
 <NodeList />
+</div>
