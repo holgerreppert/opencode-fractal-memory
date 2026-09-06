@@ -164,21 +164,21 @@ class SqliteMemoryStore implements MemoryStore {
         nodeWithProject,
         (scope, id, content) => this.storeLinks(scope, id, content),
         (scope, label, id) => this.updateLinksForNewNode(scope, label, id),
-        (db, id, content, label, scope) => updateBM25Index(db, id, content, label, scope)
+        (db, id, content, label, scope, summary, keywords) => updateBM25Index(db, id, content, label, scope, summary, keywords)
       );
     });
   }
 
-  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
+  async updateNode(id: string, updates: Partial<Pick<MemoryNode, "content" | "summary" | "keywords" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful">>): Promise<void> {
     const { db, scope } = await resolveNodeFn((s) => this.getDb(s), this.idScopeCache, id);
 
     await withRetryableTransaction(db, async () => {
       await queryUpdateNode(db, id, updates);
 
-      if (updates.content !== undefined) {
-        await this.storeLinks(scope, id, updates.content);
-        const labelRow = db.query("SELECT label FROM memory_nodes WHERE id = ?").get(id) as { label: string } | null;
-        updateBM25Index(db, id, updates.content, labelRow?.label, scope);
+      if (updates.content !== undefined || updates.summary !== undefined || (updates as unknown as Record<string, unknown>).keywords !== undefined) {
+        await this.storeLinks(scope, id, updates.content ?? (db.query("SELECT content FROM memory_nodes WHERE id = ?").get(id) as { content: string } | null)?.content ?? "");
+        const row = db.query("SELECT label, content, summary, keywords FROM memory_nodes WHERE id = ?").get(id) as { label: string | null; content: string; summary: string | null; keywords: string | null } | null;
+        if (row) updateBM25Index(db, id, row.content, row.label ?? undefined, scope, row.summary, row.keywords);
       }
     });
   }

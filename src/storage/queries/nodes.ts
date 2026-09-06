@@ -10,12 +10,15 @@ import {
   resolveNodeCategory, resolveNodeSupertype, resolveNodeDomain,
   autoGenerateMetadata, validateLabel,
 } from "./type-metadata";
+import { tokenize } from "../utils";
+import { updateBM25Index } from "./search-helpers";
 
 const CreateNodeSchema = z.object({
   scope: z.enum(["global", "project"]),
   label: z.string().optional(),
   content: z.string(),
   summary: z.string().nullable().optional(),
+  keywords: z.string().nullable().optional(),
   level: z.number().int().min(0).max(5).optional(),
   parentIds: z.array(z.string()).nullable().optional(),
   embedding: z.array(z.number()).nullable().optional(),
@@ -45,6 +48,26 @@ const CreateNodeSchema = z.object({
   contentHash: z.string().nullable().optional(),
   subtask: z.enum(["analysis", "localization", "editing", "validation"]).nullable().optional(),
 });
+
+const STOPWORDS = new Set(["the","a","an","and","or","but","in","on","at","to","for","of","with","by","is","are","was","were","be","been","has","have","had","do","does","did","will","would","should","could","can","this","that","these","those","it","its","as","from","about","into","through","after","before","between","under","again","further","then","once","here","there","when","where","why","how","all","any","both","each","few","more","most","other","some","such","no","nor","not","only","own","same","so","than","too","very","just","because","also","into","via","using","use","used","with","within"]);
+
+function generateFallbackSummary(content: string): string {
+  const first = content.split(/[.!?\n]/).find(s => s.trim().length > 20) ?? content;
+  return first.trim().slice(0, 220);
+}
+
+function generateFallbackKeywords(content: string, label?: string | null, summary?: string | null): string {
+  const text = [label ?? "", summary ?? "", content].join(" ");
+  const toks = tokenize(text);
+  const freq = new Map<string, number>();
+  for (const t of toks) {
+    if (t.length < 3 || STOPWORDS.has(t)) continue;
+    if (/^\d+$/.test(t)) continue;
+    freq.set(t, (freq.get(t) ?? 0) + 1);
+  }
+  const sorted = [...freq.entries()].sort((a,b) => b[1]-a[1]).slice(0, 10).map(([k]) => k);
+  return sorted.join(", ");
+}
 
 export function queryListProjectNames(db: Database, scope: MemoryScope): string[] {
   const rows = db.prepare(
@@ -156,7 +179,7 @@ export async function queryCreateNode(
   node: CreateNodeInput,
   storeLinks: (scope: MemoryScope, id: string, content: string) => Promise<void>,
   updateLinksForNewNode: (scope: MemoryScope, label: string, id: string) => Promise<void>,
-  updateBM25Index: (db: Database, id: string, content: string, label: string | undefined, scope: MemoryScope) => void
+  updateBM25Index: (db: Database, id: string, content: string, label: string | undefined, scope: MemoryScope, summary?: string | null, keywords?: string | null) => void
 ): Promise<MemoryNode> {
   CreateNodeSchema.parse(node);
   const now = Date.now();
@@ -181,15 +204,18 @@ export async function queryCreateNode(
   const supersedesId = node.supersedesId ?? null;
   const contentHash = node.contentHash ?? createHash("sha256").update(node.content).digest("hex");
   const subtask = node.subtask ?? null;
+  const autoSummary = node.summary ?? generateFallbackSummary(node.content);
+  const autoKeywords = node.keywords ?? generateFallbackKeywords(node.content, node.label ?? null, autoSummary);
 
   db.run(
-    "INSERT INTO memory_nodes (id, scope, label, content, summary, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name, derived_from, derivation, status, valid_from, valid_until, supersedes_id, content_hash, subtask) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO memory_nodes (id, scope, label, content, summary, keywords, level, parent_ids, embedding, embedding_blob, embedding_segments, created_at, updated_at, importance, access_count, last_accessed, type, category, supertype, domain, tags, source, metadata, sticky, ttl_days, expires_at, confidence, verification_count, usefulness_score, times_used, times_helpful, project_name, derived_from, derivation, status, valid_from, valid_until, supersedes_id, content_hash, subtask) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       id,
       node.scope,
       node.label ?? "",
       node.content,
-      node.summary ?? null,
+      autoSummary ?? null,
+      autoKeywords ?? null,
       node.level ?? 0,
       node.parentIds ? JSON.stringify(node.parentIds) : null,
       node.embedding ? JSON.stringify(node.embedding) : null,
@@ -252,7 +278,7 @@ export async function queryCreateNode(
   if (node.label) {
     await updateLinksForNewNode(node.scope, node.label, id);
   }
-  updateBM25Index(db, id, node.content, node.label, node.scope);
+  updateBM25Index(db, id, node.content, node.label, node.scope, autoSummary ?? null, autoKeywords ?? null);
 
   // HNSW add is outside transaction (in-memory) — one point per segment
   const hnsw = getHNSWIndex();
@@ -270,7 +296,8 @@ export async function queryCreateNode(
     scope: node.scope,
     label: node.label ?? null,
     content: node.content,
-    summary: node.summary ?? null,
+    summary: autoSummary ?? null,
+    keywords: autoKeywords ?? null,
     level: node.level ?? 0,
     parentIds: node.parentIds ?? null,
     embedding: node.embedding ?? null,
@@ -313,6 +340,7 @@ type FieldMapping = (value: unknown) => [string, (string | number | Buffer | nul
 const UPDATE_FIELDS: Record<string, FieldMapping> = {
   content: (v) => [["content = ?", v as string]],
   summary: (v) => [["summary = ?", v as string | null]],
+  keywords: (v) => [["keywords = ?", v as string | null]],
   level: (v) => [["level = ?", v as number]],
   parentIds: (v) => [["parent_ids = ?", v ? JSON.stringify(v) : null]],
   importance: (v) => [["importance = ?", v as number]],
@@ -354,8 +382,22 @@ const UPDATE_FIELDS: Record<string, FieldMapping> = {
 export async function queryUpdateNode(
   db: Database,
   id: string,
-  updates: Partial<Pick<MemoryNode, "content" | "summary" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful" | "derivedFrom" | "derivation" | "status" | "validFrom" | "validUntil" | "supersedesId" | "contentHash" | "subtask">>
+  updates: Partial<Pick<MemoryNode, "content" | "summary" | "keywords" | "level" | "parentIds" | "importance" | "type" | "category" | "supertype" | "domain" | "tags" | "source" | "metadata" | "embedding" | "embeddingSegments" | "sticky" | "ttlDays" | "confidence" | "verificationCount" | "usefulnessScore" | "timesHelpful" | "derivedFrom" | "derivation" | "status" | "validFrom" | "validUntil" | "supersedesId" | "contentHash" | "subtask">>
 ): Promise<void> {
+  // Auto-generate summary/keywords if content changes and they were not explicitly provided (mandatory short summary)
+  if (updates.content !== undefined && updates.summary === undefined && updates.keywords === undefined) {
+    const existing = db.query("SELECT label, summary FROM memory_nodes WHERE id = ?").get(id) as { label: string | null; summary: string | null } | null;
+    const labelForKw = existing?.label ?? null;
+    (updates as unknown as Record<string, unknown>).summary = generateFallbackSummary(updates.content as string);
+    (updates as unknown as Record<string, unknown>).keywords = generateFallbackKeywords(updates.content as string, labelForKw, updates.summary as string);
+  } else if (updates.content !== undefined && updates.summary === undefined) {
+    (updates as unknown as Record<string, unknown>).summary = generateFallbackSummary(updates.content as string);
+  } else if (updates.content !== undefined && updates.keywords === undefined) {
+    const existing = db.query("SELECT label, summary FROM memory_nodes WHERE id = ?").get(id) as { label: string | null; summary: string | null } | null;
+    const labelForKw = existing?.label ?? null;
+    const summaryForKw = (updates.summary as string | null) ?? existing?.summary ?? null;
+    (updates as unknown as Record<string, unknown>).keywords = generateFallbackKeywords(updates.content as string, labelForKw, summaryForKw);
+  }
   const setClauses: string[] = ["updated_at = ?"];
   const params: (string | number | Buffer | null)[] = [Date.now()];
 
@@ -374,6 +416,13 @@ export async function queryUpdateNode(
     `UPDATE memory_nodes SET ${setClauses.join(", ")} WHERE id = ?`,
     params as (string | number | Buffer | null)[],
   );
+  // Reindex BM25 if lexical fields changed (summary/keywords are now BM25-indexed ×2 weight for keywords)
+  if (updates.content !== undefined || updates.summary !== undefined || updates.keywords !== undefined || (updates as unknown as Record<string, unknown>).label !== undefined) {
+    const row = db.query("SELECT scope, content, label, summary, keywords FROM memory_nodes WHERE id = ?").get(id) as { scope: string; content: string; label: string | null; summary: string | null; keywords: string | null } | null;
+    if (row) {
+      try { updateBM25Index(db, id, row.content, row.label ?? undefined, row.scope, row.summary, row.keywords); } catch { /* ignore reindex errors */ }
+    }
+  }
 }
 
 export async function queryDeleteNode(db: Database, id: string): Promise<void> {

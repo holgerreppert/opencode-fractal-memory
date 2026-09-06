@@ -5,6 +5,7 @@ export interface SqliteNode {
   label: string;
   content: string;
   summary: string | null;
+  keywords: string | null;
   level: number;
   parent_ids: string | null;
   embedding: string | null;
@@ -79,6 +80,7 @@ export function rowToNode(row: SqliteNode): MemoryNode {
     label: row.label ?? null,
     content: row.content,
     summary: row.summary,
+    keywords: (row as unknown as { keywords?: string | null }).keywords ?? null,
     level: row.level as MemoryNodeLevel,
     parentIds: row.parent_ids ? JSON.parse(row.parent_ids) : null,
     embedding,

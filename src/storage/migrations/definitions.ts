@@ -738,4 +738,18 @@ export const MIGRATIONS: Migration[] = [
       try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_subtask ON memory_nodes(subtask)"); } catch { /* ignore */ }
     },
   },
+  {
+    version: 38,
+    name: "add-keywords-column",
+    up: (db) => {
+      // Separate keywords field for mandatory short summary + BM25 (hub network vectors)
+      // Keywords are short comma tokens, BM25-indexed ×2 weight for lexical match + summary 1×
+      const hasKeywords = db
+        .query("SELECT COUNT(*) AS n FROM pragma_table_info('memory_nodes') WHERE name = 'keywords'")
+        .get() as { n: number };
+      if (!hasKeywords.n) db.run("ALTER TABLE memory_nodes ADD COLUMN keywords TEXT");
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_nodes_keywords ON memory_nodes(keywords)"); } catch { /* ignore */ }
+      // Backfill existing nodes' summary/keywords BM25 is lazy — next write reindexes; no bulk rebuild needed now
+    },
+  },
 ];

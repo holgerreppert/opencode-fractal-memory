@@ -47,10 +47,12 @@ export async function backfillBinaryEmbeddingsAndBM25(
     return; // Already up to date — BM25 is maintained by create/update/delete paths
   }
 
-  const rows = db.query("SELECT id, label, content, embedding, embedding_blob FROM memory_nodes").all() as {
+  const rows = db.query("SELECT id, label, content, summary, keywords, embedding, embedding_blob FROM memory_nodes").all() as {
     id: string;
     label: string;
     content: string;
+    summary: string | null;
+    keywords: string | null;
     embedding: string | null;
     embedding_blob: Buffer | null;
   }[];
@@ -64,7 +66,7 @@ export async function backfillBinaryEmbeddingsAndBM25(
         db.run("UPDATE memory_nodes SET embedding_blob = ? WHERE id = ?", [blob, row.id]);
       }
 
-      updateBM25Index(db, row.id, row.content, row.label, scope);
+      updateBM25Index(db, row.id, row.content, row.label, scope, row.summary, row.keywords);
     }
     db.run("COMMIT");
   } catch (e) {

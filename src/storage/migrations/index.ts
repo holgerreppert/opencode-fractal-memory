@@ -4,7 +4,7 @@ import { MIGRATIONS } from "./definitions";
 export { MIGRATIONS } from "./definitions";
 export type { Migration } from "./definitions";
 
-export const CURRENT_VERSION = 37;
+export const CURRENT_VERSION = 38;
 
 export function runMigrations(db: Database): number {
   for (const migration of MIGRATIONS) {

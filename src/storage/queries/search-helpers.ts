@@ -1,8 +1,10 @@
 import type { Database } from "bun:sqlite";
 import type { MemoryNode } from "../types";
 import { tokenize } from "../utils";
-export function updateBM25Index(db: Database, nodeId: string, content: string, label: string | undefined, scope: string): void {
-  const tokens = tokenize(content + ' ' + (label ?? ''));
+export function updateBM25Index(db: Database, nodeId: string, content: string, label: string | undefined, scope: string, summary?: string | null, keywords?: string | null): void {
+  // keywords get ×2 weight (duplicate tokens) for hub network BM25 lexical match; summary weighted 1×
+  const keywordTokens = keywords ? tokenize(keywords).join(' ') + ' ' + tokenize(keywords).join(' ') : '';
+  const tokens = tokenize(content + ' ' + (label ?? '') + ' ' + (summary ?? '') + ' ' + keywordTokens);
   const termFreq = new Map<string, number>();
   
   for (const token of tokens) {
@@ -111,7 +113,9 @@ export function computeBM25Scores(input: BM25ScoreInput): Map<string, number> {
   let totalLength = 0;
   
   for (const node of nodes) {
-    const tokens = tokenize(node.content + ' ' + (node.label ?? ''));
+    const kw = (node as unknown as { keywords?: string | null }).keywords ?? null;
+    const kwDup = kw ? tokenize(kw).join(' ') + ' ' + tokenize(kw).join(' ') : '';
+    const tokens = tokenize(node.content + ' ' + (node.label ?? '') + ' ' + (node.summary ?? '') + ' ' + kwDup);
     nodeTokens.set(node.id, { tokens, length: tokens.length });
     totalLength += tokens.length;
   }

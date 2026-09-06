@@ -20,6 +20,7 @@ export type MemoryNode = {
   label: string | null;
   content: string;
   summary: string | null;
+  keywords: string | null;
   level: MemoryNodeLevel;
   parentIds: string[] | null;
   embedding: number[] | null;
@@ -61,6 +62,7 @@ export type CreateNodeInput = {
   label?: string | undefined;
   content: string;
   summary?: string | null | undefined;
+  keywords?: string | null | undefined;
   level?: MemoryNodeLevel | undefined;
   parentIds?: string[] | null | undefined;
   embedding?: number[] | null | undefined;
