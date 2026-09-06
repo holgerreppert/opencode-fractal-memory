@@ -11,7 +11,9 @@ import { loadMemConfig } from "./infrastructure/config/config";
 
 const port = parseInt(process.env.MGMT_PORT || "8787");
 const projectDir = process.env.MGMT_PROJECT_DIR || process.cwd();
-const publicDir = path.join(__dirname, "..", "management", "public");
+const publicDir = process.env.MGMT_PUBLIC_DIR
+  ? path.resolve(process.env.MGMT_PUBLIC_DIR)
+  : path.join(__dirname, "..", "management", "public");
 
 // Apply the configured log level (defaults to "info" when unset).
 loadMemConfig(projectDir).then((cfg) => setLogLevel(cfg.logLevel ?? "info")).catch(() => { /* keep default */ });
@@ -99,10 +101,29 @@ async function sendWebResponse(res: http.ServerResponse, webRes: Response): Prom
 }
 
 const server = http.createServer(async (req, res) => {
+  // CORS for parallel Svelte UI on :8788 fetching :8787 API
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   try {
+    // favicon.ico fallback -> favicon.svg (static build has only svg)
+    const rawUrl = req.url || "/";
+    if (rawUrl === "/favicon.ico" || rawUrl.startsWith("/favicon.ico?")) {
+      const svgRes = serveFile(path.join(publicDir, "favicon.svg"));
+      // serve as svg but browser accepts it for ico request
+      await sendWebResponse(res, svgRes);
+      return;
+    }
     const webReq = await toWebRequest(req);
     const result = await router.handle(webReq);
     if (result) {
+      // ensure CORS on API responses (router handlers may overwrite)
+      result.headers.set("Access-Control-Allow-Origin", "*");
       await sendWebResponse(res, result);
       return;
     }

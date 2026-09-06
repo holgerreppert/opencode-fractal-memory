@@ -16,6 +16,8 @@ export function registerSystemRoutes(router: Router, store: MemoryStore | null):
   router.get(/^\/api\/version$/, () => handleVersion());
   router.get(/^\/api\/embeddings-status$/, () => handleEmbeddingsStatus());
   router.get(/^\/api\/shutdown$/, () => handleShutdown());
+  router.get(/^\/api\/system\/health$/, () => handleSystemHealth());
+  router.get(/^\/api\/health$/, () => handleSystemHealth());
 }
 
 // Scope entries: the two built-in scopes (global + project-all) plus one entry
@@ -58,6 +60,10 @@ function handleEmbeddingsStatus(): Response {
   return jsonResponse({
     ...getRuntimeInfo(),
   });
+}
+
+function handleSystemHealth(): Response {
+  return jsonResponse({ ok: true, version: VERSION });
 }
 
 function handleShutdown(): Response {

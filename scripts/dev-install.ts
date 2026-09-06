@@ -50,6 +50,7 @@ const TARGETS = [
 const TOP_LEVEL_ITEMS = [
   "dist",
   "management",
+  "frontend",
   "package.json",
   "LICENSE",
   "README.md",

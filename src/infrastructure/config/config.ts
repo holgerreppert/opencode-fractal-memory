@@ -135,6 +135,7 @@ export interface MemConfig {
   management?: {
     enabled: boolean;
     port?: number | undefined;
+    sveltePort?: number | undefined;
   } | undefined;
   sessionLog?: {
     enabled: boolean;
@@ -321,6 +322,7 @@ const JournalSchema = z.object({
 const ManagementSchema = z.object({
   enabled: z.boolean().default(true),
   port: z.number().positive().int().optional(),
+  sveltePort: z.number().positive().int().optional(),
 });
 
 const OllamaExtractionSchema = z.object({

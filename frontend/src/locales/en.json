@@ -1,0 +1,8 @@
+{
+  "nav.dashboard": "Dashboard",
+  "nav.memory": "Memory",
+  "nav.graph": "Graph",
+  "nav.injections": "Injections",
+  "nav.settings": "Settings",
+  "app.title": "Fractal Memory"
+}

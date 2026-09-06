@@ -78,6 +78,17 @@ Then restart OpenCode.
 
 **Verify the live install** (after restart): `grep "PLUGIN_LOADED_FROM" ~/.config/opencode/logs/memory-plugin.log` — the `resolvedDir` must point at the cache `@latest` path. If it points elsewhere (e.g. `~/.config/opencode/node_modules`), the plugin is being loaded from the wrong location.
 
+## Svelte 5 + Skeleton v5 Insights (frontend/ — the SvelteKit parallel at :8788)
+
+Stack proven in this repo: `svelte 5.56.1`, `@sveltejs/kit 2.63`, `@sveltejs/adapter-static 3.0.8 fallback:index.html strict:true`, `vite 8.0.16`, `tailwind 4.2 + @tailwindcss/vite 4.2`, `@skeletonlabs/skeleton 5.0.1 + @skeletonlabs/skeleton-svelte 5.0.0-5.0.1 theme cerberus`, `svelte-i18n 4.0.1`, `three 0.185`, `@viz-js/viz 3.30`. `frontend/bun.lock` is independent — don't hoist to root.
+
+- **Setup**: `frontend/svelte.config.js: compilerOptions runes:true`, `vite.config.ts: defineConfig plugins [tailwindcss(), sveltekit()]`, `src/app.css: @import "tailwindcss"; @import "@skeletonlabs/skeleton"; @import "@skeletonlabs/skeleton-svelte"; @import "@skeletonlabs/skeleton/themes/cerberus";` → 134KB. No SSR for this app — client-only, `src/routes/+layout.ts: import '$lib/i18n'; waitLocale()`.
+- **i18n**: `src/lib/i18n/index.ts: register('en') + init fallbackLocale:en`, `src/hooks.server.ts: handle Accept-Language → locale.set`, `+layout.ts: waitLocale() → locale.set`. Single `src/locales/en.json`, `$t('key')` single-brace.
+- **Skeleton primitives to prefer**: `AppShell` (`+layout.svelte`) → `AppBar` (`Header.svelte: AppBar Toolbar Lead Trail nav flex btn-sm preset-filled-primary-500 / preset-tonal`) + `Footer.svelte` (year + Alpine:8787/Svelte:8788 badge). Never use `variantFilled` — v5 uses `preset-*`: `preset-filled-primary-500`, `preset-tonal`, `preset-outlined-surface-200`, `preset-filled-surface-100`. `card`, `btn btn-sm`, `badge`, `chip`, `input` (rounded-full `pl-9 pr-20 border-2 focus:border-primary-500`), `select`, `filter-btn` are the workhorses. Horizontal pill layout for filters (not dropdown) — `flex gap-1 flex-wrap`.
+- **Runes + Skeleton**: `let { query = $bindable(''), scope = $bindable('all'), layout = $bindable('shell') } = $props()`, `$state`, `$derived`, `$effect` for localStorage persistence (`fractal-visualize` key) + reactive scope switching (`nodesStore.setScope`). Keep OOP for heavy Three logic (`SceneController.ts`, `NodeFilterEngine.ts`, `GraphController.ts`) — don't put Three inside Svelte reactivity, manage via `$effect(() => { void nodes.length; void layout; ctrl.buildFromData(nodes, layout) })`.
+- **Patterns that broke and why**: `buildFromData` must branch `if (mode==='brain') showBrainLayout` — flat `computeShell` in brain mode leaves nodes outside GLB; `GLBLoader` must be the custom `glb-loader.ts` port of `management/public/glb-loader.js` (returns `{geometry,name,color}` with region names for centroid re-projection), not `three/addons/loaders/GLTFLoader` (loses names). For smoothing, `mergeVertices + subdivideGeometry + laplacianSmooth(3,0.35) + computeVertexNormals + flatShading:false` rounds the decimated 101KB atlas; plain `computeVertexNormals` alone stays faceted, double midpoint without Laplacian stays edgy.
+- **Docs**: Always `svelte_list-sections` → `svelte_get-documentation` + `svelte-autofixer` before sending code; playground links via `svelte_playground-link` only after user confirms and never for files written to `frontend/`.
+
 ## Coding Paradigms
 
 - **No `I` prefix on interfaces** — `MemoryStore`, `NodeRepository`, `SessionTracker`
