@@ -149,3 +149,11 @@ bun run test:coverage     # coverage run
 | `file:src/management/routes.ts` | file | All API routes |
 | `file:src/tools/graph.ts` | file | Shared graph tool (plugin + MCP) |
 | `file:management/public/app.js` | file | Management app frontend (brain mesh, 3D scene controller) |
+| `plan:project-hub-as-dynamic-agents-md-2026-09-06` | plan | Project hub as dynamic AGENTS.md plan (B1 always-inject vs B2/B3) |
+
+## Changelog
+
+- **2026-09-06** `feat(hub): crystallized instructions in project_hub tool — position is central` `e4b0142` — tool description now 5-step crystallized (purpose crystal-clear, L0 hub → L1 arch/convention → L2 lesson/fix, mandatory search+network → pick parent → set, wrong position = not found)
+- **2026-09-06** `feat(hub): backfilled summaries/keywords BM25×2 for hub + 11 L1 + repositioned 3 decisions as L2 leaves` — hub `6fb185e2` now `summary`+`keywords`, 27 flat → 11 fine-grained L1 (`arch:storage-and-query-layers`, `application-core`, `auto-retrieve`, `ranking-system`, `code-graph`, `plugin-hooks-orchestration`, `management-app`, `token-counter-and-compaction`, `svelte-frontend` + 2 conventions), `decision:subprocess-wasm-extraction→arch:code-graph`, `decision:no-embeddings→arch:token-counter`, `decision:tui-registration→convention:dev-install-and-cache`
+- **2026-09-06** `feat(memory): mandatory short summary + keywords field BM25×2 (hub network)` `1a5c6a2`/`94dc2b5` — migration `v38` `memory_nodes.keywords`, `updateBM25Index` duplicates keywords for ×2 weight, `queryCreateNode` auto-generates `summary`/`keywords` via TF fallback, tool `memory_set`/`project_hub` now require `summary`+`keywords`
+- **2026-09-06** `feat(project-hub): dedicated project_hub tool for fine-grained key findings network` `9ca0214` — `src/tools/project-hub.ts` `project_hub(mode=search|get|set|network|drilldown)` with hub-specific instructions, auto `parent_ids→hub`, HUB_TYPES allowlist, network digest, seed `rule:mandatory:project-hub`
