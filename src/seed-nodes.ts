@@ -173,40 +173,45 @@ never_strip: true
 ### journal (consolidated tool)
 - USE journal(mode="write") after completing significant tasks to capture decisions
 
-### project_hub (dedicated fine-grained network — USE FOR KEY PROJECT FINDINGS)
-- **ALWAYS use project_hub for architectural decisions, common mistakes & solutions, conventions, dependency relationships** — NOT generic memory. This is a **parent-linked knowledge graph** (\`hub --parent_ids--> child\`) with mandatory \`summary\` (1-2 lines) + \`keywords\` (5-10 comma tokens, BM25 ×2) per node.
-- Modes: \`project_hub(mode="search", query="topic")\` BEFORE any architectural question; \`project_hub(mode="set", label="decision:...", content="what+why", type="decision", summary="...", keywords="...")\` to store; \`project_hub(mode="network")\` for hub digest (hub + top children summaries, DOT hint).
-- Every set auto-links to hub via \`parent_ids\` (\`fact:opencode-fractal-memory-hub\`) if omitted; keep hub network lean (1-2 line summary, 5-10 keywords, file: tags).
+### project_hub (dedicated fine-grained network — USE FOR CRYSTAL-CLEAR PROJECT STRUCTURE KNOWLEDGE)
+- **ALWAYS use project_hub for crystal-clear knowledge about project structure** — architectural decisions, layer maps, common mistakes & exact solutions, conventions. This is a **fine-grained, positioned network** (\`hub --parent_ids--> arch:* --parent_ids--> lesson/fix\`) — **finding the right position is central**. A Svelte brain lesson belongs under \`arch:svelte-frontend\`, not hub root; a BM25 bug belongs under \`arch:storage-and-query-layers\`. Wrong position = not found.
+- **Before set: search + network to find correct parent** — \`project_hub(mode="search", query="topic")\` + \`project_hub(mode="network")\` to see hub map, pick **most specific parent** (e.g. \`arch:svelte-frontend\` for Three/Skeleton), include it in \`parent_ids\` (hub root always included). If no parent exists, create \`arch:new-area\` first.
+- Modes: \`project_hub(mode="search", query="topic")\` BEFORE any structural question; \`project_hub(mode="set", label="decision:...", content="crystal-clear what+why with file:line", type="decision", summary="1-2 line crystal summary", keywords="...", parent_ids="arch:specific-parent,fact:opencode-fractal-memory-hub")\`; \`project_hub(mode="network")\` for positioned digest.
+- Every set is **positioned, crystal-clear, verified** (summary 1-2 lines, keywords 5-10, file:line tags, parent_ids to correct parent); hub is sticky, network is browsable via network + dot:hub-network.
   `,
   },
   {
     label: "rule:mandatory:project-hub",
     tag: "rule:mandatory",
-    content: `Project Hub — Fine-Grained Network for Key Findings
+    content: `Project Hub — Crystal-Clear Network for Project Structure Knowledge
 tag: rule:mandatory
 never_strip: true
 
-This is the dedicated tool for **key project findings** — architectural decisions, common mistakes & solutions, conventions, dependency relationships — as a **fine-grained, parent-linked network** (hub --parent_ids--> child), not episodic memory.
+This is the dedicated tool for **crystal-clear knowledge about project structure** — architectural decisions, **how the project is structured (layers, where things live)**, common mistakes & exact solutions, conventions — as a **fine-grained, positioned network** (hub --parent_ids--> arch:* --parent_ids--> lesson/fix), not a flat list or episodic memory. **Finding the right position in the network is central — it must be in a good position.**
+
+### Crystal-clear, positioned, not fuzzy
+- Each node must be **crystal-clear**: precise, verified, file:line, no vague prose. Hub = project structure router; children = fine-grained leaves.
+- **Position is key**: The network is **fine-grained**. A new node belongs under its **most specific parent**, not hub root. Example: Svelte brain-smoothing lesson → \`arch:svelte-frontend\` (not hub); BM25 keywords bug → \`arch:storage-and-query-layers\`; TUI registration → \`decision:tui-global-tuijson-registration\`. Wrong position = invisible, even with perfect keywords.
+- Before any set: **MUST** run \`project_hub(mode="search", query="<topic>")\` + \`project_hub(mode="network")\` to see the map and pick the correct parent. If no specific parent exists, create it first (\`arch:new-area\` under hub), then place your node under it.
 
 ### When to use project_hub vs memory
-- Architectural decision / rationale / convention / bug root cause+fix / anti-pattern → \`project_hub(mode="set", label="decision:...", type="decision", summary="...", keywords="...")\`
+- Project structure discovery, architectural decision / rationale / convention / bug root cause+exact fix / anti-pattern → \`project_hub(mode="set", label="decision:...", type="decision", summary="crystal summary", keywords="...", parent_ids="arch:specific-parent,fact:opencode-fractal-memory-hub")\`
 - Episode / log / session trace → \`memory(mode="set", type="event")\`
-- Question about past decision/convention/error → \`project_hub(mode="search", query="topic")\` FIRST, then drilldown
+- Question about structure/decision/error → \`project_hub(mode="search", query="topic")\` FIRST, then drilldown — 100× cheaper than codebase grep
 
-### Mandatory fields for every hub node
-- \`label\` kebab with prefix \`fact:\`/\`decision:\`/\`lesson:\`/\`fix:\`/\`convention:\`/\`architecture:\`/\`knowledge:\`
-- \`content\` what+why (decisions include why)
-- \`type\` in hub types [fact,decision,lesson,fix,convention,architecture,knowledge,skill,playbook,dot,workflow]
-- \`summary\` 1-2 lines 150-220 chars (BM25 1×)
-- \`keywords\` 5-10 comma tokens e.g. \`svelte,skeleton,AppShell\` (separate DB field BM25 ×2 for hub network vectors)
-- \`parent_ids\` must include hub (\`fact:opencode-fractal-memory-hub\`) or parent decision — auto-added if omitted
+### Mandatory fields for every hub node (positioned, crystal-clear)
+- \`label\` kebab: \`arch:\`/\`fact:\`/\`decision:\`/\`lesson:\`/\`fix:\`/\`convention:\`/\`knowledge:\` (e.g. \`fix:bm25-keywords-weight\`)
+- \`content\` crystal-clear what+why with verification \`file:src/...:line\` + \`keywords\` + \`summary\`
+- \`type\` in hub types [fact,decision,lesson,fix,convention,architecture,knowledge,skill,playbook,dot,workflow,concept,research]
+- \`summary\` 1-2 lines 150-220 chars, crystal-clear (BM25 1×)
+- \`keywords\` 5-10 comma tokens e.g. \`svelte,skeleton,AppShell,GLBLoader,laplacianSmooth\` — must include parent area terms for positioning (BM25 ×2 hub network vectors, separate DB field)
+- \`parent_ids\` **CRITICAL**: comma list to **correct position** (most specific parent + hub root), e.g. \`arch:svelte-frontend,fact:opencode-fractal-memory-hub\` — auto-adds hub root if omitted but specific parent is mandatory for fine-grained placement
 
-### Network
-- Hub digest: \`project_hub(mode="network")\` returns hub + top children summaries (capped 1.5KB) for system injection context.
-- DOT: \`dot:hub-network\` auto-generated from parent_ids for Visualize tab (see arch:svelte-frontend brain viz pattern).
-- Search hub network first before reading files — 100× cheaper than codebase grep.
-
-Label \`dot:hub-network\` is sticky and rendered via viz.js; hub is sticky and never compressed.
+### Network (find correct position)
+- \`project_hub(mode="network")\` → hub + positioned children (hub --parent_ids--> arch:* --parent_ids--> leaves), capped 1.5KB — use to choose parent before set.
+- \`project_hub(mode="search", query="topic")\` → hub network only (hub types, parent_ids-boosted, summary+keywords lexical).
+- DOT: \`dot:hub-network\` auto-generated from parent_ids for Visualize tab (see arch:svelte-frontend brain viz).
+- Label \`dot:hub-network\` is sticky via viz.js; hub is sticky and never compressed. Keep hub lean: 1-2 line crystal summaries, 5-10 keywords, file:line tags, correct parent.
 `,
   },
   // Storage curation rule

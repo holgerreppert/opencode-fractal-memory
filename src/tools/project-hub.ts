@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { MemoryStore } from "../storage/sqlite";
-import { MemorySearch, MemoryGet, MemoryFetch, MemorySet } from "./core";
-import { MemoryDrilldown } from "./search";
+import { MemoryGet, MemoryFetch, MemorySet } from "./core";
+import { MemoryDrilldown, MemorySearch } from "./search";
 
 const HUB_LABEL = "fact:opencode-fractal-memory-hub";
 const HUB_TYPES = new Set(["fact", "decision", "lesson", "fix", "convention", "architecture", "knowledge", "skill", "playbook", "dot", "workflow", "concept", "research"]);
@@ -17,23 +17,42 @@ async function getHubId(store: MemoryStore, scope: "global" | "project" = "proje
 
 export function createProjectHubTool(store: MemoryStore) {
   const t = tool({
-    description: `PROJECT HUB — fine-grained network of key project findings (architectural decisions, common mistakes & solutions, conventions) with parent_ids vectors to hub.
+    description: `PROJECT HUB — crystal-clear, fine-grained network of **project structure knowledge** (NOT generic memory). Each node is a precise, verified finding placed at its **correct position** in the hub network via parent_ids vectors.
+
+WHAT LIVES HERE (crystal-clear, not fuzzy):
+- Architecture decision + why (e.g. why SQLite vs Postgres, why Svelte 5 runes)
+- Project structure discovery (what lives where, how layers connect: storage→application→plugin)
+- Common mistakes & exact solution (error signature + fix file:line, verified)
+- Convention / preference / pattern that future code MUST follow
+
+FINE-GRAINED NETWORK — POSITION IS CENTRAL:
+Finding the right node where to put a new node **is the core task**. The hub is a **positioned network**, not a flat list. Every node has a **precise position** via parent_ids vectors:
+- Hub \`fact:opencode-fractal-memory-hub\` = L0 root (project router)
+- Children \`arch:*\`, \`convention:*\`, \`decision:*\` = L1 structural map
+- Leaves \`lesson:*\`, \`fix:*\`, \`knowledge:*\` = L2 situated under their L1 parent
+Example: a Svelte brain-smoothing lesson belongs under \`arch:svelte-frontend\`, not directly under hub. A storage BM25 bug belongs under \`arch:storage-and-query-layers\`. **Wrong position = not found.**
+
+MANDATORY BEFORE set:
+1. \`project_hub(mode="search", query="<topic>")\` + \`project_hub(mode="network")\` to see current hub map
+2. Pick the **most specific parent** that already describes the area (e.g. \`arch:svelte-frontend\` for Three/Skeleton, not hub root). Include it in parent_ids. Hub itself is always included as root ancestor.
+3. If no specific parent exists, create it first (e.g. \`arch:new-area\` under hub), then place your node under it.
 
 WHEN vs memory:
-- Architectural decision / rationale / convention / bug root cause+fix / anti-pattern / dependency → project_hub(mode="set")
-- Episode / log / session trace → memory(mode="set", type="event")
-- Question about past decision/convention/error → project_hub(mode="search") FIRST (hub network), not generic memory_search
-- Every hub node MUST have summary (1-2 lines) + keywords (5-10 comma tokens BM25×2) + parent_ids vector to hub (auto-added if omitted). Network is sticky, browsable via project_hub(mode="network") and dot:hub-network.
+- Structural knowledge (decision, structure, mistake/solution, convention) → project_hub(mode="set")
+- Episode/log/session trace → memory(mode="set", type="event")
+- Question about structure/decision/error → project_hub(mode="search") FIRST, not memory_search
+
+EVERY hub node MUST have: summary (1-2 lines, 150-220 chars, crystal-clear) + keywords (5-10 comma tokens, BM25×2) + parent_ids vector to correct parent (auto-adds hub root if omitted, but you MUST choose the fine-grained parent). Keep nodes lean, verified (file:line tags), sticky for hub/dot.
 
 MODES:
-  search — lexical+semantic over hub network only (filtered to hub types, boosted by parent_ids→hub). Params: query (required), limit, scope. Ex: project_hub(mode="search", query="svelte skeleton")
-  get/fetch — by label (fact:..., decision:..., lesson:...) or id. Ex: project_hub(mode="get", label="fact:svelte-stack")
-  set — create/update hub node. Required: label (kebab, e.g. decision:..., lesson:..., fix:...), content (what+why), type (hub type). Requires summary+keywords, parent_ids auto-linked to hub if omitted. Ex: project_hub(mode="set", label="decision:use-svelte", content="...", type="decision", summary="Svelte 5 + Skeleton", keywords="svelte,skeleton,AppShell")
-  network — return hub digest (hub row + top children summaries, capped 1.5KB) + DOT generation hint. Ex: project_hub(mode="network")
+  search — hub network only (hub types, parent_ids-boosted, summary+keywords lexical). Ex: project_hub(mode="search", query="svelte skeleton")
+  get/fetch/drilldown — by label (arch:..., decision:..., lesson:...) or id. Ex: project_hub(mode="get", label="arch:svelte-frontend")
+  set — create at correct position. Required: label (kebab, e.g. arch:..., decision:..., lesson:fix-...), content (what+why, crystal-clear), type (hub type), summary, keywords, parent_ids (most specific parent, not just hub). Ex: project_hub(mode="set", label="fix:bm25-keywords", content="...", type="fix", summary="BM25 now indexes keywords ×2", keywords="bm25,keywords,search,hub", parent_ids="arch:storage-and-query-layers,fact:opencode-fractal-memory-hub")
+  network — hub digest (hub + positioned children, capped 1.5KB) — use to find correct parent position before set.
 
 TIPS:
-- search → drilldown/get → set/verify. Hub digest injected via [memory-plugin:hub] system msg when B1 enabled, but explicit project_hub(search) is richer.
-- Keep hub network lean: 1-2 line summary per node, 5-10 keywords, parent_ids vectors, file: tags for verification.
+- search → network → pick parent → set with correct parent_ids. Wrong position buries the node.
+- Hub digest is also injected as [memory-plugin:hub] system msg when enabled — but explicit network gives full map.
 `,
     args: {
       mode: tool.schema.enum(["search", "get", "fetch", "set", "network", "drilldown"]).describe("Which hub operation"),
@@ -41,11 +60,11 @@ TIPS:
       query: tool.schema.string().optional().describe("Search query for hub network (search mode)"),
       label: tool.schema.string().optional().describe("Label for get/fetch/set (e.g. decision:use-svelte, lesson:bug-2026-09-06)"),
       id: tool.schema.string().optional().describe("UUID for get"),
-      content: tool.schema.string().optional().describe("Content for set (what+why)"),
-      type: tool.schema.string().optional().describe("Hub type: fact/decision/lesson/fix/convention/architecture/knowledge/skill/playbook/dot/workflow"),
-      summary: tool.schema.string().optional().describe("Short 1-2 line summary 150-220 chars — BM25 1× (auto-generated if omitted)"),
-      keywords: tool.schema.string().optional().describe("Comma keywords 5-10 tokens — BM25 ×2 for hub network lexical search (auto-generated if omitted)"),
-      parent_ids: tool.schema.string().optional().describe("Comma parent_ids (auto-adds hub if omitted)"),
+      content: tool.schema.string().optional().describe("Crystal-clear what+why for project structure (verified, file:line)"),
+      type: tool.schema.string().optional().describe("Hub type: arch/fact/decision/lesson/fix/convention/knowledge/skill/playbook/dot/workflow — pick type that matches parent area"),
+      summary: tool.schema.string().optional().describe("Crystal-clear 1-2 line summary 150-220 chars — BM25 1× (auto-generated if omitted but explicit + positioned is better)"),
+      keywords: tool.schema.string().optional().describe("5-10 comma tokens for BM25 ×2 hub lexical search — must include parent area terms for positioning (auto-generated if omitted)"),
+      parent_ids: tool.schema.string().optional().describe("CRITICAL — comma parent_ids to correct position in hub network (most specific parent, e.g. arch:svelte-frontend,fact:opencode-fractal-memory-hub) — auto-adds hub root if omitted but specific parent is mandatory for fine-grained placement"),
       importance: tool.schema.number().optional(),
       limit: tool.schema.number().int().positive().optional(),
     },
@@ -90,7 +109,7 @@ TIPS:
           parentIdsStr = HUB_LABEL;
         }
         const setter = MemorySet(store);
-        return await (setter as any).execute({
+        const result = await (setter as any).execute({
           scope,
           label: args.label,
           content: args.content,
@@ -100,6 +119,13 @@ TIPS:
           parent_ids: parentIdsStr || undefined,
           importance: args.importance,
         }, {});
+        // Fine-grained positioning check — hub-only placement is discouraged
+        const ids = parentIdsStr.split(",").map((s) => s.trim()).filter(Boolean);
+        const onlyHub = ids.length === 1 && (ids[0] === HUB_LABEL || (ids[0] ?? "").includes("opencode-fractal-memory-hub"));
+        if (onlyHub) {
+          return result + `\n\n⚠ Position: placed directly under hub root. For fine-grained network, pick most specific parent via project_hub(search+network) (e.g. arch:svelte-frontend, arch:storage-and-query-layers) and relink via parent_ids — hub --parent_ids--> arch:* --parent_ids--> your node.`;
+        }
+        return result;
       }
       if (mode === "network") {
         const hubId = await getHubId(store, scope === "all" ? "project" : (scope as any));
