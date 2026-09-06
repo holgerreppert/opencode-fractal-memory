@@ -172,7 +172,42 @@ never_strip: true
 
 ### journal (consolidated tool)
 - USE journal(mode="write") after completing significant tasks to capture decisions
+
+### project_hub (dedicated fine-grained network — USE FOR KEY PROJECT FINDINGS)
+- **ALWAYS use project_hub for architectural decisions, common mistakes & solutions, conventions, dependency relationships** — NOT generic memory. This is a **parent-linked knowledge graph** (\`hub --parent_ids--> child\`) with mandatory \`summary\` (1-2 lines) + \`keywords\` (5-10 comma tokens, BM25 ×2) per node.
+- Modes: \`project_hub(mode="search", query="topic")\` BEFORE any architectural question; \`project_hub(mode="set", label="decision:...", content="what+why", type="decision", summary="...", keywords="...")\` to store; \`project_hub(mode="network")\` for hub digest (hub + top children summaries, DOT hint).
+- Every set auto-links to hub via \`parent_ids\` (\`fact:opencode-fractal-memory-hub\`) if omitted; keep hub network lean (1-2 line summary, 5-10 keywords, file: tags).
   `,
+  },
+  {
+    label: "rule:mandatory:project-hub",
+    tag: "rule:mandatory",
+    content: `Project Hub — Fine-Grained Network for Key Findings
+tag: rule:mandatory
+never_strip: true
+
+This is the dedicated tool for **key project findings** — architectural decisions, common mistakes & solutions, conventions, dependency relationships — as a **fine-grained, parent-linked network** (hub --parent_ids--> child), not episodic memory.
+
+### When to use project_hub vs memory
+- Architectural decision / rationale / convention / bug root cause+fix / anti-pattern → \`project_hub(mode="set", label="decision:...", type="decision", summary="...", keywords="...")\`
+- Episode / log / session trace → \`memory(mode="set", type="event")\`
+- Question about past decision/convention/error → \`project_hub(mode="search", query="topic")\` FIRST, then drilldown
+
+### Mandatory fields for every hub node
+- \`label\` kebab with prefix \`fact:\`/\`decision:\`/\`lesson:\`/\`fix:\`/\`convention:\`/\`architecture:\`/\`knowledge:\`
+- \`content\` what+why (decisions include why)
+- \`type\` in hub types [fact,decision,lesson,fix,convention,architecture,knowledge,skill,playbook,dot,workflow]
+- \`summary\` 1-2 lines 150-220 chars (BM25 1×)
+- \`keywords\` 5-10 comma tokens e.g. \`svelte,skeleton,AppShell\` (separate DB field BM25 ×2 for hub network vectors)
+- \`parent_ids\` must include hub (\`fact:opencode-fractal-memory-hub\`) or parent decision — auto-added if omitted
+
+### Network
+- Hub digest: \`project_hub(mode="network")\` returns hub + top children summaries (capped 1.5KB) for system injection context.
+- DOT: \`dot:hub-network\` auto-generated from parent_ids for Visualize tab (see arch:svelte-frontend brain viz pattern).
+- Search hub network first before reading files — 100× cheaper than codebase grep.
+
+Label \`dot:hub-network\` is sticky and rendered via viz.js; hub is sticky and never compressed.
+`,
   },
   // Storage curation rule
   {
