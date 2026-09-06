@@ -44,7 +44,7 @@ MODES — what + how + when + example:
   fetch — Quick lookup by exact label (sticky, dot:, rule:, fact:). Scope defaults to project. Ex: memory(mode="fetch", label="fact:svelte-stack") or memory_fetch(label="fact:svelte-stack").
   drilldown — Full context with fractal source chain for a node found via search. Param: label (exact) or id. Use AFTER search when relevance >50%. Ex: memory(mode="drilldown", label="fact:opencode-fractal-memory-hub").
   drilldown_query — Top-down drilldown by keyword (no id needed). Ex: memory(mode="drilldown_query", query="ranking").
-  set — Store new node. Required: label, content, type (semantic: fact/lesson/concept/decision/knowledge/how_to...; episodic: event/note/session...). Optional: summary, level, importance, sticky, usefulness_score, tags via metadata. Ex: memory(mode="set", label="fact:auth-decision", content="We chose JWT via ...", type="fact") or memory_set(label="...", content="...", type="fact").
+  set — Store new node. Required: label, content, type (semantic: fact/lesson/concept/decision/knowledge/how_to...; episodic: event/note/session...). **Mandatory: summary (1-2 lines) + keywords (5-10 comma tokens, BM25 ×2 for hub network) — auto-generated if omitted.** Optional: level, importance, sticky, usefulness_score, tags via metadata. Ex: memory(mode="set", label="fact:auth-decision", content="We chose JWT via ...", type="fact", summary="JWT via jose, RS256", keywords="auth,jwt,jose,RS256") or memory_set(label="...", content="...", type="fact", summary="...", keywords="...").
   replace — Fix outdated node. Must re-read with get/fetch first to get current text. Params: id OR label + oldText + newText. Ex: memory(mode="replace", label="fact:x", oldText="old", newText="new").
   delete — Remove node by id or label. Verify via memory(mode="delete", label="..."); check existence before delete.
   list — Survey nodes: scope global|project|all, level, type_filter, limit. Ex: memory(mode="list", scope="project", limit=10).
@@ -73,7 +73,8 @@ TIPS:
       label: tool.schema.string().optional(),
       query: tool.schema.string().optional(),
       content: tool.schema.string().optional(),
-      summary: tool.schema.string().optional(),
+      summary: tool.schema.string().optional().describe("Short 1-2 line summary (150-220 chars) — BM25-indexed; auto-generated if omitted"),
+      keywords: tool.schema.string().optional().describe("Comma-separated keywords 5-10 tokens — BM25 ×2 weight for hub network lexical search; auto-generated if omitted"),
       level: tool.schema.number().int().nonnegative().optional(),
       parent_ids: tool.schema.string().optional(),
       importance: tool.schema.number().optional(),

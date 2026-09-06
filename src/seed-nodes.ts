@@ -24,6 +24,7 @@ Memory search costs ~100x less than reading files cold. ALWAYS search before rea
 - Replace needs re-read first (content can change)
 - Edit: read file first | write for new files
 - Error -> store as error node | Solved -> mark + add to rules
+- **On every write/update: provide \`summary\` (1-2 lines, 150-220 chars) + \`keywords\` (5-10 comma tokens) — separate DB field \`keywords\` BM25-indexed ×2 weight for hub network lexical search (auto-generated if omitted but explicit preferred)**
 
 ### Auto-Learned
 - Review tool arguments and ensure correct format
@@ -150,12 +151,12 @@ never_strip: true
 - USE memory(mode="search") or memory_search(query="concise keywords") FIRST BEFORE any get/drilldown — search is 100× cheaper than read/grep. NEVER drilldown with vague queries — search first with concise keywords (not raw user message). Example: search="auth JWT verification" not "what did we do about JWT?". Ex: memory_search(query="auth flow", limit=5)
 - AFTER search, then use memory_get(id="uuid from search") or memory(mode="get", id="...") OR memory_fetch(label="fact:exact-label") for known labels (fact:, rule:, dot:, lesson:). Both get/fetch accept id OR label; fetch/drilldown prefer label. Use drilldown after search when relevance >50% for full fractal source chain.
 - BEFORE memory(mode="replace") MUST re-read with memory_get/memory(mode="get") first to ensure current content — provide oldText + newText.
-- USE memory_search/memory(mode="search") BEFORE every edit/bash/write to find relevant context — saves retracing. AFTER significant tool result → memory_set(label="fact:...", content="what+why", type="fact") and verify with learn(mode=verify).
+- USE memory_search/memory(mode="search") BEFORE every edit/bash/write to find relevant context — saves retracing. AFTER significant tool result → memory_set(label="fact:...", content="what+why", type="fact", summary="1-2 line summary", keywords="comma, keywords, for, BM25") and verify with learn(mode=verify). **Every set MUST include \`summary\`+\`keywords\` (BM25 ×2, hub network) — auto-generated if omitted.**
 - ALIASES (distinct tools, same handlers, Anthropic namespacing):
   - memory_search(query, limit, tagsFilter) — alias for mode="search" — USE WHEN you need context BEFORE answering.
   - memory_fetch(label) — alias for mode="fetch" — USE WHEN you know exact label.
   - memory_get(id|label) — alias for mode="get" — USE WHEN you have UUID from search/list.
-  - memory_set(label, content, type) — alias for mode="set" — USE WHEN storing new knowledge (semantic 365d: fact/lesson/concept/decision/knowledge vs episodic 7d: event/note/session). Verify after with learn(mode=verify).
+  - memory_set(label, content, type, summary, keywords) — alias for mode="set" — USE WHEN storing new knowledge (semantic 365d: fact/lesson/concept/decision/knowledge vs episodic 7d: event/note/session). \`summary\`+\`keywords\` are mandatory BM25 fields (keywords ×2). Verify after with learn(mode=verify).
 - See also: graph(relation="search", query="Symbol") for code, context(mode="check") for pressure, learn(mode="verify") after set.
 
 ### context (consolidated tool)
@@ -245,7 +246,12 @@ Why they hurt: waste token budget, bury relevant results, degrade retrieval prec
 ### Quick Decision Tree
 Will this help future-you? → YES → Is it already in a file? → NO → Store (semantic if permanent, episodic if session-scoped)
 Will this help future-you? → YES → Is it already in a file? → YES → Store only as a summary/reference, not the full content
-Will this help future-you? → NO → Skip it`,
+Will this help future-you? → NO → Skip it
+
+### Mandatory Summary + Keywords (BM25 hub network)
+Every \`memory_set\`/\`memory(mode="set")\` MUST include:
+- \`summary\`: 1-2 line short summary (150-220 chars) — BM25-indexed 1× for lexical search
+- \`keywords\`: 5-10 comma-separated short tokens (e.g. \`svelte,skeleton,AppShell,brain,GLBLoader\`) — separate DB field \`memory_nodes.keywords\` BM25-indexed ×2 weight for hub network vectors (content network + semantic embedding). Auto-generated via TF fallback if omitted, but explicit is preferred and better for search. This powers the project hub network: hub aggregates child \`summary\` via \`parent_ids\` vectors, keywords enable precise lexical lookup beyond embeddings.`,
   },
   // Feature info nodes (auto-injected as info reminders)
   {
@@ -343,6 +349,8 @@ Tool selection order: search (ALWAYS first, 100x cheaper than reading files) →
 Search params: \`tagsFilter\` for intersection filtering; \`rerank\` and \`rerank_mode\` for keyword or cross-encoder reranking on ambiguous queries; feature weights come from the \`ranking.featureWeights\` config.
 
 Source-of-truth linking: encode verification pointers as tags — \`file:src/foo.ts\`, \`fn:calculateTotal\`, \`commit:abc123\`, \`line:42\`, \`test:testCalculateTotal\`, \`cmd:make migrate\`. Searchable via \`tagsFilter\`. Every node should answer "where in the repo can this be checked?"
+
+Mandatory summary+keywords: every \`memory_set\` must include \`summary\` (1-2 lines) + \`keywords\` (5-10 comma tokens) — separate \`keywords\` DB field BM25 ×2 for hub network vectors. Example: \`memory_set(label="fact:svelte-stack", content="We use Svelte 5...", type="fact", summary="Svelte 5 + Skeleton 5.0.1 with AppShell", keywords="svelte,skeleton,AppShell,runes,cerberus")\`. Auto-generated if omitted but explicit is better for search.
 
 Cost: memory tool costs less than bash/SQL alternatives in every case — bash triggers compression system that creates scratch files and pipe tangles.
 

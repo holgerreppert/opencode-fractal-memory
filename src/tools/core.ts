@@ -63,12 +63,13 @@ export function MemoryList(store: MemoryStore) {
 
 export function MemorySet(store: MemoryStore) {
   const t = tool({
-    description: "Create or update a memory node. If label is provided and a node with that label exists, updates it instead of creating new. Embeddings are auto-generated for semantic search (use no_embedding=true to disable). Use sticky=true to prevent a node from being compressed. Use type='dot' to store Graphviz DOT source (rendered as ◈ Open Diagram in management app; label must start with 'dot:'). Worth storing: architecture decisions (why), bug root causes, project conventions, user preferences, config workarounds, anti-patterns, dot diagrams for architecture/code-flow. Skip: code content (already in files), verbose logs, ephemeral chat details.",
+    description: "Create or update a memory node. If label is provided and a node with that label exists, updates it instead of creating new. Embeddings are auto-generated for semantic search (use no_embedding=true to disable). Use sticky=true to prevent a node from being compressed. Use type='dot' to store Graphviz DOT source (rendered as ◈ Open Diagram in management app; label must start with 'dot:'). **MANDATORY: every node must have a short summary (1-2 lines, 150-220 chars) and keywords (5-10 comma-separated tokens) — both are BM25-indexed (keywords ×2 weight) for hub network search; auto-generated if omitted but explicit is preferred.** Worth storing: architecture decisions (why), bug root causes, project conventions, user preferences, config workarounds, anti-patterns, dot diagrams for architecture/code-flow. Skip: code content (already in files), verbose logs, ephemeral chat details.",
     args: {
       scope: tool.schema.enum(["global", "project"]).optional(),
       label: tool.schema.string().optional(),
       content: tool.schema.string(),
-      summary: tool.schema.string().optional(),
+      summary: tool.schema.string().optional().describe("Short 1-2 line summary (150-220 chars) — BM25-indexed; auto-generated from first sentence if omitted"),
+      keywords: tool.schema.string().optional().describe("Comma-separated keywords (5-10 tokens, e.g. 'svelte,skeleton,AppShell,brain,GLBLoader') — BM25-indexed ×2 weight for hub network lexical search; auto-generated from content+label if omitted"),
       level: tool.schema.number().int().nonnegative().optional(),
       parent_ids: tool.schema.string().optional(),
       importance: tool.schema.number().optional(),
@@ -102,6 +103,7 @@ export function MemorySet(store: MemoryStore) {
           const updates: Parameters<typeof store.updateNode>[1] = {
             content: normalizeContent(args.content),
             ...(args.summary !== undefined ? { summary: args.summary } : {}),
+            ...(args.keywords !== undefined ? { keywords: args.keywords } : {}),
             ...(args.level !== undefined ? { level: args.level as 0 | 1 | 2 | 3 | 4 | 5 } : {}),
             ...(args.type !== undefined ? { type: args.type } : {}),
             ...(args.domain !== undefined ? { domain: args.domain } : {}),
@@ -132,6 +134,7 @@ export function MemorySet(store: MemoryStore) {
         label: args.label,
         content: normalizeContent(args.content),
         summary: args.summary ?? null,
+        keywords: (args as unknown as { keywords?: string | null }).keywords ?? null,
         level: (args.level ?? 0) as 0 | 1 | 2 | 3 | 4 | 5,
         parentIds,
         embedding,
@@ -207,6 +210,7 @@ export function MemoryGet(store: MemoryStore) {
     async execute(args) {
       const node = await resolveNode(store, args);
       const metaSection = node.metadata ? `\nMetadata:\n${JSON.stringify(node.metadata, null, 2)}` : "";
+      const keywords = (node as unknown as { keywords?: string | null }).keywords ?? null;
       const result = `Scope: ${node.scope}
 Level: ${node.level}
 Type: ${node.type ?? "none"}
@@ -217,7 +221,7 @@ Created: ${node.createdAt.toISOString()}
 Updated: ${node.updatedAt.toISOString()}${metaSection}
 
 Content:
-${node.content}${node.summary ? "\n\nSummary:\n" + node.summary : ""}`;
+${node.content}${node.summary ? "\n\nSummary:\n" + node.summary : ""}${keywords ? "\n\nKeywords (BM25 ×2):\n" + keywords : ""}`;
       
       return wrapWithContextWarning(result);
     },
@@ -242,6 +246,7 @@ export function MemoryFetch(store: MemoryStore) {
           ? Math.exp(-(Date.now() - node.lastAccessed.getTime()) / (1000 * 60 * 60 * 24))
           : 0;
         
+        const keywords = (node as unknown as { keywords?: string | null }).keywords ?? null;
         const result = {
           success: true,
           node: {
@@ -259,6 +264,7 @@ export function MemoryFetch(store: MemoryStore) {
             updatedAt: node.updatedAt.toISOString(),
             content: node.content,
             summary: node.summary,
+            keywords,
           }
         };
         
