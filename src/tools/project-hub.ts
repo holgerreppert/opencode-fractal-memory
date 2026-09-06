@@ -17,42 +17,46 @@ async function getHubId(store: MemoryStore, scope: "global" | "project" = "proje
 
 export function createProjectHubTool(store: MemoryStore) {
   const t = tool({
-    description: `PROJECT HUB — crystal-clear, fine-grained network of **project structure knowledge** (NOT generic memory). Each node is a precise, verified finding placed at its **correct position** in the hub network via parent_ids vectors.
+    description: `PROJECT HUB — crystallized tool for **crystal-clear project structure knowledge** as a **fine-grained positioned network**. Use it exactly as instructed — position is everything.
 
-WHAT LIVES HERE (crystal-clear, not fuzzy):
-- Architecture decision + why (e.g. why SQLite vs Postgres, why Svelte 5 runes)
-- Project structure discovery (what lives where, how layers connect: storage→application→plugin)
-- Common mistakes & exact solution (error signature + fix file:line, verified)
-- Convention / preference / pattern that future code MUST follow
+=== CRYSTALLIZED INSTRUCTIONS — FOLLOW EXACTLY ===
 
-FINE-GRAINED NETWORK — POSITION IS CENTRAL:
-Finding the right node where to put a new node **is the core task**. The hub is a **positioned network**, not a flat list. Every node has a **precise position** via parent_ids vectors:
-- Hub \`fact:opencode-fractal-memory-hub\` = L0 root (project router)
-- Children \`arch:*\`, \`convention:*\`, \`decision:*\` = L1 structural map
-- Leaves \`lesson:*\`, \`fix:*\`, \`knowledge:*\` = L2 situated under their L1 parent
-Example: a Svelte brain-smoothing lesson belongs under \`arch:svelte-frontend\`, not directly under hub. A storage BM25 bug belongs under \`arch:storage-and-query-layers\`. **Wrong position = not found.**
+1. PURPOSE (crystal-clear, not fuzzy): Store ONLY project-structure knowledge:
+   - Architecture decision + WHY (e.g. why SQLite vs Postgres, why Svelte 5 runes, why subprocess WASM)
+   - Project structure discovery (what lives where, how layers connect: storage→application→plugin→management/Svelte)
+   - Common mistakes & EXACT solution (error signature + fix file:line, verified)
+   - Convention / preference / pattern that future code MUST follow
+   → If it is not crystal-clear and positioned, it does NOT belong in hub (use memory event instead).
 
-MANDATORY BEFORE set:
-1. \`project_hub(mode="search", query="<topic>")\` + \`project_hub(mode="network")\` to see current hub map
-2. Pick the **most specific parent** that already describes the area (e.g. \`arch:svelte-frontend\` for Three/Skeleton, not hub root). Include it in parent_ids. Hub itself is always included as root ancestor.
-3. If no specific parent exists, create it first (e.g. \`arch:new-area\` under hub), then place your node under it.
+2. POSITION IS CENTRAL — FINDING THE RIGHT NODE IS THE CORE TASK:
+   Hub is NOT a flat list. It is a **positioned network via parent_ids vectors**:
+   - L0 \`fact:opencode-fractal-memory-hub\` = root router
+   - L1 \`arch:*\`/\`convention:*\`/\`decision:*\` = structural map (e.g. arch:svelte-frontend, arch:storage-and-query-layers, convention:dev-install-and-cache)
+   - L2 \`lesson:*\`/\`fix:*\`/\`knowledge:*\` = leaves situated under their L1 parent
+   **Rule: New node belongs under its most specific parent, not hub root.**
+   - Svelte brain-smoothing lesson → parent_ids="arch:svelte-frontend,fact:opencode-fractal-memory-hub" (WRONG if only hub)
+   - BM25 keywords bug → parent_ids="arch:storage-and-query-layers,fact:..."
+   Wrong position = not found, even with perfect keywords. Finding the right position is more important than the content itself.
 
-WHEN vs memory:
-- Structural knowledge (decision, structure, mistake/solution, convention) → project_hub(mode="set")
-- Episode/log/session trace → memory(mode="set", type="event")
-- Question about structure/decision/error → project_hub(mode="search") FIRST, not memory_search
+3. MANDATORY 3-STEP BEFORE EVERY set:
+   a) project_hub(mode="search", query="<your topic>")  — find related hub nodes
+   b) project_hub(mode="network") — see current positioned map (hub + L1 + L2, capped 1.5KB)
+   c) Pick the most specific parent from (a)+(b). If none exists, FIRST create it: project_hub(set, label="arch:new-area", parent_ids="fact:opencode-fractal-memory-hub", ...), THEN place your node under it.
 
-EVERY hub node MUST have: summary (1-2 lines, 150-220 chars, crystal-clear) + keywords (5-10 comma tokens, BM25×2) + parent_ids vector to correct parent (auto-adds hub root if omitted, but you MUST choose the fine-grained parent). Keep nodes lean, verified (file:line tags), sticky for hub/dot.
+4. WHEN vs memory — CHOOSE CORRECT TOOL:
+   - Structural knowledge (decision, structure, mistake/solution, convention) → project_hub set
+   - Episode/log/session trace → memory set type=event
+   - Question about structure/decision/error → project_hub search FIRST (not memory_search)
+
+5. EVERY hub node MUST be: crystal-clear (precise, verified file:line, no vague prose) + lean (1-2 line summary 150-220 chars, BM25 1×) + keywords (5-10 comma tokens, BM25×2, must include parent area terms) + correct parent_ids vector + file: tags. Sticky for hub/dot.
 
 MODES:
-  search — hub network only (hub types, parent_ids-boosted, summary+keywords lexical). Ex: project_hub(mode="search", query="svelte skeleton")
+  search — hub network only (parent_ids-boosted, summary+keywords lexical). Ex: project_hub(mode="search", query="svelte skeleton")
   get/fetch/drilldown — by label (arch:..., decision:..., lesson:...) or id. Ex: project_hub(mode="get", label="arch:svelte-frontend")
-  set — create at correct position. Required: label (kebab, e.g. arch:..., decision:..., lesson:fix-...), content (what+why, crystal-clear), type (hub type), summary, keywords, parent_ids (most specific parent, not just hub). Ex: project_hub(mode="set", label="fix:bm25-keywords", content="...", type="fix", summary="BM25 now indexes keywords ×2", keywords="bm25,keywords,search,hub", parent_ids="arch:storage-and-query-layers,fact:opencode-fractal-memory-hub")
-  network — hub digest (hub + positioned children, capped 1.5KB) — use to find correct parent position before set.
+  set — create at correct position. Required: label (kebab, e.g. arch:..., decision:..., lesson:fix-...), content (crystal-clear what+why with file:line), type, summary, keywords, parent_ids (most specific parent, not just hub). Ex: project_hub(mode="set", label="fix:bm25-keywords", content="...", type="fix", summary="BM25 now indexes keywords ×2", keywords="bm25,keywords,search,hub", parent_ids="arch:storage-and-query-layers,fact:opencode-fractal-memory-hub")
+  network — hub digest (hub + positioned children, capped 1.5KB) — use to find correct parent position before set. Injected as [memory-plugin:hub] when enabled, but explicit network gives full map.
 
-TIPS:
-- search → network → pick parent → set with correct parent_ids. Wrong position buries the node.
-- Hub digest is also injected as [memory-plugin:hub] system msg when enabled — but explicit network gives full map.
+TIPS: search → network → pick parent → set with correct parent_ids. If you skip step 3, the node will be buried and the tool will warn ⚠ only hub.
 `,
     args: {
       mode: tool.schema.enum(["search", "get", "fetch", "set", "network", "drilldown"]).describe("Which hub operation"),
