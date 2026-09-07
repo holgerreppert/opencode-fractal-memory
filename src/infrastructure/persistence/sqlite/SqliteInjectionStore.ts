@@ -95,7 +95,7 @@ export class SqliteInjectionStore implements InjectionStore {
 
   async logIntentLine(
     sessionId: string,
-    data: { turn: number; userMsgHash: string | null; rawText: string; source?: string },
+    data: { turn: number; userMsgHash: string | null; rawText: string; source?: string; messageId?: string | null; partId?: string | null },
   ): Promise<void> {
     const db = await this.provider.getDb();
     await insertIntentLineRow(db, sessionId, data);
@@ -104,6 +104,7 @@ export class SqliteInjectionStore implements InjectionStore {
   async getIntentLines(sessionId: string, limit = 200): Promise<Array<{
     id: string; sessionId: string; turn: number; timestamp: number;
     userMsgHash: string | null; rawText: string; source: string;
+    messageId: string | null; partId: string | null;
   }>> {
     const db = await this.provider.getDb();
     return getIntentLineRows(db, sessionId, limit);

@@ -55,6 +55,16 @@ describe("text.complete intent catch", () => {
     expect(typeof captured[0]!.d["userMsgHash"]).toBe("string");
   });
 
+  test("prefers sessionID/messageID/partID from hook input over shared box", async () => {
+    const captured: Array<{ sid: string; d: Record<string, unknown> }> = [];
+    const handler = createTextCompleteHandler(makeStore(captured), { value: "ses-box" }, { value: "" });
+    const output = { text: "intent: checking hook input identity" };
+    await handler["text.complete"]!({ sessionID: "ses-input", messageID: "msg-1", partID: "part-9" }, output);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.sid).toBe("ses-input");
+    expect(captured[0]!.d).toMatchObject({ messageId: "msg-1", partId: "part-9", rawText: "checking hook input identity" });
+  });
+
   test("missing line persists nothing and never throws", async () => {
     const captured: Array<{ sid: string; d: Record<string, unknown> }> = [];
     const handler = createTextCompleteHandler(makeStore(captured), { value: "ses-1" }, { value: "" });

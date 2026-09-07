@@ -589,7 +589,7 @@ class SqliteMemoryStore implements MemoryStore {
 
   async logIntentLine(
     sessionId: string,
-    data: { turn: number; userMsgHash: string | null; rawText: string; source?: string },
+    data: { turn: number; userMsgHash: string | null; rawText: string; source?: string; messageId?: string | null; partId?: string | null },
   ): Promise<void> {
     return this.injectionStore.logIntentLine(sessionId, data);
   }
@@ -597,6 +597,7 @@ class SqliteMemoryStore implements MemoryStore {
   async getIntentLines(sessionId: string, limit = 200): Promise<Array<{
     id: string; sessionId: string; turn: number; timestamp: number;
     userMsgHash: string | null; rawText: string; source: string;
+    messageId: string | null; partId: string | null;
   }>> {
     return this.injectionStore.getIntentLines(sessionId, limit);
   }

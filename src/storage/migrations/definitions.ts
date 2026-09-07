@@ -773,4 +773,18 @@ export const MIGRATIONS: Migration[] = [
       try { db.run("CREATE INDEX IF NOT EXISTS idx_intent_ts ON intent_lines(timestamp)"); } catch { /* ignore */ }
     },
   },
+  {
+    version: 40,
+    name: "add-intent-message-part-ids",
+    up: (db) => {
+      // Join intent lines to exact messages/parts: text.complete input carries
+      // {sessionID, messageID, partID} (verified via binary strings) — persist
+      // them instead of relying solely on the shared session box.
+      const cols = db.query("SELECT name FROM pragma_table_info('intent_lines')").all() as Array<{ name: string }>;
+      const names = new Set(cols.map((c) => c.name));
+      if (!names.has("message_id")) db.run("ALTER TABLE intent_lines ADD COLUMN message_id TEXT");
+      if (!names.has("part_id")) db.run("ALTER TABLE intent_lines ADD COLUMN part_id TEXT");
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_intent_message ON intent_lines(message_id)"); } catch { /* ignore */ }
+    },
+  },
 ];

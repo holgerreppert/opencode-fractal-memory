@@ -57,19 +57,34 @@ export function createTextCompleteHandler(
       }
       // Catch agent-declared intent line. Malformed/missing → silent skip
       // (compliance itself is the stat); never break the round.
+      // Session/message identity comes straight from the hook input
+      // ({sessionID, messageID, partID} — verified via binary strings);
+      // the shared box is fallback only.
       try {
         const intent = extractIntentLine(out.text);
         if (intent === null) return;
-        const sessionId = currentSessionId?.value || "default";
+        const inp = _input as { sessionID?: string; messageID?: string; partID?: string } | null | undefined;
+        const sessionId = inp?.sessionID || currentSessionId?.value || "default";
         const turn = (turnBySession.get(sessionId) ?? 0) + 1;
         turnBySession.set(sessionId, turn);
         const userMsg = latestUserMessage?.value ?? "";
         const userMsgHash = userMsg
           ? createHash("sha256").update(userMsg).digest("hex").slice(0, 16)
           : null;
-        memLog("info", "intent", `intent round ${turn} q="${intent}"`, { sessionId });
+        memLog("info", "intent", `intent round ${turn} q="${intent}"`, {
+          sessionId,
+          ...(inp?.messageID ? { messageID: inp.messageID } : {}),
+          ...(inp?.partID ? { partID: inp.partID } : {}),
+        });
         if (store) {
-          await store.logIntentLine(sessionId, { turn, userMsgHash, rawText: intent, source: "agent" });
+          await store.logIntentLine(sessionId, {
+            turn,
+            userMsgHash,
+            rawText: intent,
+            source: "agent",
+            ...(inp?.messageID ? { messageId: inp.messageID } : {}),
+            ...(inp?.partID ? { partId: inp.partID } : {}),
+          });
         }
       } catch (err) {
         memLog("debug", "intent", "Intent catch failed silently", { error: String(err) });

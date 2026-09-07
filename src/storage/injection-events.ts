@@ -247,15 +247,15 @@ export function querySessionMetrics(
 export async function insertIntentLine(
   db: Database,
   sessionId: string,
-  data: { turn: number; userMsgHash: string | null; rawText: string; source?: string },
+  data: { turn: number; userMsgHash: string | null; rawText: string; source?: string; messageId?: string | null; partId?: string | null },
 ): Promise<void> {
   const id = randomUUID();
   const timestamp = Date.now();
   await withRetry(() => {
     db.run(
-      `INSERT INTO intent_lines (id, session_id, turn, timestamp, user_msg_hash, raw_text, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, sessionId, data.turn, timestamp, data.userMsgHash, data.rawText, data.source ?? "agent"],
+      `INSERT INTO intent_lines (id, session_id, turn, timestamp, user_msg_hash, raw_text, source, message_id, part_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, sessionId, data.turn, timestamp, data.userMsgHash, data.rawText, data.source ?? "agent", data.messageId ?? null, data.partId ?? null],
     );
   });
 }
@@ -263,13 +263,15 @@ export async function insertIntentLine(
 export function getIntentLines(db: Database, sessionId: string, limit = 200): Array<{
   id: string; sessionId: string; turn: number; timestamp: number;
   userMsgHash: string | null; rawText: string; source: string;
+  messageId: string | null; partId: string | null;
 }> {
   try {
     return db.query(
-      "SELECT id, session_id as sessionId, turn, timestamp, user_msg_hash as userMsgHash, raw_text as rawText, source FROM intent_lines WHERE session_id = ? ORDER BY turn ASC LIMIT ?"
+      "SELECT id, session_id as sessionId, turn, timestamp, user_msg_hash as userMsgHash, raw_text as rawText, source, message_id as messageId, part_id as partId FROM intent_lines WHERE session_id = ? ORDER BY turn ASC LIMIT ?"
     ).all(sessionId, limit) as Array<{
       id: string; sessionId: string; turn: number; timestamp: number;
       userMsgHash: string | null; rawText: string; source: string;
+      messageId: string | null; partId: string | null;
     }>;
   } catch {
     return [];

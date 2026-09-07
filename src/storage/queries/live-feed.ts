@@ -202,7 +202,7 @@ export function queryRecentIntentLines(db: Database, limit = 20): any[] {
   try {
     return db
       .query(
-        `SELECT id, session_id, turn, timestamp, user_msg_hash, raw_text, source FROM intent_lines
+        `SELECT id, session_id, turn, timestamp, user_msg_hash, raw_text, source, message_id, part_id FROM intent_lines
          ORDER BY timestamp DESC
          LIMIT ?`,
       )
