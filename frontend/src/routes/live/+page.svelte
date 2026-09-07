@@ -17,8 +17,12 @@
 			const j = await r.json();
 			if (j.error) { loading = false; return; }
 			data = j;
-			const t = j.turns ?? [], tc = j.toolCalls ?? [], inj = j.injections ?? [], comp = j.compressions ?? [];
-			const all: any[] = [];
+		const t = j.turns ?? [], tc = j.toolCalls ?? [], inj = j.injections ?? [], comp = j.compressions ?? [], intents = j.intents ?? [];
+		const all: any[] = [];
+		for (const x of intents) {
+			const ts = x.timestamp ?? 0; const turn = x.turn ?? '?'; const text = x.raw_text ?? ''; const sess = (x.session_id ?? '').slice(-4);
+			all.push({ ts, text: `[intent] T${turn} ${text}`, kind: 'intent', tsFmt: new Date(ts).toLocaleTimeString(), turn, content: text, sess });
+		}
 			for (const x of t) {
 				const ts = x.timestamp; const role = x.role ?? 'unknown'; const content = (x.content ?? '').slice(0, 500);
 				all.push({ ts, text: `[turn] ${role.toUpperCase()}: ${content}`, kind: 'turn', tsFmt: new Date(ts).toLocaleTimeString(), role, content });
@@ -45,7 +49,7 @@
 			}
 			all.sort((a: any, b: any) => a.ts - b.ts);
 			entries = all;
-			status = `${t.length} turns · ${tc.length} tools · ${inj.length} injections · ${comp.length} compressions`;
+			status = `${t.length} turns · ${tc.length} tools · ${inj.length} injections · ${comp.length} compressions · ${intents.length} intents`;
 		} catch (e) { console.error('[live] poll failed', e); }
 		finally { loading = false; }
 	}
@@ -74,7 +78,9 @@
 				</div>
 				<div id="live-feed" class="flex-1 overflow-y-auto font-mono text-sm leading-6 bg-surface-50 dark:bg-surface-900 rounded-lg p-3 space-y-1" style="white-space:pre-wrap;">
 					{#each filtered as e, i (e.ts + '|' + e.kind + '|' + e.text + '|' + i)}
-						{#if e.kind === 'turn'}
+						{#if e.kind === 'intent'}
+							<div class="py-1 px-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800"><span class="opacity-90">{e.tsFmt}</span> <span style="color:var(--color-tertiary-400);font-weight:600;">INTENT</span> <span class="opacity-70">T{e.turn}</span> <span class="opacity-100 whitespace-pre-wrap break-words">{escHtml(e.content)}</span></div>
+						{:else if e.kind === 'turn'}
 							<div class="py-1 px-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800" style="color:var(--color-primary-400);"><span class="opacity-90">{e.tsFmt}</span> <strong>{e.role.toUpperCase()}</strong> <span class="opacity-100 whitespace-pre-wrap break-words">{escHtml(e.content)}</span></div>
 						{:else if e.kind === 'tool'}
 							<div class="py-1 px-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800"><span class="opacity-90">{e.tsFmt}</span> <strong style="color:{e.ok === '✓' ? 'var(--color-success-400)' : e.ok === '✗' ? 'var(--color-error-400)' : 'var(--color-warning-400)'};">{e.ok} {escHtml(e.name)}</strong> <span class="opacity-90">{escHtml(e.args)}</span> <span style="color:var(--color-surface-300);">{escHtml(e.preview)}</span></div>

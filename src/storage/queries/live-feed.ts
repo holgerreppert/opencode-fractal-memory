@@ -184,6 +184,7 @@ export function queryLiveFeedSnapshot(
   toolCalls: any[];
   compressions: any[];
   injections: any[];
+  intents: any[];
   session: any;
 } {
   const turnLimit = Math.min(limit, 100);
@@ -192,6 +193,21 @@ export function queryLiveFeedSnapshot(
     toolCalls: queryRecentToolCalls(db, 20),
     compressions: queryRecentCompressions(db, 20),
     injections: queryRecentInjections(db, 20),
+    intents: queryRecentIntentLines(db, 20),
     session: queryLatestSessionMetrics(db),
   };
+}
+
+export function queryRecentIntentLines(db: Database, limit = 20): any[] {
+  try {
+    return db
+      .query(
+        `SELECT id, session_id, turn, timestamp, user_msg_hash, raw_text, source FROM intent_lines
+         ORDER BY timestamp DESC
+         LIMIT ?`,
+      )
+      .all(limit) as any[];
+  } catch {
+    return [];
+  }
 }

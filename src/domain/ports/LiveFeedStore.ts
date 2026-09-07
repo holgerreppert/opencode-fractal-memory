@@ -31,6 +31,7 @@ export type LiveFeedSnapshot = {
   toolCalls: Array<Record<string, unknown>>;
   compressions: Array<Record<string, unknown>>;
   injections: Array<Record<string, unknown>>;
+  intents: Array<Record<string, unknown>>;
   session: Record<string, unknown> | null;
 };
 
