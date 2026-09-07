@@ -69,7 +69,7 @@ export function createHookHandlers(
   const graphSearchHintHandler = createGraphSearchHintHandler(memConfig);
   const injectionDigestHandler = createInjectionDigestHandler(store, memConfig, currentSessionId);
   const toolDefinitionHandler = createToolDefinitionHandler();
-  const textCompleteHandler = createTextCompleteHandler();
+  const textCompleteHandler = createTextCompleteHandler(store, currentSessionId, latestUserMessage);
 
   const handlers: HookHandler[] = [
     dedupHandler,

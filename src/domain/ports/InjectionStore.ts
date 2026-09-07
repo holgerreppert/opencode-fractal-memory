@@ -23,6 +23,11 @@ export interface InjectionStore {
     taskOutcome: string | null;
   }>>;
   getPendingInjections(): Promise<Array<{ id: number; nodeId: string; scope: string; source: string; createdAt: string }>>;
+  logIntentLine(sessionId: string, data: { turn: number; userMsgHash: string | null; rawText: string; source?: string }): Promise<void>;
+  getIntentLines(sessionId: string, limit?: number): Promise<Array<{
+    id: string; sessionId: string; turn: number; timestamp: number;
+    userMsgHash: string | null; rawText: string; source: string;
+  }>>;
   markInjectionProcessed(id: number): Promise<void>;
   migrateFromProjectDb(): Promise<number>;
   injectNode(nodeId: string, scope: string): Promise<void>;

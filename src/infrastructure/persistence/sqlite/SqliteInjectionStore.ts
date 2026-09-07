@@ -6,6 +6,8 @@ import {
   finalizeInjection as finalizeInjectionRow,
   insertInjectionFeedback, queryInjectionMetrics,
   updateMemoryToolCall,
+  insertIntentLine as insertIntentLineRow,
+  getIntentLines as getIntentLineRows,
 } from "../../../storage/injection-events";
 
 export class SqliteInjectionStore implements InjectionStore {
@@ -89,5 +91,21 @@ export class SqliteInjectionStore implements InjectionStore {
 
   async migrateFromProjectDb(): Promise<number> {
     return 0; // Handled by SqliteMemoryStore facade
+  }
+
+  async logIntentLine(
+    sessionId: string,
+    data: { turn: number; userMsgHash: string | null; rawText: string; source?: string },
+  ): Promise<void> {
+    const db = await this.provider.getDb();
+    await insertIntentLineRow(db, sessionId, data);
+  }
+
+  async getIntentLines(sessionId: string, limit = 200): Promise<Array<{
+    id: string; sessionId: string; turn: number; timestamp: number;
+    userMsgHash: string | null; rawText: string; source: string;
+  }>> {
+    const db = await this.provider.getDb();
+    return getIntentLineRows(db, sessionId, limit);
   }
 }

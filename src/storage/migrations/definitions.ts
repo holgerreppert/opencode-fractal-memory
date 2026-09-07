@@ -752,4 +752,25 @@ export const MIGRATIONS: Migration[] = [
       // Backfill existing nodes' summary/keywords BM25 is lazy — next write reindexes; no bulk rebuild needed now
     },
   },
+  {
+    version: 39,
+    name: "add-intent-lines",
+    up: (db) => {
+      // Agent-declared per-round intent lines (own words, ≤30 tokens): caught by
+      // text.complete hook, logged here for statistics (no consumer yet).
+      db.run(`
+        CREATE TABLE IF NOT EXISTS intent_lines (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          turn INT NOT NULL DEFAULT 0,
+          timestamp INT NOT NULL,
+          user_msg_hash TEXT,
+          raw_text TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'agent'
+        )
+      `);
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_intent_session ON intent_lines(session_id)"); } catch { /* ignore */ }
+      try { db.run("CREATE INDEX IF NOT EXISTS idx_intent_ts ON intent_lines(timestamp)"); } catch { /* ignore */ }
+    },
+  },
 ];

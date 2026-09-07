@@ -24,6 +24,7 @@ Memory search costs ~100x less than reading files cold. ALWAYS search before rea
 - Replace needs re-read first (content can change)
 - Edit: read file first | write for new files
 - Error -> store as error node | Solved -> mark + add to rules
+- Every round after a user message: emit one line starting with intent: followed by the round's intent in your own words, max ~30 tokens (example: intent: debugging the reload 404 in the static server) — the plugin catches and logs it for intent statistics, never judge or act on it yourself
 - **On every write/update: provide \`summary\` (1-2 lines, 150-220 chars) + \`keywords\` (5-10 comma tokens) — separate DB field \`keywords\` BM25-indexed ×2 weight for hub network lexical search (auto-generated if omitted but explicit preferred)**
 
 ### Auto-Learned
