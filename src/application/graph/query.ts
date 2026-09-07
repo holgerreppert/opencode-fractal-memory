@@ -37,11 +37,10 @@ export interface CallChainResult {
 
 function findSymbolNodes(graph: CodeGraph, name: string): { id: string; attrs: NodeData }[] {
   const results: { id: string; attrs: NodeData }[] = [];
-  graph.graph.forEachNode((id, attrs) => {
+  const g = graph.graph as any;
+  g.forEachNode((id: string, attrs: any) => {
     const n = attrs as unknown as NodeData;
-    if (n.type === "symbol" && n.label === name) {
-      results.push({ id, attrs: n });
-    }
+    if (n.type === "symbol" && n.label === name) results.push({ id, attrs: n });
   });
   return results;
 }
@@ -53,21 +52,18 @@ function toSymbolRef(id: string, attrs: NodeData): SymbolRef {
 export function callers(graph: CodeGraph, symbolName: string): CallerResult[] {
   const symbols = findSymbolNodes(graph, symbolName);
   if (symbols.length === 0) return [];
-
+  const g = graph.graph as any;
   const results: CallerResult[] = [];
   const seen = new Set<string>();
   for (const sym of symbols) {
-    graph.graph.forEachEdge((_key, _eattrs, source, target) => {
+    g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
       const e = _eattrs as unknown as { relation: string };
       if (target === sym.id && e.relation === "calls") {
         const key = `${source}→${sym.id}`;
         if (seen.has(key)) return;
         seen.add(key);
-        const sAttrs = graph.graph.getNodeAttributes(source) as unknown as NodeData;
-        results.push({
-          caller: toSymbolRef(source, sAttrs),
-          callee: toSymbolRef(sym.id, sym.attrs),
-        });
+        const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+        results.push({ caller: toSymbolRef(source, sAttrs), callee: toSymbolRef(sym.id, sym.attrs) });
       }
     });
   }
@@ -77,21 +73,18 @@ export function callers(graph: CodeGraph, symbolName: string): CallerResult[] {
 export function callees(graph: CodeGraph, symbolName: string): CalleeResult[] {
   const symbols = findSymbolNodes(graph, symbolName);
   if (symbols.length === 0) return [];
-
+  const g = graph.graph as any;
   const results: CalleeResult[] = [];
   const seen = new Set<string>();
   for (const sym of symbols) {
-    graph.graph.forEachEdge((_key, _eattrs, source, target) => {
+    g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
       const e = _eattrs as unknown as { relation: string };
       if (source === sym.id && e.relation === "calls") {
         const key = `${sym.id}→${target}`;
         if (seen.has(key)) return;
         seen.add(key);
-        const tAttrs = graph.graph.getNodeAttributes(target) as unknown as NodeData;
-        results.push({
-          caller: toSymbolRef(sym.id, sym.attrs),
-          callee: toSymbolRef(target, tAttrs),
-        });
+        const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
+        results.push({ caller: toSymbolRef(sym.id, sym.attrs), callee: toSymbolRef(target, tAttrs) });
       }
     });
   }
@@ -120,17 +113,18 @@ export function callChain(graph: CodeGraph, symbolName: string, maxDepth = 5): C
     const callersAtLevel: { id: string; attrs: NodeData }[] = [];
     const seenAtLevel = new Set<string>();
 
-    for (const node of currentLevel) {
-      graph.graph.forEachEdge((_key, _eattrs, source, target) => {
-        const e = _eattrs as unknown as { relation: string };
-        if (target === node.id && e.relation === "calls" && !visited.has(source)) {
-          if (seenAtLevel.has(source)) return;
-          seenAtLevel.add(source);
-          const sAttrs = graph.graph.getNodeAttributes(source) as unknown as NodeData;
-          callersAtLevel.push({ id: source, attrs: sAttrs });
-        }
-      });
-    }
+  const g = graph.graph as any;
+  for (const node of currentLevel) {
+    g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
+      const e = _eattrs as unknown as { relation: string };
+      if (target === node.id && e.relation === "calls" && !visited.has(source)) {
+        if (seenAtLevel.has(source)) return;
+        seenAtLevel.add(source);
+        const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+        callersAtLevel.push({ id: source, attrs: sAttrs });
+      }
+    });
+  }
 
     if (callersAtLevel.length === 0) break;
 
@@ -156,18 +150,15 @@ export function callChain(graph: CodeGraph, symbolName: string, maxDepth = 5): C
   return { symbol, chain, truncated };
 }
 
-export function shortestPath(
-  graph: CodeGraph,
-  fromId: string,
-  toId: string,
-): PathResult | null {
-  if (!graph.graph.hasNode(fromId) || !graph.graph.hasNode(toId)) return null;
+export function shortestPath(graph: CodeGraph, fromId: string, toId: string): PathResult | null {
+  const g = graph.graph as any;
+  if (!g.hasNode(fromId) || !g.hasNode(toId)) return null;
   try {
     const path = bidirectional(graph.graph, fromId, toId);
     if (!path) return null;
     return {
-      path: path.map(id => {
-        const attrs = graph.graph.getNodeAttributes(id) as unknown as NodeData;
+      path: path.map((id: string) => {
+        const attrs = g.getNodeAttributes(id) as unknown as NodeData;
         return { id, label: attrs.label, file: attrs.file, line: attrs.line };
       }),
       length: path.length - 1,
@@ -186,19 +177,14 @@ export interface NeighborResult {
 }
 
 export function getNeighbors(graph: CodeGraph, nodeId: string): NeighborResult[] {
-  if (!graph.graph.hasNode(nodeId)) return [];
+  const g = graph.graph as any;
+  if (!g.hasNode(nodeId)) return [];
   const results: NeighborResult[] = [];
-  graph.graph.forEachEdge((_key, attrs, source, target) => {
+  g.forEachEdge((_key: string, attrs: any, source: string, target: string) => {
     const neighborId = source === nodeId ? target : source;
-    const nAttrs = graph.graph.getNodeAttributes(neighborId) as unknown as NodeData;
+    const nAttrs = g.getNodeAttributes(neighborId) as unknown as NodeData;
     const edgeAttrs = attrs as unknown as { relation: string };
-    results.push({
-      id: neighborId,
-      label: nAttrs.label,
-      relation: source === nodeId ? edgeAttrs.relation : `inverse_${edgeAttrs.relation}`,
-      file: nAttrs.file,
-      line: nAttrs.line,
-    });
+    results.push({ id: neighborId, label: nAttrs.label, relation: source === nodeId ? edgeAttrs.relation : `inverse_${edgeAttrs.relation}`, file: nAttrs.file, line: nAttrs.line });
   });
   return results;
 }
@@ -211,14 +197,10 @@ export interface ExplainResult {
 }
 
 export function explain(graph: CodeGraph, nodeId: string): ExplainResult | null {
-  if (!graph.graph.hasNode(nodeId)) return null;
-  const attrs = graph.graph.getNodeAttributes(nodeId) as unknown as NodeData;
-  return {
-    node: attrs,
-    neighbors: getNeighbors(graph, nodeId),
-    degree: graph.graph.degree(nodeId),
-    community: attrs.community,
-  };
+  const g = graph.graph as any;
+  if (!g.hasNode(nodeId)) return null;
+  const attrs = g.getNodeAttributes(nodeId) as unknown as NodeData;
+  return { node: attrs, neighbors: getNeighbors(graph, nodeId), degree: g.degree(nodeId), community: attrs.community };
 }
 
 export interface SearchResult {
@@ -239,28 +221,26 @@ export interface FileContextResult {
 }
 
 export function getFileContext(graph: CodeGraph, filePath: string): FileContextResult | null {
+  const g = graph.graph as any;
   const fileId = `file::${filePath}`;
-  if (!graph.graph.hasNode(fileId)) return null;
-
+  if (!g.hasNode(fileId)) return null;
   const symbols: { name: string; kind: string; line: number }[] = [];
-  graph.graph.forEachNode((id, attrs) => {
+  g.forEachNode((id: string, attrs: any) => {
     const n = attrs as unknown as NodeData;
-    if (n.type === "symbol" && n.file === filePath) {
-      symbols.push({ name: n.label, kind: n.kind ?? "unknown", line: n.line ?? 0 });
-    }
+    if (n.type === "symbol" && n.file === filePath) symbols.push({ name: n.label, kind: n.kind ?? "unknown", line: n.line ?? 0 });
   });
   symbols.sort((a, b) => a.line - b.line);
 
   const dependents: string[] = [];
   const imports: string[] = [];
-  graph.graph.forEachEdge((_key, _attrs, source, target, srcAttrs) => {
+  g.forEachEdge((_key: string, _attrs: any, source: string, target: string, srcAttrs: any) => {
     const e = srcAttrs as unknown as { relation: string };
     if (source === fileId && e.relation === "imports") {
-      const tAttrs = graph.graph.getNodeAttributes(target) as unknown as NodeData;
+      const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
       if (tAttrs.file) imports.push(tAttrs.file);
     }
     if (target === fileId) {
-      const sAttrs = graph.graph.getNodeAttributes(source) as unknown as NodeData;
+      const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
       if (sAttrs.type === "file" && sAttrs.file) dependents.push(sAttrs.file);
     }
   });
@@ -280,17 +260,11 @@ export function getFileContext(graph: CodeGraph, filePath: string): FileContextR
 export function searchNodes(graph: CodeGraph, query: string): SearchResult[] {
   const q = query.toLowerCase();
   const results: SearchResult[] = [];
-  graph.graph.forEachNode((id, attrs) => {
+  const g = graph.graph as any;
+  g.forEachNode((id: string, attrs: any) => {
     const n = attrs as unknown as NodeData;
     if (n.label.toLowerCase().includes(q) || n.file?.toLowerCase().includes(q)) {
-      results.push({
-        id,
-        label: n.label,
-        type: n.type,
-        kind: n.kind,
-        file: n.file,
-        line: n.line,
-      });
+      results.push({ id, label: n.label, type: n.type, kind: n.kind, file: n.file, line: n.line });
     }
   });
   return results;

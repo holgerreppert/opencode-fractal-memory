@@ -17,8 +17,23 @@
 	onMount(load);
 </script>
 <div class="space-y-4">
-	<div class="card preset-filled-surface-100 p-4 flex justify-between items-center"><h1 class="h3">Backup</h1><button class="btn preset-filled-primary-500" onclick={create}>Create backup</button></div>
-	{#if loading}<p class="opacity-60 text-sm">Loading…</p>{:else}
-	<div class="card p-4"><div class="table-wrap"><table class="table"><thead><tr><th>ID</th><th>Size</th><th>Created</th></tr></thead><tbody>{#each list as b (b.id)}<tr><td>{b.id}</td><td>{b.size}</td><td>{b.created}</td></tr>{:else}<tr><td colspan="3" class="opacity-60">No backups</td></tr>{/each}</tbody></table></div></div>
+	<div class="card preset-filled-surface-100 p-4 flex justify-between items-center"><h3 class="h3">Backup</h3><button class="btn btn-sm preset-filled-primary-500" onclick={create}>Create backup</button></div>
+	{#if loading}
+	<p class="text-sm opacity-70">Loading…</p>
+	{:else if list.length === 0}
+	<div class="card preset-outlined-surface-200 p-4"><p class="opacity-70 text-sm">No backups</p></div>
+	{:else}
+	<div class="card preset-outlined-surface-200 p-4 space-y-3">
+		<div class="table-wrap">
+		<table class="table">
+			<thead><tr><th>ID</th><th>Size</th><th>Created</th></tr></thead>
+			<tbody>
+			{#each list as b (b.id)}
+				<tr><td>{b.id}</td><td>{b.size}</td><td>{b.created}</td></tr>
+			{/each}
+			</tbody>
+		</table>
+		</div>
+	</div>
 	{/if}
 </div>

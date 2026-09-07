@@ -161,7 +161,7 @@ export function MemorySet(store: MemoryStore) {
 
 export function MemoryRate(store: MemoryStore) {
   const t = tool({
-    description: "Mark a memory node as helpful (or not) and optionally adjust its usefulness score.",
+    description: "Mark a memory node as helpful (helpful=true: timesHelpful +1) or unhelpful (helpful=false: usefulness −0.5, floored at 0), and optionally set its usefulness score (0-5, wins over the vote).",
     args: {
       id: tool.schema.string().optional(),
       label: tool.schema.string().optional(),
@@ -184,15 +184,21 @@ export function MemoryRate(store: MemoryStore) {
       if (args.usefulness_score !== undefined) {
         updates.usefulnessScore = args.usefulness_score;
       }
-      if (args.helpful) {
+      if (args.helpful === true) {
         const node = await store.getNode(nodeId);
         updates.timesHelpful = (node.timesHelpful ?? 0) + 1;
+      } else if (args.helpful === false && args.usefulness_score === undefined) {
+        // Downvote: gentle, floored — too much negative feedback destroys
+        // query value, so one vote can never zero a node from above 0.5.
+        const node = await store.getNode(nodeId);
+        updates.usefulnessScore = Math.max(0, (node.usefulnessScore ?? 0) - 0.5);
       }
       if (Object.keys(updates).length === 0) {
         return "No updates applied.";
       }
       await store.updateNode(nodeId, updates);
-      return `Updated node ${nodeId?.slice(0,8)}: ${args.helpful ? "timesHelpful incremented" : ""}${args.usefulness_score !== undefined ? ` usefulnessScore set to ${args.usefulness_score}` : ""}`;
+      const vote = args.helpful === true ? "timesHelpful incremented" : args.helpful === false ? "downvoted (usefulness −0.5)" : "";
+      return `Updated node ${nodeId?.slice(0,8)}: ${vote}${args.usefulness_score !== undefined ? ` usefulnessScore set to ${args.usefulness_score}` : ""}`;
     },
   });
   return wrapWithTracking(t, store, "memory_rate");
@@ -216,6 +222,7 @@ Level: ${node.level}
 Type: ${node.type ?? "none"}
 Domain: ${node.domain ?? "unset"}
 Importance: ${node.importance}
+Usefulness: ${node.usefulnessScore ?? 0}/5 (used ${node.timesUsed ?? 0}×, helpful ${node.timesHelpful ?? 0}×)
 Access count: ${node.accessCount}
 Created: ${node.createdAt.toISOString()}
 Updated: ${node.updatedAt.toISOString()}${metaSection}

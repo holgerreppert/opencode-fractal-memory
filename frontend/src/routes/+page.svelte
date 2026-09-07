@@ -9,7 +9,7 @@
   import { nodesStore } from '$lib/stores/nodes.svelte';
   import { Logger } from '$lib/api/logger';
   import { onMount } from 'svelte';
-  let query = $state(''); let scope = $state('project'); let layout = $state('shell');
+  let query = $state(''); let scope = $state('project'); let layout = $state('hub');
   let selected: any = $state(null);
   let listOpen = $state(false);
   let detailOpen = $state(false);

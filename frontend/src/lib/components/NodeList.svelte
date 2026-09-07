@@ -5,8 +5,10 @@
   onMount(() => nodesStore.load());
 </script>
 
-{#if nodesStore.loading}<Progress value={null} />
-{:else if nodesStore.error}<p class="text-error-500 card p-4 preset-filled-error-100">{nodesStore.error}</p>
+{#if nodesStore.loading}
+  <Progress value={null} />
+{:else if nodesStore.error}
+  <div class="variant-filled-error-500 p-4 text-sm text-surface-50">{nodesStore.error}</div>
 {:else}
   <div class="table-wrap">
   <table class="table">

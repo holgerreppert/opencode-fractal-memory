@@ -2,16 +2,18 @@
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
 	import { t } from 'svelte-i18n';
 	import { page } from '$app/stores';
+	import ThemeSwitcher from '$lib/components/theme/ThemeSwitcher.svelte';
 
 	// Horizontal menu - clone of original groups but flat as requested
 	const nav = [
 		{ id: 'visualize', href: '/', label: 'Visualize' },
-		{ id: 'dashboard', href: '/', label: 'Dashboard' },
+		{ id: 'hub', href: '/hub', label: 'Hub' },
+		{ id: 'dashboard', href: '/dashboard', label: 'Dashboard' },
 		{ id: 'context', href: '/context', label: 'Context' },
 		{ id: 'quality', href: '/quality', label: 'Quality' },
 		{ id: 'graph', href: '/graph', label: 'Graph' },
 		{ id: 'memory', href: '/memory', label: 'Memory' },
-		{ id: 'live-agent', href: '/injections', label: 'Live' },
+		{ id: 'live-agent', href: '/live', label: 'Live' },
 		{ id: 'settings', href: '/settings', label: 'Settings' },
 		{ id: 'backup', href: '/backup', label: 'Backup' }
 	] as const;
@@ -43,6 +45,7 @@
 					<a href={it.href} class="btn btn-sm whitespace-nowrap {isActive(it.href) ? 'preset-filled-primary-500' : 'preset-tonal'}" data-tab={it.id}>{it.label}</a>
 				{/each}
 			</nav>
+			<ThemeSwitcher />
 		</AppBar.Trail>
 	</AppBar.Toolbar>
 </AppBar>

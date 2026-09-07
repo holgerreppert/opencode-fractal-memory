@@ -150,16 +150,12 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
       memLog("info", "init", "Starting Svelte management server (parallel)", { sveltePort, svelteBuild, directory });
       try {
         const standalonePathCandidates = [path.join(__dirname, "..", "management-standalone.js"), path.join(__dirname, "management-standalone.js")];
-        const standalonePath = standalonePathCandidates.find((p) => fs.existsSync(p)) ?? standalonePathCandidates[0];
-        if (fs.existsSync(standalonePath)) {
+        const standalonePath = standalonePathCandidates.find((p) => fs.existsSync(p)) ?? standalonePathCandidates[0] ?? "";
+        if (standalonePath && fs.existsSync(standalonePath)) {
           const bunPath = (() => { try { return execSync("which bun").toString().trim(); } catch { return null; } })();
           const runner = bunPath || process.execPath;
           const args = [standalonePath];
-          spawn(runner, args, {
-            detached: true,
-            stdio: "ignore",
-            env: { ...process.env, MGMT_PORT: String(sveltePort), MGMT_PROJECT_DIR: directory, MGMT_PUBLIC_DIR: svelteBuild },
-          }).unref();
+          (spawn(runner, args, { detached: true, stdio: "ignore", env: { ...process.env, MGMT_PORT: String(sveltePort), MGMT_PROJECT_DIR: directory, MGMT_PUBLIC_DIR: svelteBuild } }) as any).unref();
           memLog("info", "init", "Svelte management spawn attempted", { sveltePort, runner });
         } else {
           memLog("warn", "init", "Svelte standalone not found, skip parallel Svelte", { standalonePath });

@@ -1,4 +1,41 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/forms";
 @import "@skeletonlabs/skeleton";
 @import "@skeletonlabs/skeleton-svelte";
 @import "@skeletonlabs/skeleton/themes/cerberus";
+@import "@skeletonlabs/skeleton/themes/catppuccin";
+@import "@skeletonlabs/skeleton/themes/concord";
+@import "@skeletonlabs/skeleton/themes/crimson";
+@import "@skeletonlabs/skeleton/themes/dracula";
+@import "@skeletonlabs/skeleton/themes/fennec";
+@import "@skeletonlabs/skeleton/themes/hamlindigo";
+@import "@skeletonlabs/skeleton/themes/legacy";
+@import "@skeletonlabs/skeleton/themes/mint";
+@import "@skeletonlabs/skeleton/themes/modern";
+@import "@skeletonlabs/skeleton/themes/mona";
+@import "@skeletonlabs/skeleton/themes/nosh";
+@import "@skeletonlabs/skeleton/themes/nouveau";
+@import "@skeletonlabs/skeleton/themes/pine";
+@import "@skeletonlabs/skeleton/themes/reign";
+@import "@skeletonlabs/skeleton/themes/rocket";
+@import "@skeletonlabs/skeleton/themes/rose";
+@import "@skeletonlabs/skeleton/themes/rosepine";
+@import "@skeletonlabs/skeleton/themes/sahara";
+@import "@skeletonlabs/skeleton/themes/seafoam";
+@import "@skeletonlabs/skeleton/themes/terminus";
+@import "@skeletonlabs/skeleton/themes/vintage";
+@import "@skeletonlabs/skeleton/themes/vox";
+@import "@skeletonlabs/skeleton/themes/wintry";
+
+/* Live Agent Feed — Skeleton utility classes */
+#live-feed .live-user { color: var(--color-primary-400); }
+#live-feed .live-assistant { color: var(--color-success-400); }
+#live-feed .live-reasoning { color: var(--color-surface-500); font-style: italic; }
+#live-feed .live-tool { color: var(--color-success-400); }
+#live-feed .live-ts { color: var(--color-surface-400); }
+#live-context .ctx-row { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid var(--color-surface-200); }
+#live-context .ctx-label { color: var(--color-surface-400); }
+#live-context .ctx-value { color: var(--color-surface-100); }
+
+/* Global readability — ensure proper contrast on all text */
+.text-secondary { color: var(--color-surface-300); }

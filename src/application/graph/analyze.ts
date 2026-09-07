@@ -21,7 +21,8 @@ export function analyze(graph: CodeGraph): AnalysisResult {
   const stats = { files: 0, symbols: 0, edges: graph.edgeCount(), communities: 0 };
   const communitySet = new Set<string>();
 
-  graph.graph.forEachNode((_id, attrs) => {
+  const g = graph.graph as any;
+  g.forEachNode((_id: string, attrs: any) => {
     const n = attrs as unknown as NodeData;
     if (n.type === "file") stats.files++;
     else if (n.type === "symbol") stats.symbols++;
@@ -30,18 +31,18 @@ export function analyze(graph: CodeGraph): AnalysisResult {
   stats.communities = communitySet.size;
 
   const degreeMap: { node: NodeData; degree: number }[] = [];
-  graph.graph.forEachNode((id, attrs) => {
-    const degree = graph.graph.degree(id);
+  g.forEachNode((id: string, attrs: any) => {
+    const degree = g.degree(id);
     degreeMap.push({ node: attrs as unknown as NodeData, degree });
   });
   degreeMap.sort((a, b) => b.degree - a.degree);
   const godNodes = degreeMap.slice(0, 10);
 
   const surprisingConnections: AnalysisResult["surprisingConnections"] = [];
-  graph.graph.forEachEdge((_key, attrs, source, target) => {
+  g.forEachEdge((_key: string, attrs: any, source: string, target: string) => {
     const edgeAttrs = attrs as unknown as { relation: string; confidence: string };
-    const srcAttrs = graph.graph.getNodeAttributes(source) as unknown as NodeData;
-    const tgtAttrs = graph.graph.getNodeAttributes(target) as unknown as NodeData;
+    const srcAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+    const tgtAttrs = g.getNodeAttributes(target) as unknown as NodeData;
     if (srcAttrs.community && tgtAttrs.community && srcAttrs.community !== tgtAttrs.community) {
       surprisingConnections.push({
         source: srcAttrs,

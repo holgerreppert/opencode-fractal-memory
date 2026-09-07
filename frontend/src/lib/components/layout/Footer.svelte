@@ -3,7 +3,7 @@
 	let year = new Date().getFullYear();
 </script>
 
-<footer class="border-t border-surface-200 bg-surface-50 px-4 py-3 flex justify-between items-center text-xs opacity-70">
+<footer class="border-t border-surface-200 bg-surface-50 px-4 py-3 flex justify-between items-center text-xs opacity-80">
 	<span>Fractal Memory · {year} · opencode-fractal-memory</span>
 	<span class="flex gap-3">
 		<a href="http://127.0.0.1:8787/" class="anchor">Alpine :8787</a>

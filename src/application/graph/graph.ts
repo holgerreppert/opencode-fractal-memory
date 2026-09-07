@@ -30,7 +30,7 @@ export class CodeGraph {
   private _communitiesDetected = false;
 
   constructor(graph?: Graph) {
-    this.graph = graph ?? new Graph({ type: "directed", allowSelfLoops: false });
+    this.graph = graph ?? (new Graph() as unknown as Graph);
   }
 
   hashFile(content: string): string {
@@ -60,8 +60,9 @@ export class CodeGraph {
 
   addSymbol(file: string, name: string, kind: string, line: number): string {
     const id = `${file}::${kind}::${name}::${line}`;
-    if (!this.graph.hasNode(id)) {
-      this.graph.addNode(id, {
+    const g = this.graph as any;
+    if (!g.hasNode(id)) {
+      g.addNode(id, {
         id,
         label: name,
         type: "symbol",
@@ -75,9 +76,10 @@ export class CodeGraph {
 
   addFile(filePath: string): string {
     const id = `file::${filePath}`;
-    if (!this.graph.hasNode(id)) {
+    const g = this.graph as any;
+    if (!g.hasNode(id)) {
       const parts = filePath.split("/");
-      this.graph.addNode(id, {
+      g.addNode(id, {
         id,
         label: parts[parts.length - 1] ?? filePath,
         type: "file",
@@ -93,11 +95,12 @@ export class CodeGraph {
     relation: string,
     confidence: "EXTRACTED" | "INFERRED" | "AMBIGUOUS" = "EXTRACTED",
   ): void {
-    if (!this.graph.hasNode(source) || !this.graph.hasNode(target)) return;
+    const g = this.graph as any;
+    if (!g.hasNode(source) || !g.hasNode(target)) return;
     const key = `${source}→${relation}→${target}`;
-    if (!this.graph.hasEdge(key)) {
+    if (!g.hasEdge(key)) {
       try {
-        this.graph.addEdgeWithKey(key, source, target, {
+        g.addEdgeWithKey(key, source, target, {
           relation,
           confidence,
         } satisfies Omit<EdgeData, "source" | "target">);
@@ -124,27 +127,24 @@ export class CodeGraph {
   }
 
   toJSON(): GraphJSON {
+    const g = this.graph as any;
     const nodes: NodeData[] = [];
-    this.graph.forEachNode((id, attrs) => {
+    g.forEachNode((id: string, attrs: any) => {
       nodes.push(attrs as unknown as NodeData);
     });
     const edges: EdgeData[] = [];
-    this.graph.forEachEdge((_key, edgeAttrs, source, target) => {
+    g.forEachEdge((_key: string, edgeAttrs: any, source: string, target: string) => {
       const attrs = edgeAttrs as unknown as EdgeData;
-      edges.push({
-        source,
-        target,
-        relation: attrs.relation,
-        confidence: attrs.confidence,
-      });
+      edges.push({ source, target, relation: attrs.relation, confidence: attrs.confidence });
     });
     return { nodes, edges, fileHashes: this.fileHashes };
   }
 
   static fromJSON(json: GraphJSON): CodeGraph {
     const cg = new CodeGraph();
+    const g = cg.graph as any;
     for (const n of json.nodes) {
-      cg.graph.addNode(n.id, n);
+      g.addNode(n.id, n);
     }
     for (const e of json.edges) {
       cg.addEdge(e.source, e.target, e.relation, e.confidence);
@@ -156,10 +156,10 @@ export class CodeGraph {
   }
 
   nodeCount(): number {
-    return this.graph.order;
+    return (this.graph as any).order;
   }
 
   edgeCount(): number {
-    return this.graph.size;
+    return (this.graph as any).size;
   }
 }

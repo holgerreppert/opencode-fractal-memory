@@ -190,8 +190,8 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
         "Use memory(mode=\"drilldown\", label=\"...\") to see full content of any node.",
         "Use memory(mode=\"temporal_edges\", node_id=\"...\") to explore conversation flow.",
         "",
-        "**Self-Reflection**: After using these memories, rate their usefulness (0-5):",
-        "  `memory(mode=\"rate\", label: \"<node-label>\", helpful: true, usefulness_score: <rating>)`",
+        "**Self-Reflection**: After using these memories, rate their usefulness (one call per node):",
+        "  `learn(mode=\"rate\", label: \"<node-label>\", helpful: true|false)` — true = helped (+timesHelpful), false = hurt (usefulness −0.5).",
       ];
 
       const result = lines.join("\n");

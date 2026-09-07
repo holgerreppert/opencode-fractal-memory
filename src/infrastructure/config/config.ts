@@ -73,6 +73,7 @@ export interface MemConfig {
     injectionCooldownMs: number;
     minInjectionScore: number;
     llmJudgeEnabled: boolean;
+    excludeTypes: string[];
   } | undefined;
   ollama?: {
     enabled: boolean;
@@ -244,6 +245,7 @@ const AutoRetrieveSchema = z.object({
   injectionCooldownMs: z.number().int().default(30000),
   minInjectionScore: z.number().min(0).max(1).default(0.05),
   llmJudgeEnabled: z.boolean().default(true),
+  excludeTypes: z.array(z.string()).default(["research"]),
 });
 
 const OllamaSchema = z.object({
@@ -440,6 +442,7 @@ const DEFAULT_CONFIG: MemConfig = {
     injectionCooldownMs: 30000,
     minInjectionScore: 0.05,
     llmJudgeEnabled: true,
+    excludeTypes: ["research"],
   },
   ollama: {
     enabled: false,

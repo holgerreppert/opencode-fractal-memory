@@ -30,14 +30,14 @@
 	}
 </script>
 <Modal bind:open title={title ?? '◈ Diagram'}>{#snippet children()}
-	{#if loading}<div class="p-8 grid place-items-center opacity-60">Rendering…</div>
+	{#if loading}<div class="p-8 grid place-items-center opacity-70">Rendering…</div>
 	{:else if svg}
 		<div class="flex gap-2 p-2 border-b bg-surface-50/70">
 			<button class="btn btn-sm preset-tonal rounded-full" onclick={() => scale = Math.min(3, +(scale * 1.2).toFixed(2))}>＋ Zoom in</button>
 			<button class="btn btn-sm preset-tonal rounded-full" onclick={() => scale = Math.max(0.2, +(scale / 1.2).toFixed(2))}>－ Zoom out</button>
 			<button class="btn btn-sm preset-tonal rounded-full" onclick={() => { scale = 1; offset = { x: 0, y: 0 }; }}>Reset</button>
-			<span class="ml-auto text-xs opacity-60">{Math.round(scale * 100)}%</span>
+			<span class="ml-auto text-xs opacity-80">{Math.round(scale * 100)}%</span>
 		</div>
-		<div class="p-4 overflow-auto max-h-[60vh] bg-white rounded-xl border cursor-grab active:cursor-grabbing select-none" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onwheel={(e) => { e.preventDefault(); const f = e.deltaY > 0 ? 0.9 : 1.1; scale = Math.max(0.2, Math.min(3, +(scale * f).toFixed(2))); }}>{@html svg.replace('<svg', `<svg style="transform: translate(${offset.x}px, ${offset.y}px) scale(${scale}); transform-origin: center;"`)}</div>
+		<div class="p-4 overflow-auto max-h-[60vh] bg-surface-900 rounded-xl border cursor-grab active:cursor-grabbing select-none" role="img" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onwheel={(e) => { e.preventDefault(); const f = e.deltaY > 0 ? 0.9 : 1.1; scale = Math.max(0.2, Math.min(3, +(scale * f).toFixed(2))); }}>{@html svg.replace('<svg', `<svg style="transform: translate(${offset.x}px, ${offset.y}px) scale(${scale}); transform-origin: center;"`)}</div>
 	{:else}<pre class="p-4 text-xs whitespace-pre-wrap bg-surface-900 text-white rounded-xl">{dotContent}</pre>{/if}
 {/snippet}</Modal>

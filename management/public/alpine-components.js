@@ -679,4 +679,79 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
+  // ==================== Hub Panel (fine-grained positioned network) ====================
+  Alpine.data('hubPanel', () => ({
+    hub: null,
+    children: [],
+    leaves: [],
+    loading: true,
+    error: null,
+
+    async loadHub() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const scope = window.currentScope || 'project';
+        const proj = window.currentProjectName ? `&project_name=${encodeURIComponent(window.currentProjectName)}` : '';
+        // Fetch all nodes in project scope + global hub if needed
+        let nodes = window.nodeData;
+        if (!nodes || nodes.length === 0) {
+          const res = await fetch(`/api/nodes?scope=all${proj}`);
+          if (!res.ok) throw new Error(`nodes ${res.status}`);
+          nodes = await res.json();
+          window.nodeData = nodes;
+        }
+        // Find hub — label is exact
+        let hub = nodes.find(n => n.label === 'fact:opencode-fractal-memory-hub');
+        if (!hub) {
+          // try search API fallback
+          const sRes = await fetch(`/api/search?q=opencode-fractal-memory-hub&scope=all&mode=hybrid${proj}`);
+          if (sRes.ok) {
+            const hits = await sRes.json();
+            if (hits.length) hub = hits.find(h => h.label === 'fact:opencode-fractal-memory-hub') || hits[0];
+          }
+        }
+        if (!hub) throw new Error('Hub fact:opencode-fractal-memory-hub not found — run seed or ensure project scope');
+        this.hub = hub;
+        const byParent = (parentId) => nodes.filter(n => Array.isArray(n.parentIds) && n.parentIds.includes(parentId));
+        // Also match by label for nodes whose parentIds store labels (defensive)
+        const byParentLabel = (label) => nodes.filter(n => Array.isArray(n.parentIds) && n.parentIds.includes(label));
+        let children = byParent(hub.id);
+        if (children.length === 0) children = byParentLabel(hub.label);
+        // Fallback: parentIds may contain hub.id truncated? include includes check
+        if (children.length === 0) {
+          children = nodes.filter(n => Array.isArray(n.parentIds) && n.parentIds.some(pid => pid === hub.id || pid === hub.label));
+        }
+        this.children = children.sort((a,b) => (a.label||'').localeCompare(b.label||''));
+        const childIds = new Set(children.map(c => c.id));
+        const childLabels = new Set(children.map(c => c.label));
+        const leaves = nodes.filter(n => {
+          if (!Array.isArray(n.parentIds) || n.parentIds.length === 0) return false;
+          if (n.id === hub.id || childIds.has(n.id)) return false;
+          return n.parentIds.some(pid => childIds.has(pid) || childLabels.has(pid));
+        });
+        this.leaves = leaves.sort((a,b) => (a.label||'').localeCompare(b.label||''));
+      } catch (e) {
+        this.error = e.message || String(e);
+        console.error('[hubPanel] loadHub failed', e);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    showNode(id) {
+      const n = (window.nodeData || []).find(x => x.id === id);
+      if (n && typeof window.showDetailPanel === 'function') {
+        window.showDetailPanel(n);
+        if (window.sceneCtrl) window.sceneCtrl.focusOnNode(id);
+        return;
+      }
+      // Fetch single node fallback
+      fetch(`/api/nodes/${encodeURIComponent(id)}?scope=all`)
+        .then(r => r.ok ? r.json() : null)
+        .then(node => { if (node && typeof window.showDetailPanel === 'function') window.showDetailPanel(node); })
+        .catch(() => {});
+    },
+  }));
+
 });

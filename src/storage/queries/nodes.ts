@@ -389,7 +389,7 @@ export async function queryUpdateNode(
     const existing = db.query("SELECT label, summary FROM memory_nodes WHERE id = ?").get(id) as { label: string | null; summary: string | null } | null;
     const labelForKw = existing?.label ?? null;
     (updates as unknown as Record<string, unknown>).summary = generateFallbackSummary(updates.content as string);
-    (updates as unknown as Record<string, unknown>).keywords = generateFallbackKeywords(updates.content as string, labelForKw, updates.summary as string);
+    (updates as unknown as Record<string, unknown>).keywords = generateFallbackKeywords(updates.content as string, labelForKw, updates.summary as unknown as string);
   } else if (updates.content !== undefined && updates.summary === undefined) {
     (updates as unknown as Record<string, unknown>).summary = generateFallbackSummary(updates.content as string);
   } else if (updates.content !== undefined && updates.keywords === undefined) {

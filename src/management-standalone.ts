@@ -139,7 +139,22 @@ const server = http.createServer(async (req, res) => {
 
     const filePath = path.join(publicDir, pathname);
     if (filePath.startsWith(publicDir)) {
+      // directory → <dir>/index.html (prerendered trailingSlash:'always' output)
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+        const dirRes = serveFile(path.join(filePath, "index.html"));
+        await sendWebResponse(res, dirRes);
+        return;
+      }
       const fileRes = serveFile(filePath);
+      // SPA fallback: extensionless navigation requests (e.g. reloading
+      // /context) get the SvelteKit fallback page (build/index.html) so the
+      // in-browser router takes over. Paths with a file extension keep the
+      // 404 so missing assets don't come back as HTML (wrong MIME type).
+      if (fileRes.status === 404 && req.method === "GET" && !path.extname(pathname)) {
+        const fallbackRes = serveFile(path.join(publicDir, "index.html"));
+        await sendWebResponse(res, fallbackRes);
+        return;
+      }
       await sendWebResponse(res, fileRes);
       return;
     }

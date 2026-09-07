@@ -60,9 +60,10 @@ export function spawnBatchWorker(batch: string[]): BatchWorkerOutput | null {
 }
 
 export function mergeGraphJSON(target: CodeGraph, partial: GraphJSON): void {
+  const g = target.graph as any;
   for (const n of partial.nodes) {
-    if (!target.graph.hasNode(n.id)) {
-      target.graph.addNode(n.id, n);
+    if (!g.hasNode(n.id)) {
+      g.addNode(n.id, n);
     }
   }
   for (const e of partial.edges) {

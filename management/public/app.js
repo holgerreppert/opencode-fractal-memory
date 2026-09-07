@@ -1560,7 +1560,8 @@ function setupEventListeners() {
       if (graphSidebarPanel) graphSidebarPanel.style.display = isGraph ? "block" : "none";
 
       // Main-content panels (hidden for fullscreen tabs)
-      const panelMap = { settings: settingsPanel, dashboard: dashboardPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, graph: graphPanel, "live-agent": document.getElementById("live-agent-panel") };
+      const hubPanel = document.getElementById("hub-panel");
+      const panelMap = { settings: settingsPanel, dashboard: dashboardPanel, context: contextPanel, backup: backupPanel, quality: qualityPanel, graph: graphPanel, hub: hubPanel, "live-agent": document.getElementById("live-agent-panel") };
       for (const [key, p] of Object.entries(panelMap)) {
         if (p) p.classList.toggle("active", key === tab && (isLiveTab || !isFullscreenTab));
       }
@@ -1577,6 +1578,11 @@ function setupEventListeners() {
       if (tab === "context") loadContextDashboard();
       if (tab === "quality") loadQuality();
       if (tab === "graph") loadGraphData();
+      if (tab === "hub") {
+        const el = document.getElementById('hub-panel');
+        const data = el && el._x_dataStack && el._x_dataStack[0];
+        if (data && typeof data.loadHub === 'function') data.loadHub();
+      }
       if (tab === "live-agent") { startLiveAgentPolling(); }
       if (!isLiveTab && !isFullscreenTab) { stopLiveAgentPolling(); }
     });
@@ -2058,6 +2064,9 @@ function showDetailPanel(node) {
     </div>
     ${provenanceHtml}
     ${metadataHtml}
+    ${node.summary ? `<div class="detail-section" style="background: rgba(74,158,255,0.08); border: 1px solid rgba(74,158,255,0.3); border-radius: 6px; padding: 10px;"><h4 style="color: #4a9eff; margin: 0 0 6px 0;">Summary (BM25 1×) — crystal-clear</h4><div class="detail-value" style="font-size: 12px; line-height: 1.4;">${escapeHtml(node.summary)}</div></div>` : ""}
+    ${node.keywords ? `<div class="detail-section" style="background: rgba(160,90,255,0.08); border: 1px solid rgba(160,90,255,0.3); border-radius: 6px; padding: 10px;"><h4 style="color: #a05aff; margin: 0 0 6px 0;">Keywords (BM25 ×2) — hub lexical</h4><div class="detail-value" style="font-family: monospace; font-size: 11px; word-break: break-word;">${escapeHtml(node.keywords)}</div></div>` : ""}
+    ${node.parentIds && node.parentIds.length ? `<div class="detail-section" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 10px;"><h4 style="margin: 0 0 6px 0;">Position — parent_ids vector (fine-grained)</h4><div class="detail-value" style="font-family: monospace; font-size: 11px; word-break: break-all;">${node.parentIds.map(id => `<span style="cursor:pointer; color:#4a9eff;" onclick="showDetailPanelById('${id}')">${escapeHtml(id.slice(0,8))}</span>`).join(' → ')}</div><div style="font-size: 10px; color: #888; margin-top: 4px;">Hub --parent_ids--> arch:* --parent_ids--> leaf. Correct parent is specific, not hub root.</div></div>` : ""}
     ${skillHtml}
     ${playbookHtml}
     ${(() => {
@@ -2433,6 +2442,12 @@ async function updateNodeSource(nodeId, source) {
 window.removeTag = removeTag;
 window.addTag = addTag;
 window.updateNodeSource = updateNodeSource;
+window.showDetailPanel = showDetailPanel;
+window.showDetailPanelById = (id) => {
+  const n = (window.nodeData || []).find(x => x.id === id);
+  if (n) { showDetailPanel(n); if (window.sceneCtrl) window.sceneCtrl.focusOnNode(id); return; }
+  fetch(`/api/nodes/${encodeURIComponent(id)}?scope=all`).then(r => r.ok ? r.json() : null).then(node => { if (node) showDetailPanel(node); }).catch(()=>{});
+};
 
 async function injectNode(node) {
   const statusEl = document.getElementById("inject-status");

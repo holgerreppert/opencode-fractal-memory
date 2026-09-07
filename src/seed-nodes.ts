@@ -284,9 +284,17 @@ Why they hurt: waste token budget, bury relevant results, degrade retrieval prec
   → USE for session-scoped traces that decay automatically
 
 ### Quick Decision Tree
-Will this help future-you? → YES → Is it already in a file? → NO → Store (semantic if permanent, episodic if session-scoped)
+Will this help future-you? → YES → Is it already in a file? → NO → Route below, then store (semantic if permanent, episodic if session-scoped)
 Will this help future-you? → YES → Is it already in a file? → YES → Store only as a summary/reference, not the full content
 Will this help future-you? → NO → Skip it
+
+### Hub Routing (decide BEFORE every set — flat memory_set is NOT the default)
+- Structural knowledge (architecture, decision, convention, fix, lesson, bug root cause, config gotcha, layer map) → project_hub: search + network → set under the most specific parent (never flat memory_set; wrong position = not found).
+- Session trace only (event/note/session/task/plan/debug-investigation) → flat memory_set with episodic type.
+- If you already stored structural knowledge flat, reposition it into the hub and delete the flat duplicate — never keep both.
+
+### Rate What You Used (close the usefulness loop — the bank never learns silently)
+- After auto-injected memories influence (or pollute) your answer, judge them: learn(mode="rate", label="<label>", helpful=true|false) — true = timesHelpful+1, false = usefulness −0.5. The injected block lists its entries; one call per entry. The automatic loop also judges by observed drilldown/citation, but explicit votes are stronger and immediate.
 
 ### Mandatory Summary + Keywords (BM25 hub network)
 Every \`memory_set\`/\`memory(mode="set")\` MUST include:

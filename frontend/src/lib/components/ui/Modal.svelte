@@ -18,7 +18,7 @@
 			<button class="btn btn-sm preset-tonal rounded-full" onclick={close}>✕</button>
 		</div>
 		<div class="overflow-auto flex-1 p-2 md:p-4 bg-white/60 dark:bg-surface-900/40">{@render children?.()}</div>
-		{#if !isFull}<button class="absolute bottom-1 right-1 w-8 h-8 cursor-nwse-resize opacity-50 hover:opacity-100 text-xs grid place-items-center select-none bg-surface-200 rounded" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} title="Drag to resize x/y">◢</button>{/if}
+		{#if !isFull}<button class="absolute bottom-1 right-1 w-8 h-8 cursor-nwse-resize opacity-80 hover:opacity-100 text-xs grid place-items-center select-none bg-surface-200 rounded" role="button" aria-label="Drag to resize" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} title="Drag to resize x/y">◢</button>{/if}
 	</div>
 </div>
 {/if}

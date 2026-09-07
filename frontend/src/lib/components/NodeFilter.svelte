@@ -4,6 +4,8 @@
   function onSearch() { nodesStore.search(q); }
 </script>
 
-<input bind:value={q} placeholder="Search memories" />
-<button onclick={onSearch}>Search</button>
-<button onclick={() => { q=''; nodesStore.load(); }}>Clear</button>
+<div class="flex gap-2">
+  <input bind:value={q} class="input text-sm flex-1" placeholder="Search memories" />
+  <button class="btn btn-sm preset-tonal" onclick={onSearch}>Search</button>
+  <button class="btn btn-sm preset-tonal" onclick={() => { q=''; nodesStore.load(); }}>Clear</button>
+</div>

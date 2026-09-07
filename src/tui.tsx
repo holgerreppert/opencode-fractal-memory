@@ -5,6 +5,13 @@ import * as path from "node:path"
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 import { getLatestPressureSync } from "./storage/sync-pressure"
 
+declare namespace JSX {
+  interface IntrinsicElements {
+    box: any;
+    text: any;
+  }
+}
+
 const CONTEXT_LIMIT = 128000
 
 function getMgmt() {
@@ -69,7 +76,7 @@ export const tui: TuiPlugin = async (api, options) => {
   api.slots.register({
     order: 50,
     slots: {
-      sidebar_content(ctx) {
+      sidebar_content(ctx: any) {
         const skin = ctx.theme.current
         const m = getMgmt()
         const p = getPressure()

@@ -4,5 +4,9 @@
   "nav.graph": "Graph",
   "nav.injections": "Injections",
   "nav.settings": "Settings",
+  "nav.context": "Context",
+  "nav.quality": "Quality",
+  "nav.live": "Live",
+  "nav.backup": "Backup",
   "app.title": "Fractal Memory"
 }

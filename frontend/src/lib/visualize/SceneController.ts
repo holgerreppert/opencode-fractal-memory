@@ -392,15 +392,19 @@ export class SceneController {
 	}
 
 	buildFromData(data: any[], mode = 'shell') {
+		(this as any)._edgeSeen = new Set<string>();
 		this.clear();
 		this.layoutMode = mode;
 		if (!data.length) { Logger.debug('[scene] no data'); return; }
-		if (mode === 'shell') this.computeShell(data);
+		if (mode === 'hub') this.computeHubLayout(data);
+		else if (mode === 'shell') this.computeShell(data);
 		else if (mode === 'type-cluster') this.computeTypeCluster(data);
 		else if (mode === 'brain') this.showBrainLayout(data);
 		else this.computeForce(data);
 		this.createMeshes(data);
-		Logger.debug('[scene] built', data.length, 'mode', mode);
+		// always render parentIds edges — hub connections + general
+		this.buildParentEdges(data);
+		Logger.debug('[scene] built', data.length, 'mode', mode, 'edges', this.edgeObjects.length);
 	}
 
 	computeShell(data: any[]) {
@@ -432,6 +436,76 @@ export class SceneController {
 
 	computeForce(data: any[]) {
 		data.forEach((n, i) => { this.nodePositions.set(n.id, fibonacciSphere(i, data.length, 80, THREE)); this.nodeVelocities.set(n.id, new THREE.Vector3(0, 0, 0)); });
+	}
+
+	// hub — crystal-clear fine-grained network: hub center → L1 arch/convention ring → L2 leaves per-parent clusters + others on outer shell
+	computeHubLayout(data: any[]) {
+		const hub = data.find((n:any) => n.label === 'fact:opencode-fractal-memory-hub') || data.find((n:any) => n.label?.includes('fractal-memory-hub'));
+		if (!hub) { this.computeShell(data); return; }
+		const children = data.filter((n:any) => {
+			const pids:string[] = n.parentIds ?? (n as any).parent_ids ?? [];
+			return pids.includes(hub.id) || pids.includes(hub.label);
+		});
+		const childIds = new Set(children.map((c:any) => c.id));
+		const childLabels = new Set(children.map((c:any) => c.label));
+		const leaves = data.filter((n:any) => {
+			if (n.id === hub.id || childIds.has(n.id)) return false;
+			const pids:string[] = n.parentIds ?? (n as any).parent_ids ?? [];
+			return pids.some((pid:string) => childIds.has(pid) || childLabels.has(pid));
+		});
+		// hub at origin — hub-filtered view: ONLY hub → L1 → L2 (no others, per user)
+		this.nodePositions.set(hub.id, new THREE.Vector3(0, 0, 0)); this.nodeVelocities.set(hub.id, new THREE.Vector3(0,0,0));
+		// L1 ring around hub — radius 95
+		children.forEach((c:any, i:number) => {
+			const p = fibonacciSphere(i, children.length || 1, 95, THREE);
+			this.nodePositions.set(c.id, p); this.nodeVelocities.set(c.id, new THREE.Vector3(0,0,0));
+		});
+		// L2 leaves clustered around their L1 parent (radius 28, fibonacci per parent)
+		const leavesByParent: Record<string, any[]> = {};
+		for (const l of leaves) {
+			const pids:string[] = (l.parentIds ?? (l as any).parent_ids ?? []) as string[];
+			const parentId = children.find((c:any) => pids.includes(c.id) || pids.includes(c.label))?.id || children[0]?.id;
+			if (!parentId) continue;
+			(leavesByParent[parentId] ??= []).push(l);
+		}
+		for (const [pid, list] of Object.entries(leavesByParent)) {
+			const center = this.nodePositions.get(pid) ?? new THREE.Vector3(0,0,0);
+			list.forEach((l:any, i:number) => {
+				const local = fibonacciSphere(i, list.length || 1, 28, THREE);
+				const pos = new THREE.Vector3().copy(center).add(local);
+				const dir = pos.clone().normalize().multiplyScalar(2);
+				pos.add(dir);
+				this.nodePositions.set(l.id, pos); this.nodeVelocities.set(l.id, new THREE.Vector3(0,0,0));
+			});
+		}
+		this.shellRadii = {};
+		Logger.debug('[scene] hub layout (filtered)', { hub: hub.label, children: children.length, leaves: leaves.length });
+	}
+
+	// synthetic edges from parentIds — always shown (hub + general connections)
+	buildParentEdges(data: any[]) {
+		const idSet = new Set(data.map((n:any)=>n.id));
+		const labelToId = new Map(data.map((n:any)=> [n.label, n.id] as const));
+		let added = 0;
+		for (const n of data) {
+			const pids:string[] = n.parentIds ?? (n as any).parent_ids ?? [];
+			for (const pid of pids) {
+				const src = labelToId.get(pid) ?? pid;
+				if (!idSet.has(src) || src === n.id) continue;
+				const sp = this.nodePositions.get(src), tp = this.nodePositions.get(n.id);
+				if (!sp || !tp) continue;
+				// avoid duplicating if buildEdges already added this pair
+				const key = `${src}->${n.id}`;
+				if ((this as any)._edgeSeen?.has(key)) continue;
+				const g = new THREE.BufferGeometry().setFromPoints([sp.clone(), tp.clone()]);
+				const isHubEdge = src === data.find((x:any)=>x.label==='fact:opencode-fractal-memory-hub')?.id || pid === 'fact:opencode-fractal-memory-hub';
+				const m = new THREE.LineBasicMaterial({ color: isHubEdge ? 0x4a9eff : 0x888888, transparent: true, opacity: isHubEdge ? 0.85 : 0.28 });
+				const line = new THREE.Line(g, m); (line as any).userData = { source: src, target: n.id, edgeType: 'parent' };
+				this.scene.add(line); this.edgeObjects.push(line); added++;
+				((this as any)._edgeSeen ??= new Set()).add(key);
+			}
+		}
+		if (added) Logger.debug('[scene] parent edges', added);
 	}
 
 	// EXACT 1:1 from app.js _showBrainLayout — nodes INSIDE lobes, not shells

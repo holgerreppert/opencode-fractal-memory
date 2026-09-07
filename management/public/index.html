@@ -532,6 +532,7 @@
 
         <div class="tab-group-label">DATA</div>
         <button class="tab-btn" data-tab="graph">Graph</button>
+        <button class="tab-btn" data-tab="hub">Hub</button>
 
         <div class="tab-group-label">LIVE</div>
         <button class="tab-btn" data-tab="live-agent">Live Agent</button>
@@ -797,6 +798,48 @@
     <div id="loading">Loading memory nodes...</div>
 
     <button class="toggle-sidebar" id="toggle-sidebar">☰</button>
+
+    <!-- Hub Panel — fine-grained positioned network -->
+    <div id="hub-panel" class="main-tab-panel" x-data="hubPanel" x-init="loadHub()">
+      <div class="section">
+        <h3>Project Hub — crystal-clear fine-grained network</h3>
+        <p style="color:#888;font-size:12px;margin-bottom:12px;">L0 hub <code>fact:opencode-fractal-memory-hub</code> → L1 arch/convention → L2 lesson/fix. Position is central — correct parent is specific, not hub root. Each node: summary (BM25 1×) + keywords (BM25 ×2) + parent_ids vector.</p>
+        <div x-show="loading" style="text-align:center;padding:20px;color:#666;">Loading hub...</div>
+        <div x-show="error" style="color:#f44;font-size:12px;padding:10px;background:rgba(255,0,0,0.1);border-radius:6px;" x-text="error"></div>
+        <template x-if="!loading && hub">
+          <div>
+            <div style="padding:12px;background:rgba(74,158,255,0.08);border:1px solid rgba(74,158,255,0.3);border-radius:8px;margin-bottom:16px;">
+              <div style="font-weight:700;font-size:13px;"><span x-text="hub.label"></span> <span style="font-size:10px;background:#4a9eff;color:#fff;padding:2px 6px;border-radius:10px;" x-text="hub.type"></span></div>
+              <div x-show="hub.summary" style="font-size:12px;color:#ccc;margin-top:6px;padding:8px;background:rgba(0,0,0,0.2);border-radius:4px;" x-text="hub.summary"></div>
+              <div x-show="hub.keywords" style="font-size:11px;color:#a05aff;font-family:monospace;margin-top:4px;" x-text="'Keywords (BM25 ×2): ' + hub.keywords"></div>
+            </div>
+            <h4 style="font-size:13px;margin:16px 0 8px 0;">L1 — Structural map (<span x-text="children.length"></span>)</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+              <template x-for="c in children" :key="c.id">
+                <div style="padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.03);">
+                  <div style="font-size:12px;font-weight:600;"><span x-text="c.label"></span> <span style="font-size:10px;background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:10px;" x-text="c.type"></span></div>
+                  <div x-show="c.summary" style="font-size:11px;color:#aaa;margin-top:4px;" x-text="c.summary"></div>
+                  <div x-show="c.keywords" style="font-size:10px;color:#888;font-family:monospace;margin-top:2px;" x-text="c.keywords"></div>
+                  <div style="font-size:10px;color:#666;font-family:monospace;margin-top:4px;word-break:break-all;" x-text="'parent_ids: ' + (c.parentIds || []).join(' → ').slice(0,60)"></div>
+                  <div style="margin-top:6px;"><span style="font-size:10px;color:#4a9eff;cursor:pointer;" @click="showNode(c.id)">View →</span></div>
+                </div>
+              </template>
+            </div>
+            <h4 style="font-size:13px;margin:16px 0 8px 0;">L2 — Leaves under L1 (<span x-text="leaves.length"></span>)</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <template x-for="l in leaves" :key="l.id">
+                <div style="padding:10px;border:1px solid rgba(160,90,255,0.2);border-radius:8px;background:rgba(160,90,255,0.05);">
+                  <div style="font-size:12px;font-weight:600;"><span x-text="l.label"></span> <span style="font-size:10px;background:#a05aff;color:#fff;padding:1px 5px;border-radius:10px;" x-text="l.type"></span></div>
+                  <div x-show="l.summary" style="font-size:11px;color:#aaa;margin-top:4px;" x-text="l.summary"></div>
+                  <div style="font-size:10px;color:#666;font-family:monospace;margin-top:4px;word-break:break-all;" x-text="(l.parentIds || []).join(' → ')"></div>
+                </div>
+              </template>
+            </div>
+            <div x-show="leaves.length===0" style="font-size:11px;color:#666;margin-top:8px;">No leaves yet — create via <code>project_hub(set, parent_ids="arch:specific,fact:opencode-fractal-memory-hub")</code></div>
+          </div>
+        </template>
+      </div>
+    </div>
 
     <!-- Dashboard Panel -->
     <div id="dashboard-panel" class="main-tab-panel" x-data="dashboardPanel">
