@@ -17,9 +17,9 @@ interface MockCalls {
 function makeStore(overrides?: Partial<MemoryStore>): { store: MemoryStore; calls: MockCalls } {
   const calls: MockCalls = { searchByEmbedding: 0, searchBM25: 0, searchText: 0 };
   const store = {
-    searchByEmbedding: async () => { calls.searchByEmbedding++; return [node("e1")]; },
-    searchBM25: async () => { calls.searchBM25++; return [node("b1")]; },
-    searchText: async () => { calls.searchText++; return [node("t1")]; },
+    searchByEmbedding: async () => { calls.searchByEmbedding++; return [{ node: node("e1"), score: 0.8 }]; },
+    searchBM25: async () => { calls.searchBM25++; return [{ node: node("b1"), score: 0.6 }]; },
+    searchText: async () => { calls.searchText++; return [{ node: node("t1"), score: 0.4 }]; },
     ...overrides,
   } as unknown as MemoryStore;
   return { store, calls };
@@ -74,7 +74,7 @@ describe("searchNodes facade", () => {
   test("passes through filters/rrf/temporal options to searchByEmbedding", async () => {
     let capturedOpts: unknown;
     const store = makeStore({
-      searchByEmbedding: async (_q: number[], _l: number, opts: unknown) => { capturedOpts = opts; return [node("e1")]; },
+      searchByEmbedding: async (_q: number[], _l: number, opts: unknown) => { capturedOpts = opts; return [{ node: node("e1"), score: 0.8 }]; },
     }).store;
     await searchNodes(store, async () => EMB, "query", {
       mode: "hybrid",

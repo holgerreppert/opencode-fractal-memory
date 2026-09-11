@@ -1,0 +1,61 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - heading "Fractal Memory" [level=1] [ref=f4e3]
+    - generic [ref=f4e4]: 3D Node Visualization
+    - button "Visualize ▾" [ref=f4e6] [cursor=pointer]:
+      - generic [ref=f4e7]: Visualize
+      - generic [ref=f4e8]: ▾
+    - generic [ref=f4e9]:
+      - generic [ref=f4e10]:
+        - heading "Scope" [level=3] [ref=f4e11]
+        - button "project (all) ▾" [ref=f4e13] [cursor=pointer]:
+          - generic [ref=f4e14]: project (all)
+          - generic [ref=f4e15]: ▾
+      - generic [ref=f4e16]:
+        - textbox "Search memory..." [ref=f4e18]
+        - generic [ref=f4e19]:
+          - combobox [ref=f4e20]:
+            - option "Auto" [selected]
+            - option "Text"
+            - option "Semantic"
+            - option "BM25"
+          - button "Search" [ref=f4e21] [cursor=pointer]
+      - generic [ref=f4e22]:
+        - heading "Layout" [level=3] [ref=f4e23]
+        - generic [ref=f4e24]:
+          - button "Shell" [ref=f4e25] [cursor=pointer]
+          - button "Type" [ref=f4e26] [cursor=pointer]
+          - button "Brain" [ref=f4e27] [cursor=pointer]
+          - button "Force" [ref=f4e28] [cursor=pointer]
+      - heading "Filters ▶" [level=3] [ref=f4e30] [cursor=pointer]:
+        - text: Filters
+        - generic [ref=f4e31]: ▶
+      - generic [ref=f4e32]:
+        - heading "Nodes (0)" [level=3] [ref=f4e33]
+        - generic [ref=f4e34]:
+          - combobox [ref=f4e35]:
+            - option "Importance" [selected]
+            - option "Created"
+            - option "Updated"
+            - option "Last accessed"
+            - option "Label"
+            - option "Level"
+            - option "Type"
+            - option "Confidence"
+          - button "▼" [ref=f4e36] [cursor=pointer]
+        - generic [ref=f4e37]: No matching nodes
+      - generic [ref=f4e40]:
+        - heading "Legend" [level=3] [ref=f4e41]
+        - button "ⓘ" [ref=f4e42] [cursor=pointer]
+  - generic [ref=f4e45]: Loading memory nodes...
+  - generic [ref=f4e51]:
+    - heading [level=2]
+    - generic [ref=f4e52]:
+      - button "→ Agent" [ref=f4e53] [cursor=pointer]
+      - button "Enter fullscreen" [ref=f4e54] [cursor=pointer]
+      - button "✎" [ref=f4e57] [cursor=pointer]
+      - button "🗑" [ref=f4e58] [cursor=pointer]
+      - button "×" [ref=f4e59] [cursor=pointer]
+  - generic [ref=f4e60]:
+    - button "×" [ref=f4e61] [cursor=pointer]
+    - heading [level=2]

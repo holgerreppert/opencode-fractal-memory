@@ -102,19 +102,21 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       if (args.type !== undefined) options.typeFilter = args.type as MemoryNodeType;
       if (args.temporal_hops !== undefined && args.temporal_hops > 0) options.temporalHops = args.temporal_hops;
 
-      let nodes = await searchNodes(store, generateEmbedding, args.query, {
+      let results = await searchNodes(store, generateEmbedding, args.query, {
         ...options,
         limit: args.limit ?? 10,
       });
 
       // Boost usefulness of retrieved nodes
-      for (const node of nodes) {
-        const newScore = Math.min(5, (node.usefulnessScore ?? 0) + 0.03);
-        store.updateNode(node.id, { usefulnessScore: newScore }).catch(() => {/* node may be deleted concurrently */});
+      for (const r of results) {
+        const newScore = Math.min(5, (r.node.usefulnessScore ?? 0) + 0.03);
+        store.updateNode(r.node.id, { usefulnessScore: newScore }).catch(() => {/* node may be deleted concurrently */});
       }
 
       lastSearchResults.length = 0;
-      lastSearchResults.push(...nodes.map(n => ({ id: n.id, label: n.label ?? undefined, scope: n.scope })));
+      lastSearchResults.push(...results.map(r => ({ id: r.node.id, label: r.node.label ?? undefined, scope: r.node.scope })));
+
+      let nodes = results.map(r => r.node);
 
       if (args.expand_links !== false && nodes.length > 0) {
         const expandLimit = (args.limit ?? 10) + 5;
@@ -169,6 +171,8 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
         return "No matching memory found. Try different keywords.";
       }
 
+      const scoreMap = new Map(results.map(r => [r.node.id, r.score]));
+
       const lines: string[] = [
         `## Memory Search Results (${nodes.length} matches)`,
         "",
@@ -179,7 +183,8 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
           const linkInfo = (n as unknown as { linkedFrom?: string }).linkedFrom
             ? ` [linked from ${(n as unknown as { linkedFrom: string }).linkedFrom}]`
             : "";
-          const matchPct = (n.importance! * 100).toFixed(0);
+          const score = scoreMap.get(n.id) ?? n.importance ?? 0;
+          const matchPct = (score * 100).toFixed(0);
           const label = n.label ?? n.id.slice(0, 8);
           const catTag = n.category ? ` [${n.category}]` : "";
           const domainTag = n.domain ? ` [${n.domain}]` : "";

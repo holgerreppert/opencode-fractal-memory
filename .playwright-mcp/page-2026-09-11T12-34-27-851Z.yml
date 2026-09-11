@@ -1,0 +1,171 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - navigation [ref=e6]:
+        - generic [ref=e7]:
+          - generic [ref=e8]: Fractal Memory
+          - generic [ref=e9]: 3D Node Visualization
+      - navigation [ref=e10]:
+        - navigation [ref=e11]:
+          - link "Visualize" [ref=e12] [cursor=pointer]:
+            - /url: /
+          - link "Hub" [ref=e13] [cursor=pointer]:
+            - /url: /hub
+          - link "Dashboard" [ref=e14] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Context" [ref=e15] [cursor=pointer]:
+            - /url: /context
+          - link "Quality" [ref=e16] [cursor=pointer]:
+            - /url: /quality
+          - link "Graph" [ref=e17] [cursor=pointer]:
+            - /url: /graph
+          - link "Memory" [ref=e18] [cursor=pointer]:
+            - /url: /memory
+          - link "Live" [ref=e19] [cursor=pointer]:
+            - /url: /live
+          - link "Settings" [ref=e20] [cursor=pointer]:
+            - /url: /settings
+          - link "Backup" [ref=e21] [cursor=pointer]:
+            - /url: /backup
+        - generic [ref=e22]:
+          - generic [ref=e23]: "Theme:"
+          - combobox [ref=e24]:
+            - option "Cerberus" [selected]
+            - option "Catppuccin"
+            - option "Concord"
+            - option "Crimson"
+            - option "Dracula"
+            - option "Fennec"
+            - option "Hamlindigo"
+            - option "Legacy"
+            - option "Mint"
+            - option "Modern"
+            - option "Mona"
+            - option "Nosh"
+            - option "Nouveau"
+            - option "Pine"
+            - option "Reign"
+            - option "Rocket"
+            - option "Rose"
+            - option "Rosepine"
+            - option "Sahara"
+            - option "Seafoam"
+            - option "Terminus"
+            - option "Vintage"
+            - option "Vox"
+            - option "Wintry"
+  - generic [ref=e26]:
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic: 🔍
+        - textbox "Search memory… (hybrid)" [ref=e29]: intent
+        - generic [ref=e30]:
+          - button "✕" [ref=e119]
+          - generic "hybrid" [ref=e31]: ↩ hybrid
+      - combobox [ref=e32]:
+        - option "all"
+        - option "global"
+        - option "project (current)" [selected]
+        - option "abeba"
+        - option "bewerberapp"
+        - option "cvapp"
+        - option "fitko"
+        - option "loco"
+        - option "nextcloud"
+        - option "odoo"
+        - option "opencode-agent-memory-main"
+        - option "wasgehtbesser"
+      - generic [ref=e33]:
+        - combobox "Search mode" [ref=e34]:
+          - option "hybrid" [selected]
+          - option "bm25"
+          - option "text"
+        - button "hub" [ref=e35]
+        - button "shell" [ref=e36]
+        - button "type-cluster" [ref=e37]
+        - button "brain" [ref=e38]
+        - button "force" [ref=e39]
+      - generic [ref=e40]:
+        - button "knowledge 23" [active] [ref=e120]:
+          - text: knowledge
+          - generic [ref=e52]: "23"
+        - button "research 17" [ref=e121]:
+          - text: research
+          - generic [ref=e46]: "17"
+        - button "fix 11" [ref=e122]:
+          - text: fix
+          - generic [ref=e54]: "11"
+        - button "decision 6" [ref=e57]:
+          - text: decision
+          - generic [ref=e58]: "6"
+        - button "summary 6" [ref=e123]:
+          - text: summary
+          - generic [ref=e64]: "6"
+        - button "architecture 6" [ref=e124]:
+          - text: architecture
+          - generic [ref=e48]: "6"
+        - button "rule 6" [ref=e125]:
+          - text: rule
+          - generic [ref=e74]: "6"
+        - button "implementation 6" [ref=e126]:
+          - text: implementation
+          - generic [ref=e62]: "6"
+        - button "fact 3" [ref=e127]:
+          - text: fact
+          - generic [ref=e50]: "3"
+        - button "lesson 3" [ref=e128]:
+          - text: lesson
+          - generic [ref=e94]: "3"
+        - button "howto 3" [ref=e129]:
+          - text: howto
+          - generic [ref=e60]: "3"
+        - button "dot 2" [ref=e130]:
+          - text: dot
+          - generic [ref=e131]: "2"
+        - button "convention 2" [ref=e132]:
+          - text: convention
+          - generic [ref=e66]: "2"
+        - button "concept 1" [ref=e133]:
+          - text: concept
+          - generic [ref=e134]: "1"
+        - button "pattern 1" [ref=e135]:
+          - text: pattern
+          - generic [ref=e136]: "1"
+        - button "core 1" [ref=e137]:
+          - text: core
+          - generic [ref=e138]: "1"
+        - button "skill 1" [ref=e89]:
+          - text: skill
+          - generic [ref=e90]: "1"
+        - button "preference 1" [ref=e139]:
+          - text: preference
+          - generic [ref=e140]: "1"
+        - button "plan 1" [ref=e141]:
+          - text: plan
+          - generic [ref=e44]: "1"
+        - button "L0 99" [ref=e142]:
+          - text: L0
+          - generic [ref=e98]: "99"
+        - button "L1 1" [ref=e143]:
+          - text: L1
+          - generic [ref=e100]: "1"
+        - button "Clear" [ref=e145]
+      - generic [ref=e101]:
+        - generic [ref=e102]: 7 / 100
+        - button "List (7)" [ref=e146]
+    - generic [ref=e104]:
+      - generic [ref=e105]:
+        - button "⛶ Fullscreen" [ref=e108]
+        - generic:
+          - generic: 7 · hub
+          - generic: Fractal Memory · hub · project
+      - generic [ref=e110]:
+        - button "Legend ▸" [ref=e111]
+        - generic [ref=e112]: Levels 0–5 · 8 shapes · dot ◈
+  - contentinfo [ref=e113]:
+    - generic [ref=e114]: Fractal Memory · 2026 · opencode-fractal-memory
+    - generic [ref=e115]:
+      - link "Alpine :8787" [ref=e116] [cursor=pointer]:
+        - /url: http://127.0.0.1:8787/
+      - link "Svelte :8788" [ref=e117] [cursor=pointer]:
+        - /url: http://127.0.0.1:8788/

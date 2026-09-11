@@ -28,7 +28,7 @@ async function handleSearch(args: Record<string, unknown>) {
     };
     if (projectName !== undefined) opts.projectName = projectName;
     const nodes = await searchNodes(store, generateEmbedding, q, opts);
-    return { content: [{ type: "text" as const, text: JSON.stringify(nodes.map(n => nodeToPlain(n)), null, 2) }] };
+    return { content: [{ type: "text" as const, text: JSON.stringify(nodes.map(r => nodeToPlain(r.node)), null, 2) }] };
   } catch (e) {
     return {
       content: [{ type: "text" as const, text: `Error: ${e instanceof Error ? e.message : String(e)}` }],

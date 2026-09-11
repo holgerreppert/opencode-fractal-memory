@@ -328,7 +328,7 @@ export class SceneController {
 		this.raycaster.setFromCamera(this.mouse, this.camera);
 		const meshes = this.nodeObjects.filter((o) => (o as any).isMesh);
 		const hits = this.raycaster.intersectObjects(meshes as any);
-		const tip = document.getElementById('tooltip');
+		const tip = (this as any).tooltipEl ?? document.getElementById('tooltip');
 		let brainHit: any = null;
 		if (this.brainMeshGroup && this.layoutMode === 'brain') {
 			const brainMeshes: THREE.Mesh[] = []; this.brainMeshGroup.traverse((c: any) => { if (c.isMesh) brainMeshes.push(c); });

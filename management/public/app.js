@@ -2171,7 +2171,11 @@ async function renderDotDiagram(dotSource) {
     if (!dotVizInstance) {
       dotVizInstance = await Viz.instance();
     }
-    const out = dotVizInstance.renderSVGElement(dotSource, { engine: "dot" });
+    let fixed = dotSource.replace(/\["([^"]*?)"\]/g, '[label="$1"]').replace(/"([^"]*)"/g, (_, inner) => '"' + inner.replace(/\n/g, '\\n') + '"');
+    fixed = fixed.replace(/-->/g, '->').replace(/<--/g, '<-');
+    fixed = fixed.replace(/(\w[\w.]*)\s*->\s*\|("[^"]*")\|\s*(\w[\w.]*)/g, '$1 -> $3 [label=$2]');
+    fixed = fixed.replace(/(\w[\w.]*)\s*<-\s*\|("[^"]*")\|\s*(\w[\w.]*)/g, '$1 <- $3 [label=$2]');
+    const out = dotVizInstance.renderSVGElement(fixed, { engine: "dot" });
     const viewBox = out.getAttribute("viewBox");
     const preserveAspectRatio = out.getAttribute("preserveAspectRatio");
     if (viewBox) svg.setAttribute("viewBox", viewBox);

@@ -24,11 +24,32 @@ class NodesStore {
     for (const n of this.nodes) m[String(n.level ?? '?')] = (m[String(n.level ?? '?')] ?? 0) + 1;
     return m;
   });
+  // chip filters — client-side, like NodeFilterEngine levels/types
+  activeTypes = $state<Set<string>>(new Set());
+  activeLevels = $state<Set<number>>(new Set());
+
   filtered = $derived.by(() => {
-    const q = this.query.trim().toLowerCase();
-    if (!q) return this.nodes;
-    return this.nodes.filter((n) => (n.label + n.content).toLowerCase().includes(q));
+    let arr = this.nodes;
+    if (this.activeTypes.size) arr = arr.filter((n) => this.activeTypes.has(n.type ?? 'unknown'));
+    if (this.activeLevels.size) arr = arr.filter((n) => this.activeLevels.has(n.level ?? -1));
+    return arr;
   });
+
+  toggleType(t: string) {
+    if (this.activeTypes.has(t)) this.activeTypes.delete(t); else this.activeTypes.add(t);
+    // Force svelte reactivity for Set mutations
+    this.activeTypes = new Set(this.activeTypes);
+    Logger.debug('[filter] types', [...this.activeTypes]);
+  }
+  toggleLevel(l: number) {
+    if (this.activeLevels.has(l)) this.activeLevels.delete(l); else this.activeLevels.add(l);
+    this.activeLevels = new Set(this.activeLevels);
+    Logger.debug('[filter] levels', [...this.activeLevels]);
+  }
+  clearFilters() {
+    this.activeTypes = new Set();
+    this.activeLevels = new Set();
+  }
 
   async loadScopes() {
     try {
@@ -59,17 +80,23 @@ class NodesStore {
     }
   }
 
-  async search(q: string, opts: { scope?: string } = {}) {
+  searchMode = $state<'hybrid' | 'bm25' | 'text'>('hybrid');
+
+  async search(q: string, opts: { scope?: string; mode?: 'hybrid' | 'bm25' | 'text' } = {}) {
     this.query = q;
+    if (opts.mode) this.searchMode = opts.mode;
+    this.activeTypes = new Set();
+    this.activeLevels = new Set();
     if (!q.trim()) return this.load(opts);
     this.loading = true;
     const t0 = performance.now();
     try {
       const sc = opts.scope ?? this.scope;
-      const res: any = await api.search(q, sc);
+      const m = opts.mode ?? this.searchMode;
+      const res: any = await api.search(q, sc, m);
       const arr = Array.isArray(res) ? res : (res.results ?? res.nodes ?? []);
       this.nodes = arr as Node[];
-      Logger.debug('[nodes] search', q, sc, this.nodes.length, (performance.now() - t0).toFixed(0) + 'ms');
+      Logger.debug('[nodes] search', q, sc, m, this.nodes.length, (performance.now() - t0).toFixed(0) + 'ms');
       Logger.inspect('search results', this.nodes.slice(0, 2));
     } catch (e) {
       this.error = String(e);
@@ -86,6 +113,8 @@ class NodesStore {
       this.scope = raw as any;
       this.currentProject = projectName;
     }
+    this.activeTypes = new Set();
+    this.activeLevels = new Set();
     this.load({ scope: this.scope, projectName: this.currentProject });
   }
 }

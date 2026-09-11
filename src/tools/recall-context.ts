@@ -33,11 +33,11 @@ export function MemoryRecallContext(store: MemoryStore) {
         nodes = nodes.slice(0, limit);
       } else if (args.query) {
         const queryEmbedding = await generateEmbedding(args.query);
-        nodes = await store.searchByEmbedding(queryEmbedding, limit, {
+        nodes = (await store.searchByEmbedding(queryEmbedding, limit, {
           typeFilter: "contexthistory" as MemoryNodeType,
           queryText: args.query,
           ...(projectName !== undefined ? { projectName } : {}),
-        });
+        })).map(r => r.node);
       } else {
         const allNodes = await store.listNodes("all");
         nodes = allNodes

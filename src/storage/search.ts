@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, MemorySubtask } from "../domain/ports/MemoryStore";
+import type { SearchResult } from "../domain/ports/SearchStore";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
 import { getHNSWIndex } from "../infrastructure/vector/hnsw-index";
@@ -460,7 +461,7 @@ export async function getDrilldownPath(
 export async function drilldownQuery(
   deps: {
     getDb: (scope: MemoryScope) => Promise<Database>;
-    searchByEmbedding: (query: number[], limit: number, options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; projectName?: string | undefined }) => Promise<MemoryNode[]>;
+    searchByEmbedding: (query: number[], limit: number, options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; projectName?: string | undefined }) => Promise<SearchResult[]>;
     getDrilldownPath: (nodeId: string, maxDepth: number) => Promise<MemoryNode[]>;
   },
   query: string,
@@ -477,21 +478,21 @@ export async function drilldownQuery(
   // ×0.8/×0.6 leg weights silently ranked high-importance L1 nodes above any
   // query relevance (the "same 3 nodes every time" injection bug).
   const summaries = await deps.searchByEmbedding(queryEmbedding, 5, { minLevel: 2, maxLevel: 4, projectName });
-  for (const node of summaries) {
+  for (const { node, score } of summaries) {
     if (seenIds.has(node.id)) continue;
     seenIds.add(node.id);
 
     const path = (await deps.getDrilldownPath(node.id, 3)).filter(n => !isDumpNode(n));
     results.push({
       node,
-      relevance: node.importance ?? 0,
+      relevance: score,
       path,
       level: "summary",
     });
   }
 
   const intermediates = await deps.searchByEmbedding(queryEmbedding, 10, { minLevel: 1, maxLevel: 1, projectName });
-  for (const node of intermediates) {
+  for (const { node, score } of intermediates) {
     if (seenIds.has(node.id)) continue;
     if (results.length >= maxResults) break;
     seenIds.add(node.id);
@@ -499,21 +500,21 @@ export async function drilldownQuery(
     const path = (await deps.getDrilldownPath(node.id, 2)).filter(n => !isDumpNode(n));
     results.push({
       node,
-      relevance: node.importance ?? 0,
+      relevance: score,
       path,
       level: "intermediate",
     });
   }
 
   const details = await deps.searchByEmbedding(queryEmbedding, maxResults, { minLevel: 0, maxLevel: 0, projectName });
-  for (const node of details) {
+  for (const { node, score } of details) {
     if (seenIds.has(node.id)) continue;
     if (results.length >= maxResults) break;
     seenIds.add(node.id);
 
     results.push({
       node,
-      relevance: node.importance ?? 0,
+      relevance: score,
       path: [node],
       level: "detail",
     });

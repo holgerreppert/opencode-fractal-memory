@@ -7,6 +7,7 @@ import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, wi
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
 import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
 import type { MemoryStore } from "../domain/ports/MemoryStore";
+import type { SearchResult, SearchFilter, BM25SearchOptions, TextSearchOptions } from "../domain/ports/SearchStore";
 import { queryListNodes, queryListProjectNames, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
 import { querySearchText, querySearchBM25 } from "./queries/node-search";
 import { queryStoreLinks, queryUpdateLinksForNewNode, queryGetLinks, queryDeleteLinks } from "./queries/links";
@@ -272,31 +273,34 @@ class SqliteMemoryStore implements MemoryStore {
     query: number[],
     limit: number = 5,
     options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; rerankMode?: "keyword" | "cross-encoder" | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined; featureWeights?: Partial<RankWeights> | undefined }
-  ): Promise<MemoryNode[]> {
-    return searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
+  ): Promise<SearchResult[]> {
+    const nodes = await searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
+    return nodes.map(n => ({ node: n, score: n.importance }));
   }
 
-  async searchText(scope: MemoryScope | "all", query: string, limit: number = 100, projectName?: string): Promise<MemoryNode[]> {
+  async searchText(scope: MemoryScope | "all", query: string, options?: TextSearchOptions): Promise<SearchResult[]> {
+    const limit = options?.limit ?? 100;
     const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
-    const results: MemoryNode[] = [];
+    const results: SearchResult[] = [];
     for (const s of scopes) {
       const db = await this.getDb(s);
-      results.push(...querySearchText(db, s, query, limit, projectName));
+      results.push(...querySearchText(db, s, query, limit, options?.projectName, options as SearchFilter | undefined));
     }
-    results.sort((a, b) => b.importance - a.importance);
+    results.sort((a, b) => b.score - a.score);
     return results.slice(0, limit);
   }
 
-  async searchBM25(scope: MemoryScope | "all", query: string, limit: number = 100, projectName?: string): Promise<MemoryNode[]> {
+  async searchBM25(scope: MemoryScope | "all", query: string, options?: BM25SearchOptions): Promise<SearchResult[]> {
+    const limit = options?.limit ?? 100;
     const terms = query.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(t => t.length >= 2);
     if (terms.length === 0) return [];
     const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
-    const results: MemoryNode[] = [];
+    const results: SearchResult[] = [];
     for (const s of scopes) {
       const db = await this.getDb(s);
-      results.push(...querySearchBM25(db, s, terms, limit, projectName));
+      results.push(...querySearchBM25(db, s, terms, limit, options?.projectName, options as SearchFilter | undefined));
     }
-    results.sort((a, b) => b.importance - a.importance);
+    results.sort((a, b) => b.score - a.score);
     return results.slice(0, limit);
   }
 

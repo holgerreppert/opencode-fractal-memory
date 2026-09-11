@@ -14,29 +14,29 @@
   let listOpen = $state(false);
   let detailOpen = $state(false);
   onMount(() => nodesStore.load());
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
-    void query;
     const q = query.trim();
+    void nodesStore.searchMode;
+    if (searchTimer) clearTimeout(searchTimer);
     if (q.length >= 2) {
-      Logger.debug('[search] example or anything', q);
-      nodesStore.search(q);
+      searchTimer = setTimeout(() => { nodesStore.search(q, { mode: nodesStore.searchMode }); }, 250);
     } else if (q.length === 0) {
-      nodesStore.load();
+      if (nodesStore.query) { nodesStore.query = ''; nodesStore.clearFilters(); nodesStore.load(); }
     }
+    return () => { if (searchTimer) clearTimeout(searchTimer); };
   });
   function onSelect(n:any){ selected=n; detailOpen=true; Logger.debug('[detail] select', n.label); }
 </script>
 
-<div class="space-y-4">
+<div class="space-y-2">
   <VisualizeFilters bind:query bind:scope bind:layout>
-    <span class="badge preset-tonal">{nodesStore.filtered.length} / {nodesStore.nodes.length}</span>
-    <button class="btn btn-sm preset-tonal" onclick={()=> listOpen=true}>Show list ({nodesStore.filtered.length})</button>
+    <span class="badge preset-tonal text-[10px]">{nodesStore.filtered.length} / {nodesStore.nodes.length}</span>
+    <button class="btn btn-sm preset-tonal h-7 text-xs" onclick={()=> listOpen=true}>List ({nodesStore.filtered.length})</button>
   </VisualizeFilters>
-  <VisualizeCanvas nodes={nodesStore.filtered} layout={layout} onSelect={onSelect} />
-  <VisualizeLegend />
-  <div class="card preset-filled-surface-100 p-3 text-xs opacity-70 flex gap-4">
-    <span>{$t('app.title')} API {nodesStore.loading ? 'loading…' : 'ok'}</span>
-    <span class="ml-auto">Layout: {layout} · Scope: {scope}</span>
+  <div class="relative">
+    <VisualizeCanvas nodes={nodesStore.filtered} layout={layout} onSelect={onSelect} statusLabel="{$t('app.title')} · {layout} · {scope}{nodesStore.loading ? ' · loading' : ''}" />
+    <VisualizeLegend overlay={true} />
   </div>
 </div>
 

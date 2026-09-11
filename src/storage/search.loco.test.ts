@@ -27,12 +27,12 @@ type CategoryMetrics = {
 
 function computeMetrics(
   evidenceLabels: Set<string>,
-  retrieved: MemoryNode[],
+  retrieved: Array<{ node: MemoryNode; score: number }>,
   K: number,
 ): { hitRate: number; recall: number; precision: number; mrr: number } {
   const topK = retrieved.slice(0, K);
-  const hits = topK.filter(n => n.label && evidenceLabels.has(n.label));
-  const firstRelevant = topK.findIndex(n => n.label && evidenceLabels.has(n.label));
+  const hits = topK.filter(r => r.node.label && evidenceLabels.has(r.node.label));
+  const firstRelevant = topK.findIndex(r => r.node.label && evidenceLabels.has(r.node.label));
 
   const hitRate = hits.length > 0 ? 1 : 0;
   const precision = K > 0 ? hits.length / K : 0;

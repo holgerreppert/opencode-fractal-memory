@@ -11,9 +11,9 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="min-h-screen flex flex-col">
+<div class="min-h-screen flex flex-col preset-filled-surface-100">
 	<Header />
-	<div class="flex-1 p-4">
+	<div class="flex-1 p-4 preset-filled-surface-100">
 		{@render children()}
 	</div>
 	<Footer />

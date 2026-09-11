@@ -110,17 +110,17 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
             });
 
             if (newResults.length >= 2) {
-              const newCandidates = newResults.map(n => ({
-                id: n.id,
-                label: n.label ?? "",
-                content: n.content ?? "",
-                importance: n.importance,
-                confidence: n.confidence ?? 0.5,
-                usefulnessScore: n.usefulnessScore ?? 0,
-                accessCount: n.accessCount ?? 0,
-                updatedAt: n.updatedAt,
-                type: n.type,
-                level: n.level,
+              const newCandidates = newResults.map(r => ({
+                id: r.node.id,
+                label: r.node.label ?? "",
+                content: r.node.content ?? "",
+                importance: r.node.importance,
+                confidence: r.node.confidence ?? 0.5,
+                usefulnessScore: r.node.usefulnessScore ?? 0,
+                accessCount: r.node.accessCount ?? 0,
+                updatedAt: r.node.updatedAt,
+                type: r.node.type,
+                level: r.node.level,
               }));
 
               // Re-rerank with the same method

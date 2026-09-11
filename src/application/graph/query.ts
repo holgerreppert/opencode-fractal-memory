@@ -55,17 +55,26 @@ export function callers(graph: CodeGraph, symbolName: string): CallerResult[] {
   const g = graph.graph as any;
   const results: CallerResult[] = [];
   const seen = new Set<string>();
+  const useIn = typeof g.forEachInEdge === "function";
   for (const sym of symbols) {
-    g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
-      const e = _eattrs as unknown as { relation: string };
-      if (target === sym.id && e.relation === "calls") {
-        const key = `${source}→${sym.id}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
-        results.push({ caller: toSymbolRef(source, sAttrs), callee: toSymbolRef(sym.id, sym.attrs) });
-      }
-    });
+    const handle = (source: string) => {
+      const key = `${source}→${sym.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+      results.push({ caller: toSymbolRef(source, sAttrs), callee: toSymbolRef(sym.id, sym.attrs) });
+    };
+    if (useIn) {
+      g.forEachInEdge(sym.id, (_key: string, _eattrs: any, source: string) => {
+        const e = _eattrs as unknown as { relation: string };
+        if (e.relation === "calls") handle(source);
+      });
+    } else {
+      g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
+        const e = _eattrs as unknown as { relation: string };
+        if (target === sym.id && e.relation === "calls") handle(source);
+      });
+    }
   }
   return results;
 }
@@ -76,17 +85,26 @@ export function callees(graph: CodeGraph, symbolName: string): CalleeResult[] {
   const g = graph.graph as any;
   const results: CalleeResult[] = [];
   const seen = new Set<string>();
+  const useOut = typeof g.forEachOutEdge === "function";
   for (const sym of symbols) {
-    g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
-      const e = _eattrs as unknown as { relation: string };
-      if (source === sym.id && e.relation === "calls") {
-        const key = `${sym.id}→${target}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
-        results.push({ caller: toSymbolRef(sym.id, sym.attrs), callee: toSymbolRef(target, tAttrs) });
-      }
-    });
+    const handle = (target: string) => {
+      const key = `${sym.id}→${target}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
+      results.push({ caller: toSymbolRef(sym.id, sym.attrs), callee: toSymbolRef(target, tAttrs) });
+    };
+    if (useOut) {
+      g.forEachOutEdge(sym.id, (_key: string, _eattrs: any, _src: string, target: string) => {
+        const e = _eattrs as unknown as { relation: string };
+        if (e.relation === "calls") handle(target);
+      });
+    } else {
+      g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
+        const e = _eattrs as unknown as { relation: string };
+        if (source === sym.id && e.relation === "calls") handle(target);
+      });
+    }
   }
   return results;
 }
@@ -114,16 +132,22 @@ export function callChain(graph: CodeGraph, symbolName: string, maxDepth = 5): C
     const seenAtLevel = new Set<string>();
 
   const g = graph.graph as any;
+  const useIn = typeof g.forEachInEdge === "function";
   for (const node of currentLevel) {
-    g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
-      const e = _eattrs as unknown as { relation: string };
-      if (target === node.id && e.relation === "calls" && !visited.has(source)) {
-        if (seenAtLevel.has(source)) return;
-        seenAtLevel.add(source);
-        const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
-        callersAtLevel.push({ id: source, attrs: sAttrs });
-      }
-    });
+    const visit = (source: string, eattrs: any) => {
+      const e = eattrs as unknown as { relation: string };
+      if (e.relation !== "calls" || visited.has(source) || seenAtLevel.has(source)) return;
+      seenAtLevel.add(source);
+      const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+      callersAtLevel.push({ id: source, attrs: sAttrs });
+    };
+    if (useIn) {
+      g.forEachInEdge(node.id, (_key: string, _eattrs: any, source: string) => visit(source, _eattrs));
+    } else {
+      g.forEachEdge((_key: string, _eattrs: any, source: string, target: string) => {
+        if (target === node.id) visit(source, _eattrs);
+      });
+    }
   }
 
     if (callersAtLevel.length === 0) break;
@@ -180,12 +204,28 @@ export function getNeighbors(graph: CodeGraph, nodeId: string): NeighborResult[]
   const g = graph.graph as any;
   if (!g.hasNode(nodeId)) return [];
   const results: NeighborResult[] = [];
-  g.forEachEdge((_key: string, attrs: any, source: string, target: string) => {
-    const neighborId = source === nodeId ? target : source;
-    const nAttrs = g.getNodeAttributes(neighborId) as unknown as NodeData;
-    const edgeAttrs = attrs as unknown as { relation: string };
-    results.push({ id: neighborId, label: nAttrs.label, relation: source === nodeId ? edgeAttrs.relation : `inverse_${edgeAttrs.relation}`, file: nAttrs.file, line: nAttrs.line });
-  });
+  const useIn = typeof g.forEachInEdge === "function";
+  const useOut = typeof g.forEachOutEdge === "function";
+  if (useIn && useOut) {
+    g.forEachOutEdge(nodeId, (_k: string, attrs: any, _s: string, target: string) => {
+      const nAttrs = g.getNodeAttributes(target) as unknown as NodeData;
+      const e = attrs as unknown as { relation: string };
+      results.push({ id: target, label: nAttrs.label, relation: e.relation, file: nAttrs.file, line: nAttrs.line });
+    });
+    g.forEachInEdge(nodeId, (_k: string, attrs: any, source: string) => {
+      const nAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+      const e = attrs as unknown as { relation: string };
+      results.push({ id: source, label: nAttrs.label, relation: `inverse_${e.relation}`, file: nAttrs.file, line: nAttrs.line });
+    });
+  } else {
+    g.forEachEdge((_key: string, attrs: any, source: string, target: string) => {
+      if (source !== nodeId && target !== nodeId) return;
+      const neighborId = source === nodeId ? target : source;
+      const nAttrs = g.getNodeAttributes(neighborId) as unknown as NodeData;
+      const edgeAttrs = attrs as unknown as { relation: string };
+      results.push({ id: neighborId, label: nAttrs.label, relation: source === nodeId ? edgeAttrs.relation : `inverse_${edgeAttrs.relation}`, file: nAttrs.file, line: nAttrs.line });
+    });
+  }
   return results;
 }
 
@@ -233,17 +273,33 @@ export function getFileContext(graph: CodeGraph, filePath: string): FileContextR
 
   const dependents: string[] = [];
   const imports: string[] = [];
-  g.forEachEdge((_key: string, _attrs: any, source: string, target: string, srcAttrs: any) => {
-    const e = srcAttrs as unknown as { relation: string };
-    if (source === fileId && e.relation === "imports") {
-      const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
-      if (tAttrs.file) imports.push(tAttrs.file);
-    }
-    if (target === fileId) {
+  const useIn = typeof g.forEachInEdge === "function";
+  const useOut = typeof g.forEachOutEdge === "function";
+  if (useIn && useOut) {
+    g.forEachOutEdge(fileId, (_k: string, attrs: any, _s: string, target: string) => {
+      const e = attrs as unknown as { relation: string };
+      if (e.relation === "imports") {
+        const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
+        if (tAttrs.file) imports.push(tAttrs.file);
+      }
+    });
+    g.forEachInEdge(fileId, (_k: string, _attrs: any, source: string) => {
       const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
       if (sAttrs.type === "file" && sAttrs.file) dependents.push(sAttrs.file);
-    }
-  });
+    });
+  } else {
+    g.forEachEdge((_key: string, _attrs: any, source: string, target: string, srcAttrs: any) => {
+      const e = srcAttrs as unknown as { relation: string };
+      if (source === fileId && e.relation === "imports") {
+        const tAttrs = g.getNodeAttributes(target) as unknown as NodeData;
+        if (tAttrs.file) imports.push(tAttrs.file);
+      }
+      if (target === fileId) {
+        const sAttrs = g.getNodeAttributes(source) as unknown as NodeData;
+        if (sAttrs.type === "file" && sAttrs.file) dependents.push(sAttrs.file);
+      }
+    });
+  }
 
   const sortedSymbols = symbols.slice(0, 8);
   const exportCount = symbols.filter(s => s.kind === "export" || s.kind === "function" || s.kind === "class" || s.kind === "const").length;

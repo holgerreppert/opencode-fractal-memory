@@ -1,0 +1,238 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - navigation [ref=f3e6]:
+        - generic [ref=f3e7]:
+          - generic [ref=f3e8]: Fractal Memory
+          - generic [ref=f3e9]: 3D Node Visualization
+      - navigation [ref=f3e10]:
+        - navigation [ref=f3e11]:
+          - link "Visualize" [ref=f3e12] [cursor=pointer]:
+            - /url: /
+          - link "Hub" [ref=f3e13] [cursor=pointer]:
+            - /url: /hub
+          - link "Dashboard" [ref=f3e14] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Context" [ref=f3e15] [cursor=pointer]:
+            - /url: /context
+          - link "Quality" [ref=f3e16] [cursor=pointer]:
+            - /url: /quality
+          - link "Graph" [ref=f3e17] [cursor=pointer]:
+            - /url: /graph
+          - link "Memory" [ref=f3e18] [cursor=pointer]:
+            - /url: /memory
+          - link "Live" [ref=f3e19] [cursor=pointer]:
+            - /url: /live
+          - link "Settings" [ref=f3e20] [cursor=pointer]:
+            - /url: /settings
+          - link "Backup" [ref=f3e21] [cursor=pointer]:
+            - /url: /backup
+        - generic [ref=f3e22]:
+          - generic [ref=f3e23]: "Theme:"
+          - combobox [ref=f3e24]:
+            - option "Cerberus" [selected]
+            - option "Catppuccin"
+            - option "Concord"
+            - option "Crimson"
+            - option "Dracula"
+            - option "Fennec"
+            - option "Hamlindigo"
+            - option "Legacy"
+            - option "Mint"
+            - option "Modern"
+            - option "Mona"
+            - option "Nosh"
+            - option "Nouveau"
+            - option "Pine"
+            - option "Reign"
+            - option "Rocket"
+            - option "Rose"
+            - option "Rosepine"
+            - option "Sahara"
+            - option "Seafoam"
+            - option "Terminus"
+            - option "Vintage"
+            - option "Vox"
+            - option "Wintry"
+  - generic [ref=f3e25]:
+    - generic [ref=f3e26]:
+      - generic [ref=f3e27]:
+        - generic [ref=f3e28]:
+          - generic: 🔍
+          - textbox "Search memory… (hybrid)" [ref=f3e29]
+          - generic "hybrid" [ref=f3e31]: ↩ hybrid
+        - combobox [ref=f3e32]:
+          - option "all"
+          - option "global"
+          - option "project (current)"
+          - option "abeba"
+          - option "bewerberapp" [selected]
+          - option "cvapp"
+          - option "fitko"
+          - option "loco"
+          - option "nextcloud"
+          - option "odoo"
+          - option "opencode-agent-memory-main"
+          - option "wasgehtbesser"
+        - generic [ref=f3e33]:
+          - combobox "Search mode" [ref=f3e34]:
+            - option "hybrid" [selected]
+            - option "bm25"
+            - option "text"
+          - button "hub" [ref=f3e35]
+          - button "shell" [ref=f3e36]
+          - button "type-cluster" [ref=f3e37]
+          - button "brain" [ref=f3e38]
+          - button "force" [ref=f3e39]
+        - generic [ref=f3e40]:
+          - button "note 94" [ref=f3e41]:
+            - text: note
+            - generic [ref=f3e42]: "94"
+          - button "contexthistory 23" [ref=f3e43]:
+            - text: contexthistory
+            - generic [ref=f3e44]: "23"
+          - button "fact 15" [ref=f3e45]:
+            - text: fact
+            - generic [ref=f3e46]: "15"
+          - button "knowledge 10" [ref=f3e47]:
+            - text: knowledge
+            - generic [ref=f3e48]: "10"
+          - button "plan 9" [ref=f3e49]:
+            - text: plan
+            - generic [ref=f3e50]: "9"
+          - button "bug 7" [ref=f3e51]:
+            - text: bug
+            - generic [ref=f3e52]: "7"
+          - button "architecture 6" [ref=f3e53]:
+            - text: architecture
+            - generic [ref=f3e54]: "6"
+          - button "lesson 6" [ref=f3e55]:
+            - text: lesson
+            - generic [ref=f3e56]: "6"
+          - button "decision 5" [ref=f3e57]:
+            - text: decision
+            - generic [ref=f3e58]: "5"
+          - button "dot 3" [ref=f3e59]:
+            - text: dot
+            - generic [ref=f3e60]: "3"
+          - button "howto 2" [ref=f3e61]:
+            - text: howto
+            - generic [ref=f3e62]: "2"
+          - button "convention 2" [ref=f3e63]:
+            - text: convention
+            - generic [ref=f3e64]: "2"
+          - button "audit 2" [ref=f3e65]:
+            - text: audit
+            - generic [ref=f3e66]: "2"
+          - button "fix 2" [ref=f3e67]:
+            - text: fix
+            - generic [ref=f3e68]: "2"
+          - button "session 2" [ref=f3e69]:
+            - text: session
+            - generic [ref=f3e70]: "2"
+          - button "review 1" [ref=f3e71]:
+            - text: review
+            - generic [ref=f3e72]: "1"
+          - button "project-history 1" [ref=f3e73]:
+            - text: project-history
+            - generic [ref=f3e74]: "1"
+          - button "project 1" [ref=f3e75]:
+            - text: project
+            - generic [ref=f3e76]: "1"
+          - button "analysis 1" [ref=f3e77]:
+            - text: analysis
+            - generic [ref=f3e78]: "1"
+          - button "improvement 1" [ref=f3e79]:
+            - text: improvement
+            - generic [ref=f3e80]: "1"
+          - button "idea 1" [ref=f3e81]:
+            - text: idea
+            - generic [ref=f3e82]: "1"
+          - button "debug-investigation 1" [ref=f3e83]:
+            - text: debug-investigation
+            - generic [ref=f3e84]: "1"
+          - button "research 1" [ref=f3e85]:
+            - text: research
+            - generic [ref=f3e86]: "1"
+          - button "summary 1" [ref=f3e87]:
+            - text: summary
+            - generic [ref=f3e88]: "1"
+          - button "storedcontext 1" [ref=f3e89]:
+            - text: storedcontext
+            - generic [ref=f3e90]: "1"
+          - button "playbook 1" [ref=f3e91]:
+            - text: playbook
+            - generic [ref=f3e92]: "1"
+          - button "rule:standard 1" [ref=f3e93]:
+            - text: rule:standard
+            - generic [ref=f3e94]: "1"
+          - button "L0 194" [ref=f3e95]:
+            - text: L0
+            - generic [ref=f3e96]: "194"
+          - button "L1 6" [ref=f3e97]:
+            - text: L1
+            - generic [ref=f3e98]: "6"
+          - button "Clear" [ref=f3e117]
+        - generic [ref=f3e99]:
+          - generic [ref=f3e100]: 3 / 200
+          - button "List (3)" [ref=f3e118]
+      - generic [ref=f3e102]:
+        - generic [ref=f3e103]:
+          - button "⛶ Fullscreen" [ref=f3e106]
+          - generic:
+            - generic: 3 · hub
+            - generic: Fractal Memory · hub · project:bewerberapp
+        - generic [ref=f3e108]:
+          - button "Legend ▸" [ref=f3e109]
+          - generic [ref=f3e110]: Levels 0–5 · 8 shapes · dot ◈
+    - generic [ref=f3e142]:
+      - button "close" [ref=f3e143]
+      - generic [ref=f3e144]:
+        - generic [ref=f3e145]:
+          - heading "dot:captcha-option3-architecture" [level=2] [ref=f3e146]
+          - button "⛶" [ref=f3e147]
+          - button "✕" [ref=f3e148]
+        - generic [ref=f3e150]:
+          - generic [ref=f3e151]:
+            - generic [ref=f3e152]: dot:captcha-option3-architecture
+            - button "✕" [ref=f3e153]
+          - generic [ref=f3e154]:
+            - generic [ref=f3e155]:
+              - generic [ref=f3e156]: dot
+              - generic [ref=f3e157]: L0
+              - generic [ref=f3e158]: imp 0.5
+              - generic [ref=f3e159]: general
+            - generic [ref=f3e160]:
+              - button "Edit" [ref=f3e161]
+              - button "Verify" [ref=f3e162]
+              - button "Delete" [ref=f3e163]
+            - button "◈ Open Diagram" [active] [ref=f3e164]
+            - generic [ref=f3e172]:
+              - button "close" [ref=f3e173]
+              - generic [ref=f3e174]:
+                - generic [ref=f3e175]:
+                  - heading "dot:captcha-option3-architecture" [level=2] [ref=f3e176]
+                  - button "⛶" [ref=f3e177]
+                  - button "✕" [ref=f3e178]
+                - generic [ref=f3e179]:
+                  - generic [ref=f3e180]:
+                    - button "＋ Zoom in" [ref=f3e181]
+                    - button "－ Zoom out" [ref=f3e182]
+                    - button "Reset" [ref=f3e183]
+                    - generic [ref=f3e184]: 100%
+                  - img [ref=f3e185]:
+                    - generic [ref=f3e186]: "Render failed: syntax error in line 70 near '--'"
+                - button "Drag to resize" [ref=f3e187]: ◢
+            - generic [ref=f3e165]:
+              - generic [ref=f3e166]: Summary (BM25 1×)
+              - generic [ref=f3e167]: node [shape=box, style=rounded, fontname="Helvetica"];
+            - generic [ref=f3e168]: dot
+            - generic [ref=f3e170]: "digraph G { rankdir=TB; node [shape=box, style=rounded, fontname=\"Helvetica\"]; edge [fontname=\"Helvetica\", fontsize=10]; subgraph cluster_frontend { label=\"Frontend (SvelteKit)\"; style=dashed; color=blue; FE [\"PrepareAssistantModal\"]; FE_CALLS [\"/abort on modal close\"]; FE -> FE_CALLS; } subgraph cluster_gunicorn { label=\"Gunicorn (port 8000) — 2 workers UNAFFECTED\"; style=rounded; color=green; W1 [\"Worker A\"]; W2 [\"Worker B\"]; } subgraph cluster_playwright { label=\"Playwright Server (localhost:8002) — SEPARATE PROCESS\"; style=rounded; color=orange; API [\"HTTP API /start /solve /reload /abort /health\"]; SEM [\"Semaphore(4) acquire timeout 30s\"]; LOCK [\"Per-session lock solving flag\"]; BROWSER [\"Single Chromium (lazily created)\"]; CLEANUP [\"Background cleanup every 60s\"]; SESSIONS [\"Sessions dict (in-memory, single process)\"]; API -> SEM -> SESSIONS; SESSIONS -> LOCK; SESSIONS -> BROWSER; CLEANUP -> SESSIONS; } subgraph cluster_redis { label=\"Redis (broker + cache)\"; style=rounded; color=purple; R [\"Cache / Broker\"]; } subgraph cluster_celery { label=\"Celery Workers UNAFFECTED\"; style=rounded; color=gray; CW1 [\"celery worker concurrency=2\"]; CJ [\"celery-judge concurrency=1\"]; } subgraph cluster_ba { label=\"BA (arbeitsagentur.de)\"; style=dashed; color=gray; BA [\"Job detail + captcha\"]; } subgraph cluster_llm { label=\"Qwen 3.8 (Mittwald)\"; style=dashed; color=gray; LLM [\"LLM inference\"]; } FE -->|\"HTTP /api/saved-jobs/captcha-start\"| W1; FE -->|\"HTTP /api/saved-jobs/captcha-solve\"| W2; FE_CALLS -->|\"HTTP POST /abort\"| W1 [style=dashed]; W1 -->|\"HTTP POST /start {refnr}\"| API [color=orange]; W2 -->|\"HTTP POST /solve {session_id, solution}\"| API [color=orange]; W1 -->|\"HTTP POST /abort {session_id}\"| API [color=orange, style=dashed]; BROWSER -->|\"Navigate + scrape\"| BA; CW1 -->|\"Async LLM call\"| LLM; CJ -->|\"Async LLM call\"| LLM; W1 -->|\"Celery .delay()\"| R; CW1 --> R; CJ --> R; }"
+        - button "Drag to resize" [ref=f3e171]: ◢
+  - contentinfo [ref=f3e111]:
+    - generic [ref=f3e112]: Fractal Memory · 2026 · opencode-fractal-memory
+    - generic [ref=f3e113]:
+      - link "Alpine :8787" [ref=f3e114] [cursor=pointer]:
+        - /url: http://127.0.0.1:8787/
+      - link "Svelte :8788" [ref=f3e115] [cursor=pointer]:
+        - /url: http://127.0.0.1:8788/

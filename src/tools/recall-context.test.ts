@@ -9,7 +9,7 @@ function makeStore(nodes: Record<string, unknown>[] = []) {
       return nodes;
     },
     async searchByEmbedding(_query: number[], _limit?: number, _options?: Record<string, unknown>) {
-      return nodes.filter(n => n.type === "contexthistory").slice(0, _limit ?? 5);
+      return nodes.filter(n => n.type === "contexthistory").slice(0, _limit ?? 5).map(n => ({ node: n, score: 0.5 }));
     },
     getNode: async (id: string) => nodes.find(n => n.id === id),
   } as unknown as MemoryStore;

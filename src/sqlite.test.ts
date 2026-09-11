@@ -435,8 +435,8 @@ describe("sqlite store", () => {
     const results = await store.searchByEmbedding(embedding, 10, { minLevel: 1, maxLevel: 1 });
 
     for (const result of results) {
-      expect(result.level).toBeGreaterThanOrEqual(1);
-      expect(result.level).toBeLessThanOrEqual(1);
+      expect(result.node.level).toBeGreaterThanOrEqual(1);
+      expect(result.node.level).toBeLessThanOrEqual(1);
     }
   });
 
@@ -453,7 +453,7 @@ describe("sqlite store", () => {
 
     const results = await store.searchByEmbedding(embA, 10, { projectName: "project-a" });
     expect(results.length).toBe(1);
-    expect(results[0].projectName).toBe("project-a");
+    expect(results[0].node.projectName).toBe("project-a");
   });
 
   test("getCompressionCandidates with force=true bypasses age check", async () => {
@@ -615,7 +615,7 @@ describe("sqlite store", () => {
       projectName: "project-a",
     });
     expect(results.length).toBeGreaterThan(0);
-    expect(results.every(n => n.projectName === "project-a")).toBe(true);
+    expect(results.every(r => r.node.projectName === "project-a")).toBe(true);
   });
 
   test("runPatternExtraction creates pattern summary", async () => {
@@ -816,7 +816,7 @@ describe("sqlite store", () => {
     );
 
     expect(hybridResults.length).toBeGreaterThan(0);
-    const sqliteNode = hybridResults.find(n => n.label === "sqlite-setup");
+    const sqliteNode = hybridResults.find(r => r.node.label === "sqlite-setup");
     expect(sqliteNode).toBeDefined();
   });
 
@@ -1437,7 +1437,7 @@ describe("sqlite store", () => {
     // Search with minUsefulness = 3 should only return high usefulness node
     const results = await store.searchByEmbedding(embedding, 10, { minUsefulness: 3, projectName: store.projectName });
 
-    const foundIds = results.map(r => r.id);
+    const foundIds = results.map(r => r.node.id);
     expect(foundIds).toContain(highUsefulness.id);
     expect(foundIds).not.toContain(lowUsefulness.id);
   });
@@ -1471,11 +1471,11 @@ describe("sqlite store", () => {
 
     const results = await store.searchByEmbedding(baseEmbedding, 10, { projectName: store.projectName });
 
-    // The higher usefulness node should have higher importance score
-    const result1 = results.find(r => r.id === node1.id);
-    const result2 = results.find(r => r.id === node2.id);
+    // The higher usefulness node should have higher score
+    const result1 = results.find(r => r.node.id === node1.id);
+    const result2 = results.find(r => r.node.id === node2.id);
 
-    expect(result2!.importance).toBeGreaterThan(result1!.importance);
+    expect(result2!.score).toBeGreaterThan(result1!.score);
   });
 
   describe("supertype auto-derivation", () => {

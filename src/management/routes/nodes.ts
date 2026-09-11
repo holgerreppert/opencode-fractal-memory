@@ -94,25 +94,41 @@ async function handleSearch(ctx: { scope: string; url: URL }, store: MemoryStore
   }
   const mode = modeMap[rawMode]!;
 
+  const limit = parseInt(ctx.url.searchParams.get("limit") || "100", 10);
+  const typeFilter = ctx.url.searchParams.get("type") as string | null;
+  const tagsParam = ctx.url.searchParams.get("tags") as string | null;
+  const categoryFilter = ctx.url.searchParams.get("category") as string | null;
+  const domainFilter = ctx.url.searchParams.get("domain") as string | null;
+  const minLevel = ctx.url.searchParams.get("minLevel") as string | null;
+  const maxLevel = ctx.url.searchParams.get("maxLevel") as string | null;
+
   try {
     const { searchNodes } = await import("../../application/search");
     const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
-    const opts: { limit: number; mode: "hybrid" | "bm25" | "text"; scope: MemoryScope | "all"; projectName?: string | undefined } = {
-      limit: 100,
+    const opts: Parameters<typeof searchNodes>[3] = {
+      limit: Math.min(limit, 500),
       mode,
       scope: queryScope,
     };
     if (projectName !== undefined) opts.projectName = projectName;
-    let nodes = await searchNodes(store, generateEmbedding, q, opts);
-    // Dot discoverability: when user searches for dot, bring dot nodes to front (they have no embedding, rank low otherwise)
+    if (typeFilter) opts.typeFilter = typeFilter as any;
+    if (tagsParam) opts.tagsFilter = tagsParam.split(",").map(t => t.trim()).filter(Boolean);
+    if (categoryFilter) opts.categoryFilter = categoryFilter as any;
+    if (domainFilter) opts.domainFilter = domainFilter as any;
+    if (minLevel) opts.minLevel = parseInt(minLevel, 10) as any;
+    if (maxLevel) opts.maxLevel = parseInt(maxLevel, 10) as any;
+
+    let results = await searchNodes(store, generateEmbedding, q, opts);
+
     if (q.toLowerCase().includes("dot")) {
-      nodes = [...nodes].sort((a, b) => {
-        const da = a.type === "dot" ? 1 : 0, db = b.type === "dot" ? 1 : 0;
+      results = [...results].sort((a, b) => {
+        const da = a.node.type === "dot" ? 1 : 0, db = b.node.type === "dot" ? 1 : 0;
         if (da !== db) return db - da;
-        return (b.importance ?? 0) - (a.importance ?? 0);
+        return (b.node.importance ?? 0) - (a.node.importance ?? 0);
       });
     }
-    return jsonResponse(nodes.map(n => ({ ...mapNode(n), score: n.importance })));
+
+    return jsonResponse(results.map(r => ({ ...mapNode(r.node), score: r.score })));
   } catch (e) {
     memLog("error", "management", "[api] Search error:", { error: e instanceof Error ? e.message : String(e) });
     return jsonResponse({ error: "Search failed" }, 500);

@@ -140,17 +140,11 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
   // Parallel SvelteKit UI on sveltePort (8788) if configured and frontend/build exists — Step 3 dual serve
   const sveltePort = mgmtConfig.sveltePort;
   if (sveltePort) {
-    const candidates = [
-      path.join(directory, "frontend", "build"),
-      path.join(process.cwd(), "frontend", "build"),
-      path.join(__dirname, "..", "..", "frontend", "build"),
-    ];
-    const svelteBuild = candidates.find((p) => fs.existsSync(p) && fs.existsSync(path.join(p, "index.html")));
-    if (svelteBuild) {
+    const svelteBuild = path.join(__dirname, "..", "..", "frontend", "build");
+    if (fs.existsSync(svelteBuild) && fs.existsSync(path.join(svelteBuild, "index.html"))) {
       memLog("info", "init", "Starting Svelte management server (parallel)", { sveltePort, svelteBuild, directory });
       try {
-        const standalonePathCandidates = [path.join(__dirname, "..", "management-standalone.js"), path.join(__dirname, "management-standalone.js")];
-        const standalonePath = standalonePathCandidates.find((p) => fs.existsSync(p)) ?? standalonePathCandidates[0] ?? "";
+        const standalonePath = path.join(__dirname, "..", "management-standalone.js");
         if (standalonePath && fs.existsSync(standalonePath)) {
           const bunPath = (() => { try { return execSync("which bun").toString().trim(); } catch { return null; } })();
           const runner = bunPath || process.execPath;
@@ -164,7 +158,7 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
         memLog("warn", "init", "Failed to start Svelte parallel server", { error: String(err) });
       }
     } else {
-      memLog("info", "init", "Svelte build not found — skipping parallel Svelte server", { sveltePort, tried: candidates });
+      memLog("info", "init", "Svelte build not found — skipping parallel Svelte server", { sveltePort, tried: svelteBuild });
     }
   }
   return true;

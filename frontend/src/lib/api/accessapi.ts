@@ -4,7 +4,7 @@ const BASE = 'http://127.0.0.1:8787';
 
 type FetchOpts = RequestInit & { timeoutMs?: number };
 
-async function fetchJson<T>(path: string, opts: FetchOpts = {}): Promise<T> {
+export async function fetchJson<T>(path: string, opts: FetchOpts = {}): Promise<T> {
   const t0 = Date.now();
   const res = await fetch(`${BASE}${path}`, { headers: { 'Content-Type': 'application/json' }, ...opts });
   logApi(opts.method ?? 'GET', path, res.status, Date.now() - t0);
@@ -25,7 +25,6 @@ export const api = {
 		fetchJson<unknown[]>(`/api/search?q=${encodeURIComponent(q)}&scope=${scope}&mode=${mode}`),
 	graph: (query: string) => fetchJson<{ nodes: any[]; edges: any[] }>(`/api/graph/export`),
 	telemetry: () => fetchJson<{ metrics: unknown }>(`/api/telemetry`),
-	backup: () => fetchJson<{ backups: unknown[] }>(`/api/backup`),
 	config: () => fetchJson<Record<string, any>>(`/api/config`),
 	configSave: (data: Record<string, any>) => fetchJson<{ success: boolean }>(`/api/config`, { method: 'PUT', body: JSON.stringify(data) }),
 } as const;

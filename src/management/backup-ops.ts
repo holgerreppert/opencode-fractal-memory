@@ -17,7 +17,7 @@ export interface BackupManifest {
   label?: string | undefined;
   sources: Record<string, {
     label: string;
-    files: Array<{ original: string; stored: string; size: number; }>;
+    files: Array<{ original: string; stored: string; size: number; isDir?: boolean; }>;
     totalSize: number;
   }>;
   totalSize: number;
@@ -51,55 +51,39 @@ export function getBackupDir(): string {
   return path.join(getConfigDir(), "backups");
 }
 
+export function getCacheDir(): string {
+  return process.env.MGMT_CACHE_DIR || path.join(os.homedir(), ".cache", "opencode");
+}
+
+export function getOpencodeHomeDir(): string {
+  return process.env.MGMT_OPENCODE_HOME_DIR || path.join(os.homedir(), ".opencode");
+}
+
 export function getBackupSources(): BackupSourceInfo[] {
-  const projectDir = getProjectDir();
   const configDir = getConfigDir();
-
-  const dbPath = path.join(configDir, "memory.db");
-  const globalConfig = path.join(configDir, "opencode-mem.json");
-  const projectConfigJsonc = path.join(projectDir, "opencode-mem.jsonc");
-  const projectConfigJson = path.join(projectDir, "opencode-mem.json");
-  const globalOpenCode = path.join(configDir, "opencode.json");
-  const projectOpenCode = path.join(projectDir, ".opencode", "opencode.json");
-  const journalDir = path.join(configDir, "journal");
-
-  const configFiles: Array<{ original: string; }> = [];
-  for (const fp of [globalConfig, projectConfigJsonc, projectConfigJson]) {
-    if (fs.existsSync(fp)) configFiles.push({ original: fp });
-  }
-
-  const opencodeFiles: Array<{ original: string; }> = [];
-  for (const fp of [globalOpenCode, projectOpenCode]) {
-    if (fs.existsSync(fp)) opencodeFiles.push({ original: fp });
-  }
+  const cacheDir = getCacheDir();
+  const homeDir = getOpencodeHomeDir();
 
   return [
     {
-      key: "db",
-      label: "Memory Database",
-      files: [{ original: dbPath }],
-      exists: fs.existsSync(dbPath),
-      isDir: false,
-    },
-    {
       key: "config",
-      label: "Plugin Config",
-      files: configFiles,
-      exists: configFiles.length > 0,
-      isDir: false,
+      label: "Config (opencode)",
+      files: [{ original: configDir }],
+      exists: fs.existsSync(configDir),
+      isDir: true,
     },
     {
-      key: "opencode",
-      label: "OpenCode Config",
-      files: opencodeFiles,
-      exists: opencodeFiles.length > 0,
-      isDir: false,
+      key: "cache",
+      label: "Cache (opencode)",
+      files: [{ original: cacheDir }],
+      exists: fs.existsSync(cacheDir),
+      isDir: true,
     },
     {
-      key: "journal",
-      label: "Journal Entries",
-      files: [{ original: journalDir }],
-      exists: fs.existsSync(journalDir) && fs.readdirSync(journalDir).length > 0,
+      key: "opencode-home",
+      label: "Home (~/.opencode)",
+      files: [{ original: homeDir }],
+      exists: fs.existsSync(homeDir),
       isDir: true,
     },
   ];
@@ -179,13 +163,13 @@ export async function createBackup(
     mkdirSync(srcDir);
 
     let totalSize = 0;
-    const storedFiles: Array<{ original: string; stored: string; size: number; }> = [];
+    const storedFiles: Array<{ original: string; stored: string; size: number; isDir?: boolean; }> = [];
 
     if (src.isDir && src.files.length > 0) {
       const srcPath = src.files[0]!.original;
       if (fs.existsSync(srcPath)) {
         totalSize += await copyDir(srcPath, srcDir);
-        storedFiles.push({ original: srcPath, stored: src.key, size: totalSize });
+        storedFiles.push({ original: srcPath, stored: src.key, size: totalSize, isDir: true });
       }
     } else {
       for (const file of src.files) {
@@ -315,9 +299,14 @@ export async function restoreBackup(
     const src = manifest.sources[key]!;
     for (const file of src.files) {
       const storedPath = path.join(backupDir, file.stored);
-      const originalDir = path.dirname(file.original);
-      mkdirSync(originalDir);
-      await copyFile(storedPath, file.original);
+      if (file.isDir) {
+        // Directory source: original is the parent dir; stored is the snapshot subdir
+        await copyDir(storedPath, file.original);
+      } else {
+        const originalDir = path.dirname(file.original);
+        mkdirSync(originalDir);
+        await copyFile(storedPath, file.original);
+      }
     }
   }
 

@@ -3,7 +3,7 @@ import type { MemoryStore, MemoryNode } from "../storage/sqlite";
 import { describe, it, expect } from "@jest/globals";
 
 const mockStore = {
-  async searchByEmbedding(_embedding: number[], limit?: number, _options?: Record<string, unknown>): Promise<MemoryNode[]> {
+  async searchByEmbedding(_embedding: number[], limit?: number, _options?: Record<string, unknown>) {
     const nodes: MemoryNode[] = [];
     for (let i = 1; i <= 5; i++) {
       nodes.push({
@@ -30,7 +30,7 @@ const mockStore = {
         timesHelpful: 0,
       });
     }
-    return nodes;
+    return nodes.map(n => ({ node: n, score: n.importance ?? 0.5 }));
   },
   async ensureSeed() { /* empty */ },
   async listNodes() { return []; },

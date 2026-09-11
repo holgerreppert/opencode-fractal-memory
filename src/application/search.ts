@@ -8,7 +8,7 @@ import type {
   MemorySubtask,
   SearchIntent,
 } from "../domain/ports/MemoryStore";
-import type { SearchStore } from "../domain/ports/SearchStore";
+import type { SearchStore, SearchResult } from "../domain/ports/SearchStore";
 import type { RankWeights } from "./ranking/weights";
 
 /**
@@ -25,6 +25,7 @@ export type SearchMode = "hybrid" | "bm25" | "text";
  * auto-retrieve, seed-rules). It dispatches to the store's underlying
  * retrieval engines and applies the shared RRF/temporal/rerank pipeline.
  *
+ * Returns scored results — caller can sort or filter further as needed.
  * The embedding function is injected (not imported) to keep the application
  * layer free of infrastructure dependencies.
  */
@@ -52,15 +53,27 @@ export async function searchNodes(
     typeFilter?: MemoryNodeType | undefined;
     tagsFilter?: string[] | undefined;
   } = {},
-): Promise<MemoryNode[]> {
+): Promise<SearchResult[]> {
   const limit = opts.limit ?? 10;
   const mode = opts.mode ?? "hybrid";
   const scope = opts.scope ?? "all";
   const projectName = opts.projectName;
 
-  // Fast keyword-only modes never touch the embedding model.
-  if (mode === "bm25") return store.searchBM25(scope, query, limit, projectName);
-  if (mode === "text") return store.searchText(scope, query, limit, projectName);
+  const filterOpts = {
+    typeFilter: opts.typeFilter,
+    tagsFilter: opts.tagsFilter,
+    categoryFilter: opts.categoryFilter,
+    domainFilter: opts.domainFilter,
+    minLevel: opts.minLevel,
+    maxLevel: opts.maxLevel,
+  };
+
+  if (mode === "bm25") {
+    return store.searchBM25(scope, query, { limit, projectName, ...filterOpts });
+  }
+  if (mode === "text") {
+    return store.searchText(scope, query, { limit, projectName, ...filterOpts });
+  }
 
   // Hybrid: embed the query ourselves, then run the full fused pipeline.
   // If embedding fails or yields nothing, degrade to BM25 rather than 0 hits.
@@ -71,46 +84,24 @@ export async function searchNodes(
     embedding = [];
   }
   if (!embedding || embedding.length === 0) {
-    return store.searchBM25(scope, query, limit, projectName);
+    return store.searchBM25(scope, query, { limit, projectName, ...filterOpts });
   }
 
-  const options: {
-    minLevel?: MemoryNodeLevel;
-    maxLevel?: MemoryNodeLevel;
-    queryText?: string;
-    minUsefulness?: number | undefined;
-    rrfK?: number | undefined;
-    rerank?: boolean | undefined;
-    rerankMode?: "keyword" | "cross-encoder" | undefined;
-    featureWeights?: Partial<RankWeights> | undefined;
-    projectName?: string | undefined;
-    temporalHops?: number | undefined;
-    intent?: SearchIntent | undefined;
-    subtask?: MemorySubtask | undefined;
-    categoryFilter?: MemoryCategory | undefined;
-    domainFilter?: MemoryDomain | undefined;
-    typeFilter?: MemoryNodeType | undefined;
-    tagsFilter?: string[] | undefined;
-  } = {
+  const options: Parameters<SearchStore["searchByEmbedding"]>[2] = {
     queryText: query,
     rerank: opts.rerank ?? true,
+    ...filterOpts,
   };
-  if (opts.minLevel !== undefined) options.minLevel = opts.minLevel;
-  if (opts.maxLevel !== undefined) options.maxLevel = opts.maxLevel;
-  if (opts.minUsefulness !== undefined) options.minUsefulness = opts.minUsefulness;
-  if (opts.rrfK !== undefined) options.rrfK = opts.rrfK;
-  if (opts.projectName !== undefined) options.projectName = projectName;
-  if (opts.temporalHops !== undefined && opts.temporalHops > 0) options.temporalHops = opts.temporalHops;
-  if (opts.intent !== undefined) options.intent = opts.intent;
-  if (opts.subtask !== undefined) options.subtask = opts.subtask;
-  if (opts.categoryFilter !== undefined) options.categoryFilter = opts.categoryFilter;
-  if (opts.domainFilter !== undefined) options.domainFilter = opts.domainFilter;
-  if (opts.typeFilter !== undefined) options.typeFilter = opts.typeFilter;
-  if (opts.tagsFilter !== undefined) options.tagsFilter = opts.tagsFilter;
-  if (opts.rerankMode !== undefined) options.rerankMode = opts.rerankMode;
-  if (opts.featureWeights !== undefined) options.featureWeights = opts.featureWeights;
+  if (opts.minUsefulness !== undefined) options!.minUsefulness = opts.minUsefulness;
+  if (opts.rrfK !== undefined) options!.rrfK = opts.rrfK;
+  if (opts.projectName !== undefined) options!.projectName = projectName;
+  if (opts.temporalHops !== undefined && opts.temporalHops > 0) options!.temporalHops = opts.temporalHops;
+  if (opts.intent !== undefined) options!.intent = opts.intent;
+  if (opts.subtask !== undefined) options!.subtask = opts.subtask;
+  if (opts.rerankMode !== undefined) options!.rerankMode = opts.rerankMode;
+  if (opts.featureWeights !== undefined) options!.featureWeights = opts.featureWeights;
 
   return store.searchByEmbedding(embedding, limit, options);
 }
 
-export type { MemoryScope, MemoryNode, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, MemorySubtask, MemoryNodeLevel };
+export type { MemoryScope, MemoryNode, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, MemorySubtask, MemoryNodeLevel, SearchResult };

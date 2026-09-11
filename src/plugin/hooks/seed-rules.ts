@@ -187,18 +187,18 @@ export function createSeedRulesHandler(
                 limit: 10,
                 scope: "all",
               }))
-                .filter(n => n.type === "storedcontext")
+                .filter(r => r.node.type === "storedcontext")
                 .slice(0, 3);
               if (priors.length > 0) {
                 const snippets: string[] = [];
                 const seenLabels = new Set<string>();
-                for (const n of priors) {
-                  if (seenLabels.has(n.label ?? "")) continue;
-                  seenLabels.add(n.label ?? "");
-                  const content = n.content ?? "";
+                for (const r of priors) {
+                  if (seenLabels.has(r.node.label ?? "")) continue;
+                  seenLabels.add(r.node.label ?? "");
+                  const content = r.node.content ?? "";
                   const summaryMatch = content.match(/--- storedcontext summary ---\n([\s\S]*?)--- conversation history ---/);
                   const summary = summaryMatch ? summaryMatch[1]!.trim() : content.slice(0, 300);
-                  snippets.push(`<session reference="${n.label ?? "prior"}">\n${summary.slice(0, 500)}\n</session>`);
+                  snippets.push(`<session reference="${r.node.label ?? "prior"}">\n${summary.slice(0, 500)}\n</session>`);
                 }
                 if (snippets.length > 0) {
                   CROSS_SESSION_CACHE.set(sessionId, snippets);

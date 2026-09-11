@@ -36,11 +36,11 @@ export function MemoryInject(store: MemoryStore) {
 
       const embedding = await generateEmbedding(query);
 
-      const candidates: MemoryNode[] = await store.searchByEmbedding(embedding, 100, {
+      const candidates: MemoryNode[] = (await store.searchByEmbedding(embedding, 100, {
         minLevel: 0,
         maxLevel: 4,
         projectName,
-      });
+      })).map(r => r.node);
 
       const filtered = candidates.filter((n) => {
         const confidential = (n as MemoryNode & { confidential?: boolean }).confidential;
