@@ -72,6 +72,8 @@ export interface CompressionNotification {
   summaryChars?: number;
   /** Total session messages — used for the archive-progress bar. */
   totalMessages?: number;
+  /** Number of messages permanently deleted (no backup). */
+  deletedCount?: number;
 }
 
 export interface ToastServiceOptions {
@@ -181,12 +183,15 @@ export class ToastService {
 
   // Build the DCP-style notification body.
   buildCompressionMessage(opts: CompressionNotification): string {
-    const { messageCount, topic, registryLabel, entries, removedChars, summaryChars, totalMessages } = opts;
+    const { messageCount, topic, registryLabel, entries, removedChars, summaryChars, totalMessages, deletedCount } = opts;
 
     const lines: string[] = [];
 
-    // Header with token math.
-    let header = `▣ archivecontext | ${messageCount} message${messageCount === 1 ? "" : "s"} archived`;
+    // Header with counts.
+    const parts: string[] = [];
+    if (messageCount > 0) parts.push(`${messageCount} archived`);
+    if (deletedCount && deletedCount > 0) parts.push(`${deletedCount} deleted`);
+    let header = `▣ archivecontext | ${parts.join(", ") || "no messages processed"}`;
     if (removedChars !== undefined) {
       const removed = estimateTokens(removedChars);
       const summary = summaryChars !== undefined ? estimateTokens(summaryChars) : 0;
@@ -199,7 +204,8 @@ export class ToastService {
 
     // Archive-progress bar.
     if (totalMessages !== undefined && totalMessages > 0) {
-      lines.push(`  ${formatProgressBar(messageCount, totalMessages)}  ${messageCount}/${totalMessages} messages archived`);
+      const processed = messageCount + (deletedCount ?? 0);
+      lines.push(`  ${formatProgressBar(processed, totalMessages)}  ${processed}/${totalMessages} messages processed`);
     }
 
     // Per-message itemized list.
@@ -213,8 +219,13 @@ export class ToastService {
 
     // Footer.
     lines.push("");
-    lines.push(`  Archive: ${registryLabel ?? "contexthistory registry"}`);
-    lines.push(`  Originals preserved — memory(mode="fetch", label=...)`);
+    if (messageCount > 0) {
+      lines.push(`  Archive: ${registryLabel ?? "contexthistory registry"}`);
+      lines.push(`  Originals preserved — memory(mode="fetch", label=...)`);
+    }
+    if (deletedCount && deletedCount > 0) {
+      lines.push(`  Deleted content cannot be recovered.`);
+    }
 
     return lines.join("\n");
   }

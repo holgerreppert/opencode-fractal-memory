@@ -33,15 +33,12 @@
 	}
 </script>
 
-<div class="flex items-center gap-2">
-	<span class="text-xs opacity-70">Theme:</span>
-	<select
-		class="select select-sm"
-		value={currentTheme}
-		onchange={(e) => setTheme((e.target as HTMLSelectElement).value)}
-	>
-		{#each themes as t}
-			<option value={t.value}>{t.name}</option>
-		{/each}
-	</select>
-</div>
+<select
+	class="select select-sm w-28 h-7 text-xs"
+	value={currentTheme}
+	onchange={(e) => setTheme((e.target as HTMLSelectElement).value)}
+>
+	{#each themes as t}
+		<option value={t.value}>{t.name}</option>
+	{/each}
+</select>

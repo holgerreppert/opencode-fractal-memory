@@ -2173,8 +2173,11 @@ async function renderDotDiagram(dotSource) {
     }
     let fixed = dotSource.replace(/\["([^"]*?)"\]/g, '[label="$1"]').replace(/"([^"]*)"/g, (_, inner) => '"' + inner.replace(/\n/g, '\\n') + '"');
     fixed = fixed.replace(/-->/g, '->').replace(/<--/g, '<-');
-    fixed = fixed.replace(/(\w[\w.]*)\s*->\s*\|("[^"]*")\|\s*(\w[\w.]*)/g, '$1 -> $3 [label=$2]');
-    fixed = fixed.replace(/(\w[\w.]*)\s*<-\s*\|("[^"]*")\|\s*(\w[\w.]*)/g, '$1 <- $3 [label=$2]');
+    fixed = fixed.replace(/\|("[^"]*")\|\s*(\w[\w.]*)/g, '$2 [label=$1]');
+    fixed = fixed.replace(/(\w[\w.]*)\s*-\.+->\s*(\w[\w.]*)/g, (_, a, b) => `${a} -> ${b} [style=dashed]`);
+    fixed = fixed.replace(/(\w[\w.]*)\s*\.\.+>\s*(\w[\w.]*)/g, (_, a, b) => `${a} -> ${b} [style=dotted]`);
+    fixed = fixed.replace(/(\w[\w.]*)\s*<\.+-\s*(\w[\w.]*)/g, (_, a, b) => `${a} <- ${b} [style=dashed]`);
+    fixed = fixed.replace(/(\w[\w.]*)\s*<\.\.+\s*(\w[\w.]*)/g, (_, a, b) => `${a} <- ${b} [style=dotted]`);
     const out = dotVizInstance.renderSVGElement(fixed, { engine: "dot" });
     const viewBox = out.getAttribute("viewBox");
     const preserveAspectRatio = out.getAttribute("preserveAspectRatio");

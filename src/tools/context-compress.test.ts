@@ -63,7 +63,7 @@ describe("createContextCompressTool", () => {
         { sessionID: SESSION } as never,
       );
 
-      expect(result).toContain("Compressed 1 message(s)");
+      expect(result).toContain("Archived 1 message(s)");
       expect(result).toContain("contexthistory:index:ses-tool-test");
 
       const state = getCompressState(SESSION);
@@ -147,10 +147,10 @@ describe("createContextCompressTool", () => {
         },
         { sessionID: SESSION } as never,
       );
-      expect(result).toContain("Compressed 1 message(s)");
+      expect(result).toContain("Archived 1 message(s)");
       expect(shown).toHaveLength(1);
       expect(shown[0]!.title).toBe("archivecontext: Compression");
-      expect(shown[0]!.message).toContain("1 message archived");
+      expect(shown[0]!.message).toContain("1 archived");
       expect(shown[0]!.message).toContain("contexthistory:index:ses-tool-test");
     } finally {
       await store.close();
@@ -184,7 +184,7 @@ describe("createContextCompressTool", () => {
       const part = prompts[0]!.body.parts![0]!;
       expect(part.type).toBe("text");
       expect(part.ignored).toBe(true);
-      expect(part.text).toContain("1 message archived");
+      expect(part.text).toContain("1 archived");
       expect(part.text).toContain("saved");
       expect(part.text).toContain("contexthistory:index:ses-tool-test");
     } finally {
@@ -243,7 +243,7 @@ describe("createContextCompressTool", () => {
         { topic: "auto-batch", allFlagged: true },
         { sessionID: SESSION } as never,
       );
-      expect(result).toContain("Compressed 1 message(s)");
+      expect(result).toContain("Archived 1 message(s)");
       const state = getCompressState(SESSION);
       expect(state.blocks.has("msg-big")).toBe(true);
       expect(state.blocks.has("msg-small")).toBe(false);
@@ -298,8 +298,102 @@ describe("createContextCompressTool", () => {
         { topic: "auto-batch", allFlagged: true },
         { sessionID: SESSION } as never,
       );
-      expect(result).toContain("Compressed 1 message(s)");
+      expect(result).toContain("Archived 1 message(s)");
       expect(getCompressState(SESSION).blocks.has("msg-real")).toBe(true);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("delete=true permanently removes messages — no history node, no registry", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    try {
+      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig());
+      const result = await tool.execute(
+        {
+          topic: "noise removal",
+          delete: true,
+          content: JSON.stringify([
+            { messageId: "msg-2", topic: "empty tool output", description: "redundant ls listing" },
+          ]),
+        },
+        { sessionID: SESSION } as never,
+      );
+
+      expect(result).toContain("Deleted 1 message(s)");
+      expect(result).toContain("PERMANENTLY REMOVED");
+      expect(result).not.toContain("Archived");
+
+      const state = getCompressState(SESSION);
+      expect(state.blocks.size).toBe(1);
+      const entry = state.blocks.get("msg-2")!;
+      expect(entry.deleted).toBe(true);
+      expect(entry.nodeId).toBe("");
+      expect(entry.label).toBe("");
+
+      // No history node should exist
+      const history = await store.getNodeByLabel("project", "").catch(() => null);
+      expect(history).toBeNull();
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("delete=false archives messages (default behavior)", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    try {
+      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig());
+      const result = await tool.execute(
+        {
+          topic: "test archive",
+          delete: false,
+          content: JSON.stringify([
+            { messageId: "msg-2", topic: "t", description: "d" },
+          ]),
+        },
+        { sessionID: SESSION } as never,
+      );
+
+      expect(result).toContain("Archived 1 message(s)");
+      expect(result).not.toContain("Deleted");
+
+      const entry = getCompressState(SESSION).blocks.get("msg-2")!;
+      expect(entry.deleted).toBe(false);
+      expect(entry.label).toContain("contexthistory");
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("allFlagged always archives, never deletes", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    const big = "word ".repeat(7000);
+    const client = {
+      session: {
+        messages: async () => [
+          { info: { id: "msg-big", role: "user" }, parts: [{ type: "text", text: big }] },
+        ],
+      },
+    };
+    try {
+      const tool = createContextCompressTool(store, client, makeConfig());
+      const result = await tool.execute(
+        { topic: "auto-batch", allFlagged: true, delete: true },
+        { sessionID: SESSION } as never,
+      );
+      // allFlagged should archive even when delete=true is passed
+      expect(result).toContain("Archived 1 message(s)");
+      const entry = getCompressState(SESSION).blocks.get("msg-big")!;
+      expect(entry.deleted).toBe(false);
     } finally {
       await store.close();
       fs.rmSync(tmp, { recursive: true, force: true });

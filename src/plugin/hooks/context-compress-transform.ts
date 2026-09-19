@@ -50,7 +50,8 @@ function injectMessageMarkers(messages: TransformMessage[], compressed: Set<stri
 }
 
 // Replace compressed messages with the synthetic placeholder referencing the
-// saved node. Mirrors DCP's synthetic message + footer-block-ref pattern.
+// saved node. Deleted entries (deleted:true) are removed entirely — no
+// placeholder, no backup. Archived entries get a placeholder with a fetch link.
 function replaceCompressedMessages(
   messages: TransformMessage[],
   sessionId: string,
@@ -61,12 +62,19 @@ function replaceCompressedMessages(
 
   const out: TransformMessage[] = [];
   let replaced = 0;
+  let deleted = 0;
   for (const msg of messages) {
     const entry = state.blocks.get(msg.info?.id ?? "");
     if (!entry) {
       out.push(msg);
       continue;
     }
+    if (entry.deleted) {
+      // DELETE: permanently remove — no placeholder, no trace.
+      deleted++;
+      continue;
+    }
+    // ARCHIVE: replace with synthetic placeholder linking to the saved node.
     const marker = injectionMarker(config, "context-compress", "compressed " + entry.blockId);
     const synthetic = {
       info: { role: "user", id: msg.info?.id },
@@ -82,8 +90,8 @@ ${config.injectionVisibility?.enabled === false ? "" : `[memory-plugin:context-c
     out.push(synthetic as TransformMessage);
     replaced++;
   }
-  if (replaced > 0) {
-    memLog("debug", "context-compress", "Pruned messages replaced in transform", { sessionId, replaced });
+  if (replaced > 0 || deleted > 0) {
+    memLog("debug", "context-compress", "Pruned messages replaced in transform", { sessionId, replaced, deleted });
   }
   return out;
 }

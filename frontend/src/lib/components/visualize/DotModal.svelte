@@ -17,8 +17,11 @@
 		out = out.replace(/"([^"]*?)"/g, (_, inner: string) => '"' + inner.replace(/\n/g, '\\n') + '"');
 		out = out.replace(/-->/g, '->');
 		out = out.replace(/<--/g, '<-');
-		out = out.replace(/(\w[\w.]*)\s*->\s*\|("[^"]*")\|\s*(\w[\w.]*)/g, '$1 -> $3 [label=$2]');
-		out = out.replace(/(\w[\w.]*)\s*<-\s*\|("[^"]*")\|\s*(\w[\w.]*)/g, '$1 <- $3 [label=$2]');
+		out = out.replace(/\|("[^"]*")\|\s*(\w[\w.]*)/g, '$2 [label=$1]');
+		out = out.replace(/(\w[\w.]*)\s*-\.+->\s*(\w[\w.]*)/g, (_, a, b) => `${a} -> ${b} [style=dashed]`);
+		out = out.replace(/(\w[\w.]*)\s*\.\.+>\s*(\w[\w.]*)/g, (_, a, b) => `${a} -> ${b} [style=dotted]`);
+		out = out.replace(/(\w[\w.]*)\s*<\.+-\s*(\w[\w.]*)/g, (_, a, b) => `${a} <- ${b} [style=dashed]`);
+		out = out.replace(/(\w[\w.]*)\s*<\.\.+\s*(\w[\w.]*)/g, (_, a, b) => `${a} <- ${b} [style=dotted]`);
 		return out;
 	}
 
@@ -39,12 +42,14 @@
 <Modal bind:open title={title ?? '◈ Diagram'}>{#snippet children()}
 	{#if loading}<div class="p-8 grid place-items-center opacity-70">Rendering…</div>
 	{:else if svg}
-		<div class="flex gap-2 p-2 border-b bg-surface-50/70">
-			<button class="btn btn-sm preset-tonal rounded-full" onclick={() => scale = Math.min(3, +(scale * 1.2).toFixed(2))}>＋ Zoom in</button>
-			<button class="btn btn-sm preset-tonal rounded-full" onclick={() => scale = Math.max(0.2, +(scale / 1.2).toFixed(2))}>－ Zoom out</button>
-			<button class="btn btn-sm preset-tonal rounded-full" onclick={() => { scale = 1; offset = { x: 0, y: 0 }; }}>Reset</button>
-			<span class="ml-auto text-xs opacity-80">{Math.round(scale * 100)}%</span>
+		<div class="relative overflow-auto bg-surface-900 rounded-xl border cursor-grab active:cursor-grabbing select-none flex-1 min-h-0" role="img" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onwheel={(e) => { e.preventDefault(); const f = e.deltaY > 0 ? 0.9 : 1.1; scale = Math.max(0.2, Math.min(5, +(scale * f).toFixed(2))); }}>
+			<div class="absolute top-2 left-2 z-10 flex items-center gap-1 bg-surface-800/80 backdrop-blur-sm rounded-lg p-1">
+				<button class="btn btn-sm preset-tonal h-6 text-xs px-2" onclick={() => scale = Math.min(5, +(scale * 1.2).toFixed(2))}>＋</button>
+				<button class="btn btn-sm preset-tonal h-6 text-xs px-2" onclick={() => scale = Math.max(0.2, +(scale / 1.2).toFixed(2))}>－</button>
+				<button class="btn btn-sm preset-tonal h-6 text-xs px-2" onclick={() => { scale = 1; offset = { x: 0, y: 0 }; }}>Reset</button>
+				<span class="text-[10px] text-surface-400 px-1">{Math.round(scale * 100)}%</span>
+			</div>
+			<div class="p-4 w-full min-h-full grid place-items-center">{@html svg.replace('<svg', `<svg style="transform: translate(${offset.x}px, ${offset.y}px) scale(${scale}); transform-origin: center; max-width:100%; height:auto;"`)}</div>
 		</div>
-		<div class="p-4 overflow-auto max-h-[60vh] bg-surface-900 rounded-xl border cursor-grab active:cursor-grabbing select-none" role="img" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onwheel={(e) => { e.preventDefault(); const f = e.deltaY > 0 ? 0.9 : 1.1; scale = Math.max(0.2, Math.min(3, +(scale * f).toFixed(2))); }}>{@html svg.replace('<svg', `<svg style="transform: translate(${offset.x}px, ${offset.y}px) scale(${scale}); transform-origin: center;"`)}</div>
 	{:else}<pre class="p-4 text-xs whitespace-pre-wrap bg-surface-900 text-white rounded-xl">{dotContent}</pre>{/if}
 {/snippet}</Modal>
