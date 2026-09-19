@@ -14,6 +14,8 @@ export type CompressBlockEntry = {
   label: string;
   summary: string;
   topic: string;
+  /** true = permanently deleted (no backup node). false/undefined = archived (recoverable). */
+  deleted?: boolean;
 };
 
 export type SessionCompressState = {
@@ -47,7 +49,7 @@ export function recordCompressBlock(
   entry: Omit<CompressBlockEntry, "label"> & { label: string },
 ): void {
   const state = getCompressState(sessionId);
-  state.blocks.set(msgId, { ...entry, label: entry.label });
+  state.blocks.set(msgId, { ...entry, label: entry.label, deleted: entry.deleted ?? false });
   state.refCounter++;
 }
 
@@ -88,6 +90,7 @@ export async function rebuildCompressState(store: MemoryStore, sessionId: string
         label: entry.label,
         summary: entry.summary ?? "",
         topic: entry.topic ?? "",
+        deleted: false,
       });
       // refCounter is max ref seen + 1 so new refs never collide
       const num = parseInt(entry.ref?.replace(/^m/, "") ?? "0", 10);

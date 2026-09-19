@@ -435,4 +435,71 @@ describe("createContextCompressTransformHandler", () => {
     expect(joined).toContain("HIGH priority");
     expect(joined).toContain("allFlagged:true");
   });
+
+  test("deleted entries are removed entirely — no placeholder, no trace", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    recordCompressBlock(SESSION, "msg-2", {
+      blockId: "m0001",
+      nodeId: "",
+      label: "",
+      summary: "redundant ls listing",
+      topic: "noise",
+      deleted: true,
+    });
+    const output = { messages: [
+      makeMessage("msg-1", "user", "Please fix it"),
+      makeMessage("msg-2", "assistant", "Here is a useless tool output"),
+      makeMessage("msg-3", "user", "continue"),
+    ] };
+    await handler["chat.messages.transform"]!({}, output);
+    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    const real = withoutDashboard(msgs);
+    // msg-2 is deleted entirely — only msg-1, msg-3 remain (+ dashboard)
+    expect(real).toHaveLength(2);
+    expect(real[0]!.parts[0]!.text).toContain("[message msg-1]");
+    expect(real[1]!.parts[0]!.text).toContain("[message msg-3]");
+    // No compressed section placeholder for deleted msg
+    const allTexts = real.map(m => m.parts[0]!.text!);
+    expect(allTexts.join("\n")).not.toContain("[Compressed conversation section]");
+    expect(allTexts.join("\n")).not.toContain("useless tool output");
+  });
+
+  test("mix of archived and deleted entries — archived gets placeholder, deleted gets removed", async () => {
+    const config = makeConfig();
+    const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
+    // msg-1: archived (normal)
+    recordCompressBlock(SESSION, "msg-1", {
+      blockId: "m0001",
+      nodeId: "node-x",
+      label: "contexthistory:ses-test:0",
+      summary: "good analysis",
+      topic: "analysis",
+      deleted: false,
+    });
+    // msg-2: deleted (noise)
+    recordCompressBlock(SESSION, "msg-2", {
+      blockId: "m0002",
+      nodeId: "",
+      label: "",
+      summary: "empty output",
+      topic: "noise",
+      deleted: true,
+    });
+    const output = { messages: [
+      makeMessage("msg-1", "assistant", "Deep analysis of the ranking module"),
+      makeMessage("msg-2", "assistant", "ls returned nothing useful"),
+      makeMessage("msg-3", "user", "continue"),
+    ] };
+    await handler["chat.messages.transform"]!({}, output);
+    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    const real = withoutDashboard(msgs);
+    // msg-1 → placeholder, msg-2 → removed, msg-3 → marker
+    expect(real).toHaveLength(2);
+    expect(real[0]!.parts[0]!.text).toContain("[Compressed conversation section]");
+    expect(real[0]!.parts[0]!.text).toContain("contexthistory:ses-test:0");
+    expect(real[1]!.parts[0]!.text).toContain("[message msg-3]");
+    // Deleted msg-2 has no trace
+    expect(real.map(m => m.parts[0]!.text!).join("\n")).not.toContain("ls returned nothing");
+  });
 });

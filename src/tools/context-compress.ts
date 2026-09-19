@@ -59,7 +59,25 @@ function formatArchivedSlice(entry: { msgRef: string; topic: string; description
 
 export function createContextCompressTool(store: MemoryStore, client: unknown, config: MemConfig, toast?: ToastService) {
   return tool({
-    description: `Compress (prune) conversation messages to free context, while PERMANENTLY SAVING the full original content as a memory node. Unlike plain pruning, nothing is lost — every pruned message is archived as a contexthistory node you can retrieve later with memory(mode="fetch", label="LABEL"). Use this when the conversation is getting long and earlier messages can be condensed to a short summary.
+    description: `Compress (prune) conversation messages to free context. Two modes — choose carefully:
+
+## ARCHIVE (default, delete=false or omitted)
+Content is PERMANENTLY SAVED as a contexthistory memory node and removed from the conversation.
+Recoverable later with memory(mode="fetch", label="LABEL").
+Use for content that is irrelevant NOW but MIGHT be valuable in a future session:
+- Large analyses, completed debugging sessions, research results
+- Decisions that might be revisited, code reviews, exploration notes
+Rule of thumb: "Could I need this in 10 sessions?" → archive.
+
+## DELETE (delete=true)
+Content is PERMANENTLY REMOVED with NO backup. It cannot be recovered.
+Use ONLY for content that is pure noise — things no one will ever need again:
+- Empty tool outputs, redundant file listings (ls, find, glob results)
+- Duplicate error messages, debugging breadcrumbs that served their purpose
+- Truncated/corrupt content, irrelevant digressions, stale context
+Rule of thumb: "Is this pure noise?" → delete. When in doubt, ARCHIVE.
+
+DO NOT use delete for: analyses, decisions, code context, file contents, conversation turns, or anything with potential future value.
 
 Args:
   topic: short label for this compression batch, e.g. debugging-graph-hook
@@ -70,16 +88,18 @@ Args:
   range: inclusive msgId range, e.g. "msg_abc:msg_def" or "msg_abc-msg_def" — archives every message between the two ids in view order (inclusive), inclusive bounds. Combine with fromTime/toTime/pattern to narrow.
   fromTime/toTime: ISO timestamp bounds (inclusive)
   pattern: substring filter (applied after range/time)
+  delete: boolean — when true, messages are PERMANENTLY DELETED (no backup, no node created). When false (default), messages are ARCHIVED (saved to a memory node, recoverable later).
 
-The plugin replaces the pruned messages with a compact placeholder: [Compressed conversation section] TOPIC: DESCRIPTION with a footer linking to the saved node.`,
+The plugin either replaces archived messages with a compact placeholder linking to the saved node, or permanently removes deleted messages.`,
     args: {
       topic: tool.schema.string().describe("Short label for this compression batch"),
       content: tool.schema.string().optional().describe("JSON-encoded array of messages to compress, each with messageId, topic, description"),
-      allFlagged: tool.schema.boolean().optional().describe("Archive every nudge-flagged HIGH-priority message (>= 5000 tokens, max 10) in one call. Auto-generates topic/description from content. Overrides content."),
+      allFlagged: tool.schema.boolean().optional().describe("Archive every nudge-flagged HIGH-priority message (>= 5000 tokens, max 10) in one call. Auto-generates topic/description from content. Overrides content. NOTE: allFlagged always ARCHIVES (never deletes) — bulk safety."),
       range: tool.schema.string().optional().describe("Inclusive msgId range, e.g. \"msg_abc:msg_def\" or \"msg_abc-msg_def\" — archives every message between the two ids in view order (inclusive). Auto-generates description from content. Use to archive a contiguous block without listing each id."),
       fromTime: tool.schema.string().optional().describe("ISO timestamp lower bound (inclusive) — only messages at/after this time are considered."),
       toTime: tool.schema.string().optional().describe("ISO timestamp upper bound (inclusive) — only messages at/before this time are considered."),
-      pattern: tool.schema.string().optional().describe("Substring filter — only messages whose text contains this string are archived (combines with range/time)."),
+      pattern: tool.schema.string().optional().describe("Substring filter — only messages whose text contain this string are archived (combines with range/time)."),
+      delete: tool.schema.boolean().optional().describe("PERMANENTLY DELETE messages with NO backup. Content is gone forever. Use ONLY for pure noise (empty tool outputs, redundant listings, duplicate errors). When false (default), content is ARCHIVED to a memory node and recoverable. DO NOT delete analyses, decisions, code context, or anything with potential future value."),
     },
     async execute(args, toolCtx) {
       const ccConfig = config.contextCompression;
@@ -224,10 +244,12 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
         }
       }
       const done: string[] = [];
+      const deleted: string[] = [];
       const skipped: string[] = [];
       const perMsg: Array<{ msgRef: string; nodeLabel: string; description: string }> = [];
       let removedChars = 0;
       let summaryChars = 0;
+      const isDeleteMode = args.delete === true && !args.allFlagged;
 
       for (const target of targets) {
         const msg = byId.get(target.messageId);
@@ -249,40 +271,56 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
         removedChars += messageEntry.length;
         summaryChars += (target.description ?? "").length;
 
-        // Merged per-session history chain: append to the current history node,
-        // rotate to a new node when it would exceed the cap.
-        const msgRef = nextMsgRef(sessionId);
-        const historyLabel = await appendToHistory(store, sessionId, {
-          msgRef,
-          topic: target.topic ?? args.topic,
-          description: target.description,
-          messageEntry,
-        });
-        await appendToRegistry(store, sessionId, {
-          ref: msgRef,
-          msgId: target.messageId,
-          status: "archived",
-          summary: target.description,
-          label: historyLabel,
-          topic: target.topic ?? args.topic,
-        });
+        if (isDeleteMode) {
+          // DELETE: permanently remove — no history node, no registry entry.
+          // The message vanishes from the conversation with no backup.
+          const msgRef = nextMsgRef(sessionId);
+          recordCompressBlock(sessionId, target.messageId, {
+            blockId: msgRef,
+            nodeId: "",
+            label: "",
+            summary: target.description,
+            topic: target.topic ?? args.topic,
+            deleted: true,
+          });
+          deleted.push(target.messageId);
+        } else {
+          // ARCHIVE: save to history node + registry, recoverable later.
+          const msgRef = nextMsgRef(sessionId);
+          const historyLabel = await appendToHistory(store, sessionId, {
+            msgRef,
+            topic: target.topic ?? args.topic,
+            description: target.description,
+            messageEntry,
+          });
+          await appendToRegistry(store, sessionId, {
+            ref: msgRef,
+            msgId: target.messageId,
+            status: "archived",
+            summary: target.description,
+            label: historyLabel,
+            topic: target.topic ?? args.topic,
+          });
 
-        recordCompressBlock(sessionId, target.messageId, {
-          blockId: msgRef,
-          nodeId: historyLabel,
-          label: historyLabel,
-          summary: target.description,
-          topic: target.topic ?? args.topic,
-        });
-        done.push(target.messageId);
-        perMsg.push({ msgRef, nodeLabel: historyLabel, description: target.description });
+          recordCompressBlock(sessionId, target.messageId, {
+            blockId: msgRef,
+            nodeId: historyLabel,
+            label: historyLabel,
+            summary: target.description,
+            topic: target.topic ?? args.topic,
+            deleted: false,
+          });
+          done.push(target.messageId);
+          perMsg.push({ msgRef, nodeLabel: historyLabel, description: target.description });
+        }
       }
 
-      if (done.length === 0) {
-        return `No messages compressed. Skipped: ${skipped.join(", ") || "none"}.`;
+      const totalProcessed = done.length + deleted.length;
+      if (totalProcessed === 0) {
+        return `No messages processed. Skipped: ${skipped.join(", ") || "none"}.`;
       }
 
-      if (toast?.isEnabled) {
+      if (toast?.isEnabled && (done.length > 0 || deleted.length > 0)) {
         const registryLabel = `contexthistory:index:${sessionId}`;
         try {
           const agent = (toolCtx as { agent?: string }).agent;
@@ -296,6 +334,7 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
             removedChars: number;
             summaryChars: number;
             totalMessages: number;
+            deletedCount?: number;
           } = {
             sessionId,
             messageCount: done.length,
@@ -306,31 +345,41 @@ The plugin replaces the pruned messages with a compact placeholder: [Compressed 
             summaryChars,
             totalMessages: messages.length,
           };
+          if (deleted.length > 0) notif.deletedCount = deleted.length;
           if (agent) notif.agent = agent;
           await toast.notifyCompression(notif);
-          memLog("debug", "context-compress", "Compression notification sent", { count: done.length, sessionId, mode: toast.mode });
+          memLog("debug", "context-compress", "Compression notification sent", { archived: done.length, deleted: deleted.length, sessionId, mode: toast.mode });
         } catch (err) {
           memLog("warn", "context-compress", "Compression notification failed", { error: String(err) });
         }
       }
 
-      const lines = [
-        `## Compressed ${done.length} message(s) to context history`,
-        `Topic: ${args.topic}`,
-        "",
-        "Pruned messages will be replaced by compact placeholders with [message <id>] refs.",
-        "Full originals are archived and retrievable via memory(mode=\"fetch\", label=...) or the registry:",
-        `- Registry: contexthistory:index:${sessionId}`,
-      ];
-      for (const p of perMsg) {
-        lines.push(`- [${p.msgRef}] "${p.description}" → ${p.nodeLabel}`);
+      const lines: string[] = [];
+      if (done.length > 0) {
+        lines.push(`## Archived ${done.length} message(s) to context history`);
+        lines.push(`Topic: ${args.topic}`);
+        lines.push("");
+        lines.push("Pruned messages will be replaced by compact placeholders with [message <id>] refs.");
+        lines.push("Full originals are archived and retrievable via memory(mode=\"fetch\", label=...) or the registry:");
+        lines.push(`- Registry: contexthistory:index:${sessionId}`);
+        for (const p of perMsg) {
+          lines.push(`- [${p.msgRef}] "${p.description}" → ${p.nodeLabel}`);
+        }
+        lines.push("");
+        lines.push(`Use memory(mode="fetch", label="contexthistory:index:${sessionId}") to list all archived messages for this session.`);
+      }
+      if (deleted.length > 0) {
+        if (lines.length > 0) lines.push("");
+        lines.push(`## Deleted ${deleted.length} message(s) permanently (no backup)`);
+        lines.push(`Topic: ${args.topic}`);
+        lines.push("");
+        lines.push("These messages have been PERMANENTLY REMOVED and cannot be recovered.");
+        lines.push(`Deleted message IDs: ${deleted.join(", ")}`);
       }
       if (skipped.length > 0) {
         lines.push("");
         lines.push(`Skipped: ${skipped.join(", ")}`);
       }
-      lines.push("");
-      lines.push(`Use memory(mode="fetch", label="contexthistory:index:${sessionId}") to list all archived messages for this session.`);
       return lines.join("\n");
     },
   });

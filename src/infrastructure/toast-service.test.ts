@@ -63,7 +63,7 @@ describe("ToastService", () => {
     expect(ok).toBe(true);
     const body = shown[0] as { title: string; message: string };
     expect(body.title).toBe("archivecontext: Compression");
-    expect(body.message).toContain("15 messages archived");
+    expect(body.message).toContain("15 archived");
     expect(body.message).toContain("debugging-graph-hook");
     expect(body.message).toContain("contexthistory:index:ses-test");
   });
@@ -83,11 +83,11 @@ describe("ToastService", () => {
       summaryChars: 400,
       totalMessages: 12,
     });
-    expect(msg).toContain("3 messages archived");
+    expect(msg).toContain("3 archived");
     expect(msg).toContain("−25.0k tok"); // 100k chars / 4
     expect(msg).toContain("saved 24.9k");
     expect(msg).toContain("│"); // progress bar
-    expect(msg).toContain("3/12 messages archived");
+    expect(msg).toContain("3/12 messages processed");
     expect(msg).toContain('[m0001] "graph hook failing" → contexthistory:ses-test:1');
     expect(msg).toContain('[m0002] "WASM OOM in batch worker" → contexthistory:ses-test:1');
   });
@@ -95,7 +95,7 @@ describe("ToastService", () => {
   test("buildCompressionMessage handles a single message (singular) and no extras", () => {
     const service = new ToastService({}, { enabled: true, mode: "chat" });
     const msg = service.buildCompressionMessage({ sessionId: "ses-test", messageCount: 1 });
-    expect(msg).toContain("1 message archived");
+    expect(msg).toContain("1 archived");
     expect(msg).not.toContain("Topic:");
     expect(msg).not.toContain("│");
     expect(msg).toContain("Originals preserved");
@@ -133,7 +133,7 @@ describe("ToastService", () => {
     const part = prompts[0]!.body.parts![0]!;
     expect(part.type).toBe("text");
     expect(part.ignored).toBe(true);
-    expect(part.text).toContain("3 messages archived");
+    expect(part.text).toContain("3 archived");
   });
 
   // Regression: the SDK's session.prompt reads `this._client` — it must be
