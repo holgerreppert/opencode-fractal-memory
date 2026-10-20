@@ -1,7 +1,10 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
+import type { MemoryNode as StoredMemoryNode } from "../../storage/types";
 import { getPressurePhase } from "../../application/adaptive-pressure";
 import { injectionMarker, recordInjection } from "../../application/injection-visibility";
+import { getActiveRerankMode } from "../../application/dream-rsi";
+import { rerank } from "../../application/ranking/rerank";
 import { memLog } from "../../logging";
 import type { HookHandler } from "./types";
 
@@ -17,6 +20,7 @@ interface MemoryNode {
 interface QueryResult {
   node?: MemoryNode | null;
   score?: number;
+  level?: "summary" | "intermediate" | "detail";
 }
 
 interface PendingInjection {
@@ -51,11 +55,50 @@ function isOwnInjectionText(text: string): boolean {
   return text.includes("<memory_context>") || text.includes("Reranked Memory Results");
 }
 
+/**
+ * Band-preserving top-K: order candidates by the learned rerank mode but
+ * keep at most `capPerLevel` entries per drilldown level so the
+ * summary/intermediate/detail mix survives the reorder. Fill priority:
+ * ranked∩cap → original∩cap → ranked → original, so diversity wins over
+ * rank and the result is never shorter than min(take, results.length).
+ */
+function bandPreservingTop(
+  results: QueryResult[],
+  rankedIds: string[],
+  take: number,
+  capPerLevel: number,
+): QueryResult[] {
+  const byId = new Map<string, QueryResult>();
+  for (const r of results) {
+    if (r.node?.id) byId.set(r.node.id, r);
+  }
+  const out: QueryResult[] = [];
+  const counts: Record<string, number> = {};
+  const tryPush = (r: QueryResult, cap: boolean): void => {
+    if (out.includes(r) || out.length >= take) return;
+    const lvl = r.level ?? "detail";
+    if (cap && (counts[lvl] ?? 0) >= capPerLevel) return;
+    counts[lvl] = (counts[lvl] ?? 0) + 1;
+    out.push(r);
+  };
+  const ranked = rankedIds.map(id => byId.get(id)).filter((r): r is QueryResult => r !== undefined);
+  const passes: Array<Array<QueryResult>> = [ranked, results, ranked, results];
+  for (let p = 0; p < passes.length && out.length < take; p++) {
+    const cap = p < 2;
+    for (const r of passes[p]!) {
+      tryPush(r, cap);
+      if (out.length >= take) break;
+    }
+  }
+  return out;
+}
+
 async function judgePriorInjections(
   store: MemoryStore,
   pending: Map<string, PendingInjection>,
   turn: number,
   messages: HookMessage[],
+  sessionId: string,
 ): Promise<void> {
   if (pending.size === 0) return;
   // Evidence = what the AGENT did: memory-tool inputs + its own text.
@@ -87,6 +130,9 @@ async function judgePriorInjections(
           memLog("debug", "messages-transform", "Usefulness +: injected node was used by the agent", { label: p.label });
         }
         pending.delete(id);
+        try {
+          await store.recordInjectionNodeVerdict(sessionId, id, true);
+        } catch { /* metrics verdict is best-effort */ }
       } else if (turn - p.turn >= JUDGE_GRACE_TURNS) {
         const node = await store.getNode(id).catch(() => null);
         if (node) {
@@ -96,6 +142,9 @@ async function judgePriorInjections(
           memLog("debug", "messages-transform", "Usefulness −: injected node ignored past grace window", { label: p.label });
         }
         pending.delete(id);
+        try {
+          await store.recordInjectionNodeVerdict(sessionId, id, false);
+        } catch { /* metrics verdict is best-effort */ }
       }
     } catch {
       // judging must never break injection
@@ -149,6 +198,11 @@ export function createMessagesTransformHandler(
   const injectedPerSession = new Map<string, Set<string>>();
   const pendingJudge = new Map<string, Map<string, PendingInjection>>();
   const turnBySession = new Map<string, number>();
+  // OpenCode re-fires chat.messages.transform on every tool-loop LLM request
+  // with the same last user text — dedup so drilldownQuery (3 hybrid searches
+  // each) doesn't re-run several times per second for an unchanged query.
+  const DRILLDOWN_TTL_MS = 30_000;
+  const drilldownCache = new Map<string, { at: number; results: QueryResult[] }>();
 
   return {
     "chat.messages.transform": async (_input: unknown, output: unknown) => {
@@ -164,8 +218,26 @@ export function createMessagesTransformHandler(
       const userText = lastUserMsg.parts?.filter(p => p.type === "text").map(p => p.text).join(" ") ?? "";
       if (!userText || userText.length < 10) return;
 
+      const sessionId = currentSessionId?.value || "default";
       try {
-        const results = (await store.drilldownQuery(userText, 5, store.projectName)) as QueryResult[];
+        const cacheKey = `${sessionId} ${userText}`;
+        const now = Date.now();
+        let cached = drilldownCache.get(cacheKey);
+        if (cached && now - cached.at > DRILLDOWN_TTL_MS) {
+          drilldownCache.delete(cacheKey);
+          cached = undefined;
+        }
+        if (!cached && drilldownCache.size > 32) {
+          const oldest = drilldownCache.keys().next().value;
+          if (oldest !== undefined) drilldownCache.delete(oldest);
+        }
+        let results: QueryResult[];
+        if (cached) {
+          results = cached.results;
+        } else {
+          results = (await store.drilldownQuery(userText, 5, store.projectName)) as QueryResult[];
+          drilldownCache.set(cacheKey, { at: now, results });
+        }
 
         const apConfig = config.adaptivePressure;
         const phase = apConfig?.enabled ? getPressurePhase(apConfig) : "normal";
@@ -179,7 +251,6 @@ export function createMessagesTransformHandler(
         const baseMinImp = config.autoInjection?.minScore ?? config.autoRetrieve?.minInjectionScore ?? config.ranking?.gate?.minScore ?? 0.3;
         const minImp = phase === "critical" ? 0.8 : phase === "aggressive" ? Math.max(0.6, baseMinImp) : baseMinImp;
 
-        const sessionId = currentSessionId?.value || "default";
         let seen = injectedPerSession.get(sessionId);
         if (!seen) {
           seen = new Set<string>();
@@ -199,7 +270,7 @@ export function createMessagesTransformHandler(
         // Judge prior injections by observed use before retrieving new ones.
         // Judging consumes the pending entry but never touches the dedup set.
         try {
-          await judgePriorInjections(store, pending, turn, out.messages);
+          await judgePriorInjections(store, pending, turn, out.messages, sessionId);
         } catch {
           // judging must never break injection
         }
@@ -217,10 +288,55 @@ export function createMessagesTransformHandler(
 
         if (filtered.length === 0) return;
 
-        const memoryBlock = formatMemoryBlock(filtered.slice(0, 3));
-        if (!memoryBlock) return;
+        // Learned strategy application (Dream-RSI loop closure): when replay
+        // has crowned a rerank strategy, reorder the drilldown candidates by
+        // that mode before the top-3 cut; the row then logs the applied mode
+        // so replay attributes feedback to the pipeline that really ran.
+        // Drilldown winner or no learned mode → natural level-banded order.
+        // Failure falls back to drilldown order — injection never breaks.
+        let injectedNodes = filtered.slice(0, 3);
+        let appliedStrategy = "drilldown";
+        // Exploration quota (Dream-RSI rule 3): a share of injections skips
+        // the learned mode so the window keeps getting drilldown-produced
+        // rows — without counterfactual data the incumbent's neutral self
+        // rows (agreement 0.8) hold the seat forever under hysteresis.
+        const explorationRate = config.dreamRsi?.explorationRate ?? 0.2;
+        const exploring = config.dreamRsi?.applyToInjection !== false
+          && explorationRate > 0
+          && Math.random() < explorationRate;
+        if (exploring) {
+          memLog("debug", "messages-transform", `exploration quota hit (rate=${explorationRate}): keeping drilldown order for counterfactual row`);
+        } else if (config.dreamRsi?.applyToInjection !== false) {
+          try {
+            const learnedMode = await getActiveRerankMode(store);
+            if (learnedMode !== undefined && filtered.length > 1) {
+              const candidates = filtered
+                .map(r => r.node)
+                .filter((n): n is MemoryNode => n !== null && n !== undefined);
+              const ranked = await rerank({
+                mode: learnedMode,
+                query: userText,
+                candidates: candidates as unknown as StoredMemoryNode[],
+                topK: Math.min(3, candidates.length),
+              });
+              if (ranked.length > 0) {
+                const ordered = bandPreservingTop(filtered, ranked.map(n => n.id), 3, 2);
+                // Attribute only when the order actually changed — if rerank
+                // was a no-op (too few candidates), the row is drilldown's.
+                const changed = ordered.some((r, i) => r !== injectedNodes[i]) || ordered.length !== injectedNodes.length;
+                if (changed) {
+                  injectedNodes = ordered;
+                  appliedStrategy = learnedMode;
+                }
+              }
+            }
+          } catch (err) {
+            memLog("debug", "messages-transform", `learned rerank unavailable, keeping drilldown order: ${String(err)}`);
+          }
+        }
 
-        const injectedNodes = filtered.slice(0, 3);
+        const memoryBlock = formatMemoryBlock(injectedNodes);
+        if (!memoryBlock) return;
         for (const r of injectedNodes) {
           if (r.node?.id) {
             seen.add(r.node.id);
@@ -249,6 +365,7 @@ export function createMessagesTransformHandler(
           type: r.node?.type ?? "unknown",
           snippet: (r.node?.content ?? "").slice(0, 300),
         }));
+        const postRerankIds = injectedNodes.map(r => r.node?.id).filter((id): id is string => id !== undefined);
 
         store.logInjectionMetrics(currentSessionId.value, {
           injectedNodeCount: injectedNodes.length,
@@ -256,9 +373,13 @@ export function createMessagesTransformHandler(
           // not full node content — the old formula overstated cost ~10x.
           injectedTokens: memoryBlock.length / 4,
           injectionMode: "messages_transform",
-          queryText: userText.slice(0, 200),
+          queryText: userText.slice(0, 2000),
           injectedNodeTypes: nodeTypes,
           injectedContent,
+          // Dream-RSI replay scores overlap against these — without them every
+          // messages_transform row scored exactly 0.2 (overlap forced to 0).
+          postRerankIds,
+          rerankStrategy: appliedStrategy,
         }).catch((err: unknown) => memLog("warn", "messages-transform", `injection metric error: ${String(err)}`));
 
         memLog("debug", "messages-transform", "Injected structured memory context", {

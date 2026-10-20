@@ -53,7 +53,7 @@ class NodesStore {
 
   async loadScopes() {
     try {
-      const res: any = await fetch('http://127.0.0.1:8787/api/scopes').then((r) => r.json());
+      const res: any = await fetch('/api/scopes').then((r) => r.json());
       this.availableScopes = (res?.scopes ?? res ?? []) as { scope: string; projectName: string | null }[];
       Logger.debug('[scopes] loaded', this.availableScopes);
     } catch (e) { Logger.warn('[scopes] failed', e); }

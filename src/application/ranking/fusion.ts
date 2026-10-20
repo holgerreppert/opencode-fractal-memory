@@ -13,7 +13,8 @@ export function fuseScore(features: RankFeatures, weights: RankWeights): number 
     features.bm25 * weights.bm25 +
     features.quality * weights.quality +
     features.confidence * weights.confidence +
-    features.usefulness * weights.usefulness
+    features.usefulness * weights.usefulness +
+    features.cost * weights.cost
   );
 }
 
@@ -24,7 +25,7 @@ export function fuseScore(features: RankFeatures, weights: RankWeights): number 
  */
 export function normalizeFusedScore(raw: number, weights: RankWeights): number {
   const maxScore =
-    weights.semantic + weights.bm25 + weights.quality + weights.confidence + weights.usefulness;
+    weights.semantic + weights.bm25 + weights.quality + weights.confidence + weights.usefulness + weights.cost;
   if (maxScore <= 0) return 0;
   return Math.min(1, Math.max(0, raw / maxScore));
 }

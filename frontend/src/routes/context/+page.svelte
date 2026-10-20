@@ -2,7 +2,7 @@
 	import { t } from 'svelte-i18n';
 	import { Logger } from '$lib/api/logger';
 	import { onMount } from 'svelte';
-	const BASE = 'http://127.0.0.1:8787';
+	const BASE = '';
 	let dashboard: any = $state(null);
 	let compress: any = $state(null);
 	let tokens: any = $state(null);
@@ -28,14 +28,14 @@
 				jget('/api/embeddings-status').catch(()=>null),
 			]);
 			dashboard=d; compress=c; tokens=t; injection=i; pressure=p; archive=a; live=l; embeddings=e;
-			Logger.debug('[context] loaded 8787 parity', { d, c, t, i, p, a });
+			Logger.debug('[context] loaded', { d, c, t, i, p, a });
 		} catch(e:any){ error=String(e?.message??e); Logger.warn('[context] load failed', e); }
 		finally { loading=false; }
 	});
 </script>
 <div class="space-y-4">
 	<div class="card preset-filled-surface-100 p-4 flex justify-between items-center">
-		<div><h3 class="h3">{$t('nav.context') ?? 'Context'}</h3><p class="text-sm opacity-70">What fills the LLM window — memory + injections + compression + embeddings (mirrors :8787 Context Dashboard)</p></div>
+		<div><h3 class="h3">{$t('nav.context') ?? 'Context'}</h3><p class="text-sm opacity-70">What fills the LLM window — memory + injections + compression + embeddings</p></div>
 		<label class="flex items-center gap-2 text-xs"><input type="checkbox" bind:checked={showRaw} /> raw JSON</label>
 	</div>
 	{#if loading}<div class="card p-6 text-sm opacity-70">Loading…</div>{/if}

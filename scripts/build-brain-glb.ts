@@ -165,7 +165,7 @@ function pad(b: Buffer) { const p = Math.ceil(b.length / 4) * 4; return b.length
 
 function main() {
   const objDir = process.argv[2] || "/tmp/brain_regions/inflated_DK_obj";
-  const outputPath = process.argv[3] || join(process.cwd(), "management", "public", "models", "brain-atlas.glb");
+  const outputPath = process.argv[3] || join(process.cwd(), "frontend", "static", "brain-atlas.glb");
 
   if (!existsSync(objDir)) { console.error(`OBJ dir not found: ${objDir}`); process.exit(1); }
 

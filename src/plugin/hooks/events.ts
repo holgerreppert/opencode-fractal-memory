@@ -6,6 +6,7 @@ import { drainPendingExtractions, ollamaExtract, warmupExtractionModel } from ".
 import { getSessionCache, recordSessionCache } from "../../application/command-compression/hook-support";
 import { cleanupMiddleTermCaptures } from "../state";
 import { ensureBackgroundGraph } from "../../application/graph/build";
+import { replaySessionQueries, formatReplayResult, persistBestStrategy, sweepNodeRatings, adaptBeta } from "../../application/dream-rsi";
 import type { HookHandler } from "./types";
 
 export function createEventHandler(
@@ -73,6 +74,37 @@ export function createEventHandler(
           const maxFiles = config.graph.maxFiles ?? 5000;
           ensureBackgroundGraph(root, maxFiles);
           tasks.push("graph-rebuild");
+        }
+
+        // Dream-RSI: replay session queries against alternative strategies
+        if (config?.dreamRsi?.enabled !== false) {
+          try {
+            const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
+            const embed = async (text: string) => generateEmbedding(text);
+            const adapted = await adaptBeta(store, { maxRevisions: 2, costWeight: 0.1, parallelismWeight: 0.05 });
+            const replayResult = await replaySessionQueries(
+              store, embed, sessionId, adapted.config,
+            );
+            if (replayResult.queriesReplayed > 0) {
+              memLog("info", "dream-rsi", formatReplayResult(replayResult));
+              tasks.push(`replay(${replayResult.queriesReplayed}q,${replayResult.bestStrategyId})`);
+              await persistBestStrategy(store, replayResult, adapted.adaptation, {
+                switchMargin: config.dreamRsi?.switchMargin ?? 0.05,
+              });
+            }
+          } catch (err) {
+            memLog("error", "dream-rsi", "Replay failed", { error: String(err) });
+          }
+
+          try {
+            const sweepResult = await sweepNodeRatings(store);
+            if (sweepResult.promoted > 0 || sweepResult.demoted > 0 || sweepResult.superseded > 0) {
+              memLog("info", "dream-rsi", `Sweep: ${sweepResult.promoted} promoted, ${sweepResult.demoted} demoted, ${sweepResult.superseded} superseded`);
+              tasks.push(`sweep(${sweepResult.promoted}↑${sweepResult.demoted}↓${sweepResult.superseded}×)`);
+            }
+          } catch (err) {
+            memLog("error", "dream-rsi", "Sweep failed", { error: String(err) });
+          }
         }
 
         // Deferred Ollama extraction drain: outputs queued by the compress

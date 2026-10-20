@@ -1,6 +1,6 @@
 import { logApi } from './logger';
 
-const BASE = 'http://127.0.0.1:8787';
+const BASE = '';
 
 type FetchOpts = RequestInit & { timeoutMs?: number };
 
@@ -27,4 +27,9 @@ export const api = {
 	telemetry: () => fetchJson<{ metrics: unknown }>(`/api/telemetry`),
 	config: () => fetchJson<Record<string, any>>(`/api/config`),
 	configSave: (data: Record<string, any>) => fetchJson<{ success: boolean }>(`/api/config`, { method: 'PUT', body: JSON.stringify(data) }),
+	dreamRsi: () => fetchJson<{
+		activeStrategy: { strategyId: string; score: number; scoreHistory: number[]; queriesReplayed: number; sessionsReplayed: number; updatedAt: number } | null;
+		history: { switches: Array<{ timestamp: number; from: string; to: string; scoreBefore?: number; scoreAfter: number }>; trends: Array<{ timestamp: number; strategyId: string; score: number; queriesReplayed: number; sessionsReplayed: number }>; adaptations: Array<{ timestamp: number; field: string; oldValue: number; newValue: number; reason: string }> };
+		injectionStats: Array<{ strategy: string; count: number; avgEffectiveness: number; avgUpvotes: number; avgDownvotes: number }>;
+	}>(`/api/dream-rsi`),
 } as const;

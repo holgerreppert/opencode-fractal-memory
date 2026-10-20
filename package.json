@@ -12,7 +12,8 @@
     "dist",
     "agent",
     "commands",
-    "management",
+    "frontend",
+    "frontend/build",
     "scripts",
     "tui.json"
   ],

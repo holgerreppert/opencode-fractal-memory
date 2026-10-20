@@ -8,6 +8,7 @@
 		{ id: 'dashboard', href: '/dashboard', label: 'Dashboard' },
 		{ id: 'context', href: '/context', label: 'Context' },
 		{ id: 'quality', href: '/quality', label: 'Quality' },
+		{ id: 'dream-rsi', href: '/dream-rsi', label: 'Dream-RSI' },
 		{ id: 'graph', href: '/graph', label: 'Graph' },
 		{ id: 'memory', href: '/memory', label: 'Memory' },
 		{ id: 'live-agent', href: '/live', label: 'Live' },

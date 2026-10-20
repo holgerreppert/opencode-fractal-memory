@@ -157,7 +157,17 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         }
 
         // 3. MMR Selection (diversity-aware subset)
-        const maxInject = config.autoRetrieve?.maxInjectNodes ?? 5;
+        const baseMaxInject = config.autoRetrieve?.maxInjectNodes ?? 5;
+        let maxInject = baseMaxInject;
+        try {
+          const recentMetrics = await store.getInjectionMetrics(20);
+          if (recentMetrics.length >= 3) {
+            const successRate = recentMetrics.filter(m =>
+              (m.effectivenessScore ?? 0) > 0.5 || (m.injectionUpvotes ?? 0) > (m.injectionDownvotes ?? 0)
+            ).length / recentMetrics.length;
+            maxInject = Math.max(2, Math.min(10, Math.round(baseMaxInject * (1.2 - successRate * 0.5))));
+          }
+        } catch { /* use static fallback */ }
         let mmrItems = finalItems;
 
         if (finalItems.length > maxInject) {

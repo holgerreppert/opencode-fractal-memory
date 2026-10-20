@@ -6,6 +6,7 @@ import { registerTelemetryRoutes } from "./routes/telemetry";
 import { registerBackupRoutes } from "./routes/backup";
 import { registerGraphRoutes } from "./routes/graph";
 import { registerLiveRoutes } from "./routes/live";
+import { registerDreamRsiRoutes } from "./routes/dream-rsi";
 
 export function registerRoutes(router: Router, store: MemoryStore): void {
   registerSystemRoutes(router, store);
@@ -14,4 +15,5 @@ export function registerRoutes(router: Router, store: MemoryStore): void {
   registerBackupRoutes(router);
   registerGraphRoutes(router);
   registerLiveRoutes(router, store);
+  registerDreamRsiRoutes(router, store);
 }

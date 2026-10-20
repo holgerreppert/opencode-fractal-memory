@@ -138,6 +138,16 @@ Format EXACTLY as:
     }
   }
 
+  let parentIds: string[] | null = null;
+  try {
+    const allNodes = await store.listNodes("global", undefined, 100000);
+    const lessonNode = allNodes.find(n =>
+      n.type === "lesson" &&
+      (n.metadata as Record<string, unknown> | null)?.sessionId === sessionId
+    );
+    if (lessonNode) parentIds = [lessonNode.id];
+  } catch { /* no lesson for this session */ }
+
   await store.createNode({
     scope: "global",
     label,
@@ -145,7 +155,7 @@ Format EXACTLY as:
     level: 0,
     importance: 0.7,
     type: "knowledge",
-    parentIds: null,
+    parentIds,
     source: "auto_extract",
     subtask: inferSubtask(stats.toolCalls.filter(tc => tc.success === true)),
     tags: ["knowledge", "work", "auto_extract", sessionTag],

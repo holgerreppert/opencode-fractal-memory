@@ -11,13 +11,14 @@ import { createSqliteMemoryStore } from "./storage/sqlite";
 interface ManagementConfig {
   enabled: boolean;
   port: number;
+  publicDir?: string;
 }
 
 let activeProcess: import("bun").Subprocess | null = null;
 let activeServer: http.Server | null = null;
 let serverStore: ReturnType<typeof createSqliteMemoryStore> | null = null;
 
-let mgmtConfig: { enabled: boolean; port: number; directory: string } | null = null;
+let mgmtConfig: { enabled: boolean; port: number; directory: string; publicDir?: string } | null = null;
 
 try {
   memLog("info", "management", "Module loaded, runtime check", {
@@ -164,7 +165,7 @@ async function sendWebResponse(res: http.ServerResponse, webRes: Response): Prom
   }
 }
 
-function startInProcess(directory: string, port: number): void {
+function startInProcess(directory: string, port: number, publicDirOverride?: string): void {
   try {
     const store = createSqliteMemoryStore(directory);
     serverStore = store;
@@ -172,7 +173,7 @@ function startInProcess(directory: string, port: number): void {
     const router = new Router();
     registerRoutes(router, store);
 
-    const publicDir = path.join(__dirname, "..", "management", "public");
+    const publicDir = publicDirOverride ?? path.join(__dirname, "..", "frontend", "build");
 
     const server = http.createServer(async (req, res) => {
       try {
@@ -220,7 +221,7 @@ function startInProcess(directory: string, port: number): void {
   }
 }
 
-function trySpawnSubprocess(interpreterPath: string, standalonePath: string, directory: string, port: number, label: string): boolean {
+function trySpawnSubprocess(interpreterPath: string, standalonePath: string, directory: string, port: number, label: string, publicDir?: string): boolean {
   try {
     memLog("info", "management", `Spawning with ${label}`, { interpreter: interpreterPath, script: standalonePath });
     const proc = Bun.spawn([interpreterPath, standalonePath], {
@@ -229,6 +230,7 @@ function trySpawnSubprocess(interpreterPath: string, standalonePath: string, dir
         MGMT_PORT: String(port),
         MGMT_PROJECT_DIR: directory,
         MGMT_PID_FILE: PID_FILE,
+        ...(publicDir ? { MGMT_PUBLIC_DIR: publicDir } : {}),
       },
       cwd: directory,
       stdio: ["ignore", "pipe", "pipe"],
@@ -257,7 +259,11 @@ function trySpawnSubprocess(interpreterPath: string, standalonePath: string, dir
 export function ensureManagementServer(): void {
   memLog("info", "management", "ensureManagementServer called", { hasConfig: !!mgmtConfig, enabled: mgmtConfig?.enabled });
   if (mgmtConfig && mgmtConfig.enabled) {
-    startManagementServer(null, mgmtConfig.directory, { enabled: true, port: mgmtConfig.port });
+    startManagementServer(null, mgmtConfig.directory, {
+      enabled: true,
+      port: mgmtConfig.port,
+      ...(mgmtConfig.publicDir ? { publicDir: mgmtConfig.publicDir } : {}),
+    });
   }
 }
 
@@ -288,22 +294,22 @@ export function startManagementServer(
   const exists = fs.existsSync(standalonePath);
   memLog("info", "management", "Standalone file exists check", { exists, dirname: __dirname });
 
-  mgmtConfig = { enabled: config.enabled, port: config.port, directory };
+  mgmtConfig = { enabled: config.enabled, port: config.port, directory, ...(config.publicDir ? { publicDir: config.publicDir } : {}) };
 
   // Spawn chain: bun → node → in-process
   const bunPath = findBunBinary();
   if (bunPath) {
-    if (trySpawnSubprocess(bunPath, standalonePath, directory, config.port, "bun")) return;
+    if (trySpawnSubprocess(bunPath, standalonePath, directory, config.port, "bun", config.publicDir)) return;
   }
 
   const nodePath = findNodeBinary();
   if (nodePath) {
     memLog("info", "management", "bun not available, trying node", { nodePath });
-    if (trySpawnSubprocess(nodePath, standalonePath, directory, config.port, "node")) return;
+    if (trySpawnSubprocess(nodePath, standalonePath, directory, config.port, "node", config.publicDir)) return;
   }
 
   memLog("info", "management", "Neither bun nor node available as subprocess, starting in-process");
-  startInProcess(directory, config.port);
+  startInProcess(directory, config.port, config.publicDir);
 }
 
 export function stopManagementServer(): void {

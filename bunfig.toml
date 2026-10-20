@@ -1,3 +1,4 @@
 [test]
+preload = ["./scripts/test-setup.ts"]
 pathIgnorePatterns = ["**/search.loco.test.ts", "**/search.swecontext.test.ts"]
 coverageSkipTestFiles = true

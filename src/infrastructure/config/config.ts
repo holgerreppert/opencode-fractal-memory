@@ -211,6 +211,7 @@ export interface MemConfig {
       quality: number;
       confidence: number;
       usefulness: number;
+      cost: number;
     };
     gate: {
       minScore: number;
@@ -232,6 +233,14 @@ export interface MemConfig {
     historyTtlDays: number;
     nudgePressureThreshold: number;
     notificationMode: "off" | "chat" | "toast";
+  } | undefined;
+  dreamRsi?: {
+    enabled: boolean;
+    replayQueries: number;
+    sweepThreshold: number;
+    switchMargin: number;
+    applyToInjection: boolean;
+    explorationRate: number;
   } | undefined;
   logLevel: "debug" | "info" | "warn" | "error";
 }
@@ -609,11 +618,12 @@ const DEFAULT_CONFIG: MemConfig = {
   },
   ranking: {
     featureWeights: {
-      semantic: 0.5,
-      bm25: 0.25,
-      quality: 0.15,
+      semantic: 0.45,
+      bm25: 0.22,
+      quality: 0.13,
       confidence: 0.05,
       usefulness: 0.05,
+      cost: 0.1,
     },
     gate: {
       minScore: 0.3,
@@ -676,12 +686,13 @@ const InjectionVisibilitySchema = z.object({
 
 const RankingSchema = z.object({
   featureWeights: z.object({
-    semantic: z.number().min(0).max(1).default(0.5),
-    bm25: z.number().min(0).max(1).default(0.25),
-    quality: z.number().min(0).max(1).default(0.15),
+    semantic: z.number().min(0).max(1).default(0.45),
+    bm25: z.number().min(0).max(1).default(0.22),
+    quality: z.number().min(0).max(1).default(0.13),
     confidence: z.number().min(0).max(1).default(0.05),
     usefulness: z.number().min(0).max(1).default(0.05),
-  }).default({ semantic: 0.5, bm25: 0.25, quality: 0.15, confidence: 0.05, usefulness: 0.05 }),
+    cost: z.number().min(0).max(1).default(0.1),
+  }).default({ semantic: 0.45, bm25: 0.22, quality: 0.13, confidence: 0.05, usefulness: 0.05, cost: 0.1 }),
   gate: z.object({
     minScore: z.number().min(0).max(1).default(0.3),
     deltaThreshold: z.number().min(0).max(1).default(0.15),
@@ -705,6 +716,15 @@ const ContextCompressionSchema = z.object({
   historyTtlDays: z.number().positive().int().default(30),
   nudgePressureThreshold: z.number().min(0).max(1).default(0.6),
   notificationMode: z.enum(["off", "chat", "toast"]).default("chat"),
+});
+
+const DreamRsiSchema = z.object({
+  enabled: z.boolean().default(true),
+  replayQueries: z.number().positive().int().default(200),
+  sweepThreshold: z.number().min(0).max(1).default(0.3),
+  switchMargin: z.number().min(0).max(1).default(0.05),
+  applyToInjection: z.boolean().default(true),
+  explorationRate: z.number().min(0).max(1).default(0.2),
 });
 
 const MemConfigSchema = z.object({
@@ -744,6 +764,7 @@ const MemConfigSchema = z.object({
   injectionVisibility: InjectionVisibilitySchema.optional(),
   ranking: RankingSchema.optional(),
   contextCompression: ContextCompressionSchema.optional(),
+  dreamRsi: DreamRsiSchema.optional(),
 }).default(DEFAULT_CONFIG);
 
 export async function loadMemConfig(_projectRoot: string): Promise<MemConfig> {

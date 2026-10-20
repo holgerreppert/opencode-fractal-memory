@@ -5,6 +5,7 @@ import {
   markInjectionProcessed as markProcessed,
   finalizeInjection as finalizeInjectionRow,
   insertInjectionFeedback, queryInjectionMetrics,
+  bumpInjectionVerdict,
   updateMemoryToolCall,
   insertIntentLine as insertIntentLineRow,
   getIntentLines as getIntentLineRows,
@@ -63,6 +64,11 @@ export class SqliteInjectionStore implements InjectionStore {
   ): Promise<void> {
     const db = await this.provider.getDb();
     await insertInjectionFeedback(db, sessionId, upvotes, downvotes, taskOutcome, neededNodes);
+  }
+
+  async recordInjectionNodeVerdict(sessionId: string, nodeId: string, used: boolean): Promise<void> {
+    const db = await this.provider.getDb();
+    await bumpInjectionVerdict(db, sessionId, nodeId, used);
   }
 
   async getInjectionMetrics(limit = 100): Promise<Array<{

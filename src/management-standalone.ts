@@ -9,11 +9,11 @@ import { serveFile } from "./management/helpers";
 import { createSqliteMemoryStore } from "./storage/sqlite";
 import { loadMemConfig } from "./infrastructure/config/config";
 
-const port = parseInt(process.env.MGMT_PORT || "8787");
+const port = parseInt(process.env.MGMT_PORT || "8788");
 const projectDir = process.env.MGMT_PROJECT_DIR || process.cwd();
 const publicDir = process.env.MGMT_PUBLIC_DIR
   ? path.resolve(process.env.MGMT_PUBLIC_DIR)
-  : path.join(__dirname, "..", "management", "public");
+  : path.join(__dirname, "..", "frontend", "build");
 
 // Apply the configured log level (defaults to "info" when unset).
 loadMemConfig(projectDir).then((cfg) => setLogLevel(cfg.logLevel ?? "info")).catch(() => { /* keep default */ });
@@ -101,7 +101,7 @@ async function sendWebResponse(res: http.ServerResponse, webRes: Response): Prom
 }
 
 const server = http.createServer(async (req, res) => {
-  // CORS for parallel Svelte UI on :8788 fetching :8787 API
+  // CORS headers kept for the vite dev server origin (proxied in production, direct in dev)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");

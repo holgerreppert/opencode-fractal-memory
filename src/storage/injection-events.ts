@@ -121,6 +121,30 @@ export async function insertInjectionFeedback(
   });
 }
 
+/**
+ * Increment up/down-votes on the ONE injection_metrics row that injected
+ * `nodeId` (matched via post_rerank_ids, most recent first). Written by the
+ * observed-use judge at injection time — rows without post_rerank_ids
+ * (pre-2026-10-01) are unattributable and untouched.
+ */
+export async function bumpInjectionVerdict(
+  db: Database,
+  sessionId: string,
+  nodeId: string,
+  used: boolean
+): Promise<void> {
+  const col = used ? "injection_upvotes" : "injection_downvotes";
+  await withRetry(() => {
+    db.run(
+      `UPDATE injection_metrics SET ${col} = COALESCE(${col}, 0) + 1
+       WHERE id = (SELECT id FROM injection_metrics
+                   WHERE session_id = ? AND post_rerank_ids LIKE ?
+                   ORDER BY timestamp DESC LIMIT 1)`,
+      [sessionId, `%${nodeId}%`]
+    );
+  });
+}
+
 export interface InjectionQualityRow {
   sessionId: string;
   timestamp: number;

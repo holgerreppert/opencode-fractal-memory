@@ -1,6 +1,7 @@
 import type { MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
 import { inferSubtask } from "./subtask";
+import { classifyExtraction } from "./dream-rsi/exploration-rules";
 
 export interface AutoLessonsConfig {
   enabled: boolean;
@@ -116,6 +117,19 @@ Your lessons:`;
     }
   }
 
+  // Dream-RSI exploration rules: classify root cause and detect clustering
+  const recentSignatures = lessons
+    .filter(n => (n.label ?? "").startsWith("lesson:"))
+    .flatMap(n => n.tags?.filter(t => t.startsWith("sig:")) ?? [])
+    .map(t => t.slice(4));
+  const classification = classifyExtraction(toolFailureCounts, failedCalls.length, recentSignatures, signature);
+
+  let parentIds: string[] | null = null;
+  try {
+    const storedcontext = await store.getNodeByLabel("project", `storedcontext:${sessionId}`);
+    if (storedcontext) parentIds = [storedcontext.id];
+  } catch { /* no storedcontext for this session */ }
+
   await store.createNode({
     scope: "global",
     label,
@@ -123,15 +137,17 @@ Your lessons:`;
     level: 0,
     importance: 0.8,
     type: "lesson",
-    parentIds: null,
+    parentIds,
     source: "auto_extract",
     subtask: inferSubtask(failedCalls),
-    tags: ["lesson", "auto_extract", `sig:${signature}`],
+    tags: ["lesson", "auto_extract", `sig:${signature}`, `rootcause:${classification.rootCause}`],
     metadata: {
       sessionId,
       failedCount: failedCalls.length,
       totalCalls: stats.totalToolCalls,
       failedTools: [...toolFailureCounts.keys()],
+      rootCause: classification.rootCause,
+      isClustered: classification.isClustered,
     },
   });
 

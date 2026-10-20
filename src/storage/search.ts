@@ -347,7 +347,7 @@ export async function searchByEmbedding(
   })
   // Log trace for live feed / debug (components include features+weights+intent/level multipliers)
   if (ranked.length > 0) {
-    memLog("info", "search", "ranking trace", {
+    memLog("debug", "search", "ranking trace", {
       query: queryText?.slice(0, 120) ?? null,
       candidates: candidates.length,
       top: ranked.slice(0, 3).map(r => ({

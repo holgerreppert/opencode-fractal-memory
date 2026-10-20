@@ -17,13 +17,15 @@ const CONTEXT_LIMIT = 128000
 function getMgmt() {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json")
   let enabled = true
-  let port = 8787
+  let port = 8788
   try {
     const raw = fs.readFileSync(configPath, "utf-8")
-    const cfg = JSON.parse(raw) as { management?: { enabled?: boolean; port?: number } }
+    const cfg = JSON.parse(raw) as { management?: { enabled?: boolean; port?: number; sveltePort?: number } }
     if (cfg.management) {
       if (typeof cfg.management.enabled === "boolean") enabled = cfg.management.enabled
-      if (typeof cfg.management.port === "number") port = cfg.management.port
+      // Mirror composition-root: sveltePort wins over legacy port key.
+      if (typeof cfg.management.sveltePort === "number") port = cfg.management.sveltePort
+      else if (typeof cfg.management.port === "number") port = cfg.management.port
     }
   } catch { /* use defaults */ }
   const url = `http://localhost:${port}`

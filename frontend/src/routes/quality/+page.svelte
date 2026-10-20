@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Logger } from '$lib/api/logger';
 	import { onMount } from 'svelte';
-	const BASE = 'http://127.0.0.1:8787';
+	const BASE = '';
 	let metrics: any[] = $state([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -34,7 +34,7 @@
 </script>
 <div class="space-y-4">
 	<div class="card preset-filled-surface-100 p-4 flex justify-between items-center">
-		<div><h3 class="h3">Quality — injection quality</h3><p class="text-sm opacity-70">Every auto-retrieval: reranker scores, pass rate, type mix &amp; strategy (mirrors :8787 Quality)</p></div>
+		<div><h3 class="h3">Quality — injection quality</h3><p class="text-sm opacity-70">Every auto-retrieval: reranker scores, pass rate, type mix &amp; strategy</p></div>
 		<label class="flex items-center gap-2 text-xs"><input type="checkbox" bind:checked={showRaw} /> raw JSON</label>
 	</div>
 	{#if loading}<div class="card p-6 text-sm opacity-70">Loading injection quality…</div>
@@ -59,7 +59,7 @@
 				<div><div class="font-bold opacity-80 mb-1">Top types</div>{#each typeDist.slice(0,8) as [t,c]}<div class="flex justify-between border-b py-1"><span>{t}</span><span class="badge preset-filled-primary-500 text-[10px]">{c}</span></div>{/each}</div>
 			</div>
 		</div>
-		<!-- Charts — simple bar rows (no external deps, matches 8787 canvas bar/timeline) -->
+		<!-- Charts — simple bar rows (no external deps) -->
 		<div class="grid md:grid-cols-2 gap-4">
 			<div class="card preset-outlined-surface-200 p-4 space-y-3">
 				<h4 class="h5 mb-3">Rerank score distribution</h4>

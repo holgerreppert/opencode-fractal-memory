@@ -955,6 +955,40 @@ describe("sqlite store", () => {
     expect(sessionMetrics.avgEffectiveness).toBeCloseTo(0.85, 5);
   });
 
+  test("recordInjectionNodeVerdict bumps votes on the row that injected the node", async () => {
+    const { dir, globalDbPath } = await mkTmpDir();
+    const store = createMemoryStore(dir, globalDbPath);
+    await store.ensureSeed();
+
+    const sessionId = "metrics-test-verdict";
+    await store.logInjectionMetrics(sessionId, {
+      injectedNodeCount: 2,
+      injectedTokens: 200,
+      injectionMode: "messages_transform",
+      postRerankIds: ["node-abc", "node-def"],
+    });
+    await store.logInjectionMetrics(sessionId, {
+      injectedNodeCount: 1,
+      injectedTokens: 100,
+      injectionMode: "messages_transform",
+      postRerankIds: ["node-xyz"],
+    });
+
+    await store.recordInjectionNodeVerdict(sessionId, "node-abc", true);
+    await store.recordInjectionNodeVerdict(sessionId, "node-def", true);
+    await store.recordInjectionNodeVerdict(sessionId, "node-xyz", false);
+    // Unattributable node id: no row matched, no throw.
+    await store.recordInjectionNodeVerdict(sessionId, "node-missing", true);
+
+    const metrics = await store.getInjectionMetrics(10);
+    const row1 = metrics.find(m => m.sessionId === sessionId && (m.postRerankIds ?? []).includes("node-abc"));
+    const row2 = metrics.find(m => m.sessionId === sessionId && (m.postRerankIds ?? []).includes("node-xyz"));
+    expect(row1?.injectionUpvotes).toBe(2);
+    expect(row1?.injectionDownvotes).toBe(0);
+    expect(row2?.injectionDownvotes).toBe(1);
+    expect(row2?.injectionUpvotes).toBe(0);
+  });
+
   test("session tracking - createSessionMetrics and getSessionStats", async () => {
     const { dir, globalDbPath } = await mkTmpDir();
     const store = createMemoryStore(dir, globalDbPath);

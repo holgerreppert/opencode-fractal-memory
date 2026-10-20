@@ -5,7 +5,7 @@ digraph ManagementAppDataFlow {
   fontsize=11;
   bgcolor="#0d1117";
   labeljust=l;
-  label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="18" COLOR="#58a6ff">Management App  ⇄  Fractal Memory Plugin</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="11" COLOR="#8b949e">Data Flow — HTTP :8787 · ~30 API Routes · SSE Live Feed · SQLite via MemoryStore Port</FONT></TD></TR></TABLE>>;
+  label=<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="2"><TR><TD><B><FONT POINT-SIZE="18" COLOR="#58a6ff">Management App  ⇄  Fractal Memory Plugin</FONT></B></TD></TR><TR><TD><FONT POINT-SIZE="11" COLOR="#8b949e">Data Flow — HTTP :8788 · ~30 API Routes · SSE Live Feed · SQLite via MemoryStore Port</FONT></TD></TR></TABLE>>;
   pad=0.5;
   dpi=200;
   nodesep=0.6;
@@ -43,7 +43,7 @@ digraph ManagementAppDataFlow {
 
   /* ─── CLUSTER: HTTP Server ─── */
   subgraph cluster_server {
-    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#bc8cff">HTTP Server (127.0.0.1:8787)</FONT></B></TD></TR></TABLE>>;
+    label=<<TABLE BORDER="0" CELLBORDER="0"><TR><TD><B><FONT POINT-SIZE="13" COLOR="#bc8cff">HTTP Server (127.0.0.1:8788)</FONT></B></TD></TR></TABLE>>;
     style="filled,rounded,dashed";
     color="#30363d";
     fillcolor="#0d1117";
@@ -55,7 +55,7 @@ digraph ManagementAppDataFlow {
       <TABLE BORDER="0" CELLBORDER="0" CELLPADDING="4" CELLSPACING="2" BGCOLOR="#8957e5">
         <TR><TD><B><FONT POINT-SIZE="11">Static Files</FONT></B></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">serveFile()</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">management/public/</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">frontend/build/</FONT></TD></TR>
       </TABLE>>];
 
     Routes [label=<

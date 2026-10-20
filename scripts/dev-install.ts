@@ -14,7 +14,7 @@
  *        - ~/.cache/opencode/packages/opencode-fractal-memory@latest/node_modules/opencode-fractal-memory
  *      (the legacy ~/.config/opencode/node_modules/opencode-fractal-memory copy is
  *       also cleaned/synced for npm-pack compatibility — OpenCode never reads it)
- *   3. copies ALL top-level files (dist, management, package.json, LICENSE, README.md,
+ *   3. copies ALL top-level files (dist, frontend, package.json, LICENSE, README.md,
  *      commands, agent, scripts) into the cache location
  *   4. copies the runtime deps the plugin needs into the cache location's own node_modules
  *      (graphology family, tree-sitter wasm, onnxruntime, ...)
@@ -49,7 +49,6 @@ const TARGETS = [
 /** Top-level files/dirs copied verbatim from the repo into each location. */
 const TOP_LEVEL_ITEMS = [
   "dist",
-  "management",
   "frontend",
   "package.json",
   "LICENSE",
@@ -111,7 +110,10 @@ async function copyTopLevel(target: string): Promise<void> {
       log(`  WARN: missing ${item} in repo — skipping`);
       continue;
     }
-    await cp(src, path.join(target, item), { recursive: true });
+    // Skip nested tooling dirs (frontend/node_modules is ~287MB; only frontend/build is served)
+    const filter = (from: string): boolean =>
+      !/(^|[\\/])(node_modules|\.svelte-kit)([\\/]|$)/.test(from);
+    await cp(src, path.join(target, item), { recursive: true, filter });
   }
 }
 

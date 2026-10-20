@@ -571,6 +571,10 @@ class SqliteMemoryStore implements MemoryStore {
     return this.injectionStore.recordInjectionFeedback(sessionId, upvotes, downvotes, taskOutcome, neededNodes);
   }
 
+  async recordInjectionNodeVerdict(sessionId: string, nodeId: string, used: boolean): Promise<void> {
+    return this.injectionStore.recordInjectionNodeVerdict(sessionId, nodeId, used);
+  }
+
   async getInjectionMetrics(limit = 100): Promise<Array<{
     sessionId: string; timestamp: number; injectedNodeCount: number;
     injectedTokens: number; injectionMode: string; queryText: string | null;

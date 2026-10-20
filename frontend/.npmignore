@@ -1,0 +1,14 @@
+# Overrides frontend/.gitignore for `npm pack` — frontend/build MUST ship:
+# the plugin serves frontend/build as the management UI (see management-standalone publicDir).
+# (.gitignore keeps /build out of git; this file only governs the npm tarball.)
+node_modules
+.svelte-kit
+.output
+.vercel
+.netlify
+.wrangler
+.vscode
+*.lock
+package-lock.json
+.env
+.env.*

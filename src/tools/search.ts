@@ -3,6 +3,7 @@ import type { MemoryStore } from "../storage/sqlite";
 import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType, MemorySubtask } from "../storage/types";
 import { estimateTokens, generateEmbedding } from "../infrastructure/llm/embeddings";
 import { searchNodes } from "../application/search";
+import { getActiveRerankMode } from "../application/dream-rsi/replay-evaluator";
 import { resolveNode, wrapWithContextWarning, wrapWithTracking, lastSearchResults } from "./shared";
 
 export function MemoryDrilldown(store: MemoryStore) {
@@ -91,6 +92,10 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       };
       if (args.rerank_mode !== undefined) options.rerankMode = args.rerank_mode;
       else if (defaultRerankMode !== undefined) options.rerankMode = defaultRerankMode;
+      else {
+        const learned = await getActiveRerankMode(store);
+        if (learned !== undefined) options.rerankMode = learned;
+      }
       if (args.subtask !== undefined) options.subtask = args.subtask as MemorySubtask;
       if (args.min_level !== undefined) options.minLevel = args.min_level as MemoryNodeLevel;
       if (args.max_level !== undefined) options.maxLevel = args.max_level as MemoryNodeLevel;

@@ -111,7 +111,7 @@ export function rankCandidates(candidates: RankCandidate[], options: RankOptions
 
   if (ranked.length > 0) {
     const top = ranked[0]!
-    memLog("info", "ranking", "rankCandidates", {
+    memLog("debug", "ranking", "rankCandidates", {
       candidates: candidates.length,
       topId: top.node.id,
       topImportance: top.importance,
@@ -259,6 +259,6 @@ export function selectWithMMR(ranked: RankedResult[], maxResults: number, lambda
     if (bestIdx >= 0) selected.push(remaining.splice(bestIdx, 1)[0]!)
     else break
   }
-  memLog("info", "ranking", "MMR selection", { lambda: lam, before: ranked.length, after: selected.length })
+  memLog("debug", "ranking", "MMR selection", { lambda: lam, before: ranked.length, after: selected.length })
   return selected
 }

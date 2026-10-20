@@ -10,7 +10,7 @@
 <title>ManagementAppDataFlow</title>
 <polygon fill="#0d1117" stroke="transparent" points="-36,36 -36,-825 1846,-825 1846,36 -36,36"/>
 <text text-anchor="start" x="41.5" y="-32.6" font-family="Helvetica,Arial,sans-serif" font-weight="bold" font-size="18.00" fill="#58a6ff">Management App &#160;⇄ &#160;Fractal Memory Plugin</text>
-<text text-anchor="start" x="12.5" y="-11.2" font-family="Helvetica,Arial,sans-serif" font-size="11.00" fill="#8b949e">Data Flow — HTTP :8787 · ~30 API Routes · SSE Live Feed · SQLite via MemoryStore Port</text>
+<text text-anchor="start" x="12.5" y="-11.2" font-family="Helvetica,Arial,sans-serif" font-size="11.00" fill="#8b949e">Data Flow — HTTP :8788 · ~30 API Routes · SSE Live Feed · SQLite via MemoryStore Port</text>
 <g id="clust1" class="cluster">
 <title>cluster_frontend</title>
 <path fill="#0d1117" stroke="#30363d" stroke-dasharray="5,2" d="M12,-340C12,-340 156,-340 156,-340 162,-340 168,-346 168,-352 168,-352 168,-468 168,-468 168,-474 162,-480 156,-480 156,-480 12,-480 12,-480 6,-480 0,-474 0,-468 0,-468 0,-352 0,-352 0,-346 6,-340 12,-340"/>
@@ -19,7 +19,7 @@
 <g id="clust2" class="cluster">
 <title>cluster_server</title>
 <path fill="#0d1117" stroke="#30363d" stroke-dasharray="5,2" d="M380,-236C380,-236 600,-236 600,-236 606,-236 612,-242 612,-248 612,-248 612,-572 612,-572 612,-578 606,-584 600,-584 600,-584 380,-584 380,-584 374,-584 368,-578 368,-572 368,-572 368,-248 368,-248 368,-242 374,-236 380,-236"/>
-<text text-anchor="start" x="380" y="-566.6" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#bc8cff">HTTP Server (127.0.0.1:8787)</text>
+<text text-anchor="start" x="380" y="-566.6" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="13.00" fill="#bc8cff">HTTP Server (127.0.0.1:8788)</text>
 </g>
 <g id="clust3" class="cluster">
 <title>cluster_handlers</title>
@@ -49,17 +49,17 @@
 <!-- Static -->
 <g id="node2" class="node">
 <title>Static</title>
-<path fill="lightgrey" stroke="black" d="M534,-546C534,-546 446,-546 446,-546 440,-546 434,-540 434,-534 434,-534 434,-486 434,-486 434,-480 440,-474 446,-474 446,-474 534,-474 534,-474 540,-474 546,-480 546,-486 546,-486 546,-534 546,-534 546,-540 540,-546 534,-546"/>
-<polygon fill="#8957e5" stroke="transparent" points="442,-478 442,-542 538,-542 538,-478 442,-478"/>
+<path fill="lightgrey" stroke="black" d="M522,-546C522,-546 458,-546 458,-546 452,-546 446,-540 446,-534 446,-534 446,-486 446,-486 446,-480 452,-474 458,-474 458,-474 522,-474 522,-474 528,-474 534,-480 534,-486 534,-486 534,-534 534,-534 534,-540 528,-546 522,-546"/>
+<polygon fill="#8957e5" stroke="transparent" points="454,-478 454,-542 526,-542 526,-478 454,-478"/>
 <text text-anchor="start" x="461" y="-528.2" font-family="Helvetica,Arial,sans-serif" font-weight="bold" font-size="11.00" fill="white">Static Files</text>
-<text text-anchor="start" x="448" y="-506.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">serveFile()</text>
-<text text-anchor="start" x="448" y="-486.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">management/public/</text>
+<text text-anchor="start" x="460" y="-506.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">serveFile()</text>
+<text text-anchor="start" x="460" y="-486.8" font-family="Helvetica,Arial,sans-serif" font-size="9.00" fill="white">frontend/build/</text>
 </g>
 <!-- Browser&#45;&gt;Static -->
 <g id="edge1" class="edge">
 <title>Browser&#45;&gt;Static</title>
-<path fill="none" stroke="#8b949e" d="M136.14,-409.68C209.47,-430.53 343.72,-468.7 423.82,-491.47"/>
-<polygon fill="#8b949e" stroke="#8b949e" points="423.21,-494.93 433.79,-494.3 425.12,-488.2 423.21,-494.93"/>
+<path fill="none" stroke="#8b949e" d="M136.14,-409.68C213.29,-431.62 357.9,-472.73 435.89,-494.9"/>
+<polygon fill="#8b949e" stroke="#8b949e" points="435.41,-498.4 445.98,-497.77 437.32,-491.67 435.41,-498.4"/>
 <text text-anchor="middle" x="268" y="-464.8" font-family="Times,serif" font-size="9.00" fill="#8b949e">GET /</text>
 </g>
 <!-- Routes -->

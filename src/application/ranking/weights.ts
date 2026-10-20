@@ -14,11 +14,12 @@ import type { MemConfig } from "../../infrastructure/config/config";
 export type RankWeights = RankFeatures;
 
 export const DEFAULT_RANK_WEIGHTS: RankWeights = {
-  semantic: 0.5,
-  bm25: 0.25,
-  quality: 0.15,
+  semantic: 0.45,
+  bm25: 0.22,
+  quality: 0.13,
   confidence: 0.05,
   usefulness: 0.05,
+  cost: 0.1,
 };
 
 export function resolveRankWeights(config?: MemConfig): RankWeights {

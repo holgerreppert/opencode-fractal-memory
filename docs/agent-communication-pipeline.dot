@@ -230,7 +230,7 @@ digraph AgentMemoryPipeline {
         <TR><TD BGCOLOR="#30363d" HEIGHT="1"></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Three.js 3D visualization</FONT></TD></TR>
         <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Temporal edge viewer</FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">WASD controls, port 8787</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Three.js / WASD, port 8788</FONT></TD></TR>
       </TABLE>
     >, fillcolor="#1f6feb", shape=plain, margin=0];
   }

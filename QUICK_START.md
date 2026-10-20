@@ -106,7 +106,7 @@ Auto-starts when `management.enabled: true` is set in `~/.config/opencode/openco
 ```bash
 bun run view
 ```
-Opens at http://localhost:8787
+Opens at http://localhost:8788
 
 **Tabs:**
 - **3D Graph** — visualizes memory nodes as spheres with wiki-link connections

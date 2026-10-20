@@ -6,7 +6,12 @@ const LOG_DIR = path.join(os.homedir(), ".config", "opencode", "logs");
 const LOG_FILE = path.join(LOG_DIR, "memory-plugin.log");
 const MAX_LOG_SIZE = 5 * 1024 * 1024;
 
-if (!fs.existsSync(LOG_DIR)) {
+// Set by scripts/test-setup.ts (bun test preload): test processes must not
+// append to the production log files — fixture values (e.g. score 9.990)
+// leaked into memory-plugin.log and looked like live anomalies.
+const TEST_LOG_DISABLED = process.env.OPCMEM_TEST_LOG === "1";
+
+if (!fs.existsSync(LOG_DIR) && !TEST_LOG_DISABLED) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
@@ -61,6 +66,7 @@ function rotateFile(filePath: string, maxSize: number): void {
 }
 
 function writeLog(line: string): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) {
     try {
       fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -106,6 +112,7 @@ const SESSION_LOG_FILE = path.join(LOG_DIR, "sessionlog.log");
 const SESSION_LOG_MAX_SIZE = 1024 * 1024;
 
 export function appendSessionLog(line: string): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(SESSION_LOG_FILE, SESSION_LOG_MAX_SIZE);
@@ -119,6 +126,7 @@ const COMPRESS_LOG_FILE = path.join(LOG_DIR, "compress.log");
 const COMPRESS_LOG_MAX_SIZE = 2 * 1024 * 1024;
 
 export function writeCompressLog(fields: Record<string, string | number>): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(COMPRESS_LOG_FILE, COMPRESS_LOG_MAX_SIZE);
@@ -139,6 +147,7 @@ const GRAPH_LOG_FILE = path.join(LOG_DIR, "graph.log");
 const GRAPH_LOG_MAX_SIZE = 2 * 1024 * 1024;
 
 export function writeGraphLog(level: string, msg: string, data?: Record<string, unknown>): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(GRAPH_LOG_FILE, GRAPH_LOG_MAX_SIZE);
@@ -156,6 +165,7 @@ const GRAPH_USAGE_LOG_FILE = path.join(LOG_DIR, "graph-usage.log");
 const GRAPH_USAGE_LOG_MAX_SIZE = 2 * 1024 * 1024;
 
 export function writeGraphUsageLog(fields: Record<string, string | number>): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(GRAPH_USAGE_LOG_FILE, GRAPH_USAGE_LOG_MAX_SIZE);
@@ -170,6 +180,7 @@ export function writeGraphUsageLog(fields: Record<string, string | number>): voi
 }
 
 export function writeFileSumLog(component: "FILE-SUMMARIZE" | "SKELETONIZE" | "RE-READ" | "GRAPH-TOOLS", fields: Record<string, string | number>): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(FILE_SUM_LOG_FILE, FILE_SUM_LOG_MAX_SIZE);
@@ -187,6 +198,7 @@ const LIVE_FEED_LOG_FILE = path.join(LOG_DIR, "live-feed.log");
 const LIVE_FEED_LOG_MAX_SIZE = 5 * 1024 * 1024;
 
 export function writeLiveFeedLog(data: Record<string, unknown>): void {
+  if (TEST_LOG_DISABLED) return;
   if (!fs.existsSync(LOG_DIR)) return;
   try {
     rotateFile(LIVE_FEED_LOG_FILE, LIVE_FEED_LOG_MAX_SIZE);

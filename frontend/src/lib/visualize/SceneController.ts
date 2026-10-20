@@ -217,7 +217,7 @@ export class SceneController {
 	async loadBrainMesh(): Promise<THREE.Group | null> {
 		if (this.brainMeshGroup) return this.brainMeshGroup;
 		// EXACT copy of app.js loadBrainMesh — uses custom GLBLoader, not THREE GLTFLoader
-		const urls = ['/brain-atlas.glb', '/models/brain-atlas.glb', 'http://127.0.0.1:8787/models/brain-atlas.glb', 'models/brain-atlas.glb'];
+		const urls = ['/brain-atlas.glb', '/models/brain-atlas.glb', 'models/brain-atlas.glb'];
 		for (const url of urls) {
 			try {
 				const regions = await loadBrainRegions(url);

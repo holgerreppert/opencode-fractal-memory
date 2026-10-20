@@ -23,7 +23,7 @@
 	<div class="card preset-filled-surface-100 p-4 flex flex-wrap justify-between items-center gap-3">
 		<div>
 			<h3 class="h3">Code Graph</h3>
-			<p class="text-sm text-surface-500">D3 force layout — same as :8787. Search dims non-matches, hover for file:line.</p>
+			<p class="text-sm text-surface-500">D3 force layout. Search dims non-matches, hover for file:line.</p>
 		</div>
 		<div class="flex gap-2 items-center">
 			<input class="input w-[220px] rounded-full text-sm" placeholder="Search label/file…" bind:value={query} />

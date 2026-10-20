@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { spawn, execSync } from "node:child_process";
 import { createSqliteMemoryStore, type MemoryStore } from "../storage/sqlite";
 import type { MemConfig } from "./config/config";
 import { loadMemConfig } from "./config/config";
@@ -126,9 +125,19 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
     memLog("info", "init", "Management server disabled", { enabled: mgmtConfig?.enabled });
     return false;
   }
-  memLog("info", "init", "Starting management server", { port: mgmtConfig.port ?? 8787, directory });
+  // Single server: Svelte UI + API. sveltePort wins over the legacy port key so
+  // existing configs (port 8787 + sveltePort 8788) land on :8788 after the Alpine
+  // app was removed; default 8788 keeps old configs without sveltePort working.
+  const port = mgmtConfig.sveltePort ?? mgmtConfig.port ?? 8788;
+  const svelteBuild = path.join(__dirname, "..", "..", "frontend", "build");
+  const hasSvelteUi = fs.existsSync(svelteBuild) && fs.existsSync(path.join(svelteBuild, "index.html"));
+  memLog("info", "init", "Starting management server", { port, directory, ui: hasSvelteUi ? "svelte" : "api-only" });
   try {
-    startManagementServer(store, directory, { enabled: true, port: mgmtConfig?.port ?? 8787 });
+    startManagementServer(store, directory, {
+      enabled: true,
+      port,
+      ...(hasSvelteUi ? { publicDir: svelteBuild } : {}),
+    });
     memLog("info", "init", "startManagementServer returned");
   } catch (err) {
     memLog("error", "init", "startManagementServer threw", {
@@ -136,30 +145,6 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
       stack: err instanceof Error ? err.stack : undefined,
     });
     return false;
-  }
-  // Parallel SvelteKit UI on sveltePort (8788) if configured and frontend/build exists — Step 3 dual serve
-  const sveltePort = mgmtConfig.sveltePort;
-  if (sveltePort) {
-    const svelteBuild = path.join(__dirname, "..", "..", "frontend", "build");
-    if (fs.existsSync(svelteBuild) && fs.existsSync(path.join(svelteBuild, "index.html"))) {
-      memLog("info", "init", "Starting Svelte management server (parallel)", { sveltePort, svelteBuild, directory });
-      try {
-        const standalonePath = path.join(__dirname, "..", "management-standalone.js");
-        if (standalonePath && fs.existsSync(standalonePath)) {
-          const bunPath = (() => { try { return execSync("which bun").toString().trim(); } catch { return null; } })();
-          const runner = bunPath || process.execPath;
-          const args = [standalonePath];
-          (spawn(runner, args, { detached: true, stdio: "ignore", env: { ...process.env, MGMT_PORT: String(sveltePort), MGMT_PROJECT_DIR: directory, MGMT_PUBLIC_DIR: svelteBuild } }) as any).unref();
-          memLog("info", "init", "Svelte management spawn attempted", { sveltePort, runner });
-        } else {
-          memLog("warn", "init", "Svelte standalone not found, skip parallel Svelte", { standalonePath });
-        }
-      } catch (err) {
-        memLog("warn", "init", "Failed to start Svelte parallel server", { error: String(err) });
-      }
-    } else {
-      memLog("info", "init", "Svelte build not found — skipping parallel Svelte server", { sveltePort, tried: svelteBuild });
-    }
   }
   return true;
 }

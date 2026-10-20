@@ -9,6 +9,7 @@ export interface InjectionStore {
   }): Promise<void>;
   finalizeInjection(sessionId: string, effectivenessScore?: number, taskDescription?: string): Promise<void>;
   recordInjectionFeedback(sessionId: string, upvotes: number, downvotes: number, taskOutcome?: string, neededNodes?: string[]): Promise<void>;
+  recordInjectionNodeVerdict(sessionId: string, nodeId: string, used: boolean): Promise<void>;
   getInjectionMetrics(limit?: number): Promise<Array<{
     sessionId: string; timestamp: number; injectedNodeCount: number;
     injectedTokens: number; injectionMode: string; queryText: string | null;

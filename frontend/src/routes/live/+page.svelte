@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Logger } from '$lib/api/logger';
 	import { onMount, onDestroy } from 'svelte';
-	const BASE = 'http://127.0.0.1:8787';
+	const BASE = '';
 	let filter = $state('');
 	let data: any = $state({ turns: [], toolCalls: [], injections: [], compressions: [], session: {}, tokenHistory: {} });
 	let entries: any[] = $state([]);

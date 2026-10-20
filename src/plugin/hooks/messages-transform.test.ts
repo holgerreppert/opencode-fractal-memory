@@ -317,8 +317,172 @@ describe("createMessagesTransformHandler", () => {
     expect(captured!.injectedTokens).toBeLessThan(200);
   });
 
+  test("records postRerankIds so Dream-RSI replay can score overlap", async () => {
+    let captured: { postRerankIds?: string[] } | null = null;
+    const store = {
+      drilldownQuery: async () => [
+        {
+          node: {
+            id: "node-abc",
+            label: "note:injected-node",
+            content: "Some memory content.",
+            type: "note",
+            importance: 0.9,
+            usefulnessScore: 3,
+          },
+          score: 0.95,
+        },
+      ],
+      logInjectionMetrics: async (_sid: string, data: { postRerankIds?: string[] }) => {
+        captured = data;
+      },
+    } as unknown as MemoryStore;
+    const config = makeConfig();
+    const handler = createMessagesTransformHandler(store, config, { value: "ses-post-rerank" });
+
+    const output = {
+      messages: [
+        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
+        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
+        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about injected node" }] },
+      ],
+    };
+
+    const transform = handler["chat.messages.transform"]!;
+    await transform({} as any, output);
+
+    expect(captured).not.toBeNull();
+    expect(captured!.postRerankIds).toEqual(["node-abc"]);
+  });
+
+  function makeLearnedStore(strategyId: string, nodes: Array<{ id: string; label: string; content: string; type: string; importance: number; level: string }>) {
+    const captured: Array<{ postRerankIds?: string[]; rerankStrategy?: string }> = [];
+    const store = {
+      drilldownQuery: async () => nodes.map(n => ({
+        node: { id: n.id, label: n.label, content: n.content, type: n.type, importance: n.importance, usefulnessScore: 3 },
+        score: 0.9,
+        level: n.level,
+      })),
+      getNodeByLabel: async (_scope: string, label: string) =>
+        label === "dream-rsi:active-strategy"
+          ? { metadata: { strategyId, score: 0.7, updatedAt: Date.now() } }
+          : null,
+      logInjectionMetrics: async (_sid: string, data: { postRerankIds?: string[]; rerankStrategy?: string }) => {
+        captured.push(data);
+      },
+    } as unknown as MemoryStore;
+    return { store, captured };
+  }
+
+  const learnedOutput = () => ({
+    messages: [
+      { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
+      { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
+      { info: { role: "user" }, parts: [{ type: "text", text: "tell me about alpha bravo charlie delta" }] },
+    ],
+  });
+
+  test("learned keyword mode reorders drilldown candidates and logs rerankStrategy=keyword", async () => {
+    const { store, captured } = makeLearnedStore("keyword", [
+      { id: "node-a", label: "note:unrelated-a", content: "zzz filler text nothing relevant here", type: "note", importance: 0.75, level: "summary" },
+      { id: "node-b", label: "note:unrelated-b", content: "yyy other filler words only", type: "note", importance: 0.7, level: "summary" },
+      { id: "node-c", label: "note:unrelated-c", content: "xxx more filler content", type: "note", importance: 0.65, level: "intermediate" },
+      { id: "node-d", label: "note:match-d", content: "tell me about alpha bravo charlie delta — resolved in the auth fix", type: "note", importance: 0.4, level: "detail" },
+    ]);
+    const handler = createMessagesTransformHandler(store, makeConfig({ dreamRsi: { enabled: true, explorationRate: 0 } }), { value: "ses-learned-reorder" });
+    const output = learnedOutput();
+    await handler["chat.messages.transform"]!({} as any, output);
+
+    expect(captured).toHaveLength(1);
+    // Natural drilldown order is [a, b, c]; keyword rerank promotes the
+    // term-matching detail node d into the top-3 cut.
+    expect(captured[0]!.rerankStrategy).toBe("keyword");
+    expect(captured[0]!.postRerankIds).toEqual(["node-d", "node-a", "node-b"]);
+    const injected = output.messages.find(m => m.parts[0]?.text?.includes("<memory_context>"));
+    expect(injected).toBeDefined();
+    expect(injected!.parts[0]!.text).toContain("note:match-d");
+  });
+
+  test("band-preserving cap lets a different-level node displace the 3rd same-level node", async () => {
+    const match = "tell me about alpha bravo charlie delta";
+    const { store, captured } = makeLearnedStore("keyword", [
+      { id: "node-s1", label: "note:summary-1", content: `${match} intro`, type: "note", importance: 0.9, level: "summary" },
+      { id: "node-s2", label: "note:summary-2", content: `${match} overview`, type: "note", importance: 0.9, level: "summary" },
+      { id: "node-s3", label: "note:summary-3", content: `${match} background`, type: "note", importance: 0.9, level: "summary" },
+      { id: "node-d1", label: "note:detail-1", content: "unrelated detail node about something else", type: "note", importance: 0.5, level: "detail" },
+    ]);
+    const handler = createMessagesTransformHandler(store, makeConfig({ dreamRsi: { enabled: true, explorationRate: 0 } }), { value: "ses-learned-band" });
+    const output = learnedOutput();
+    await handler["chat.messages.transform"]!({} as any, output);
+
+    expect(captured).toHaveLength(1);
+    // Keyword ranks the three summaries first, but the cap (2/level) admits
+    // only two of them; the fill phase pulls the detail node in instead of
+    // the 3rd summary — the natural order would have been [s1, s2, s3].
+    expect(captured[0]!.rerankStrategy).toBe("keyword");
+    expect(captured[0]!.postRerankIds).toEqual(["node-s1", "node-s2", "node-d1"]);
+  });
+
+  test("applyToInjection=false keeps natural drilldown order and logs rerankStrategy=drilldown", async () => {
+    const { store, captured } = makeLearnedStore("keyword", [
+      { id: "node-a", label: "note:unrelated-a", content: "zzz filler text nothing relevant here", type: "note", importance: 0.75, level: "summary" },
+      { id: "node-b", label: "note:unrelated-b", content: "yyy other filler words only", type: "note", importance: 0.7, level: "summary" },
+      { id: "node-c", label: "note:unrelated-c", content: "xxx more filler content", type: "note", importance: 0.65, level: "intermediate" },
+      { id: "node-d", label: "note:match-d", content: "tell me about alpha bravo charlie delta — resolved in the auth fix", type: "note", importance: 0.4, level: "detail" },
+    ]);
+    const config = makeConfig({ dreamRsi: { enabled: true, applyToInjection: false } });
+    const handler = createMessagesTransformHandler(store, config, { value: "ses-learned-off" });
+    const output = learnedOutput();
+    await handler["chat.messages.transform"]!({} as any, output);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.rerankStrategy).toBe("drilldown");
+    expect(captured[0]!.postRerankIds).toEqual(["node-a", "node-b", "node-c"]);
+  });
+
+  test("exploration quota (rate=1) keeps drilldown order despite learned keyword mode", async () => {
+    const { store, captured } = makeLearnedStore("keyword", [
+      { id: "node-a", label: "note:unrelated-a", content: "zzz filler text nothing relevant here", type: "note", importance: 0.75, level: "summary" },
+      { id: "node-b", label: "note:unrelated-b", content: "yyy other filler words only", type: "note", importance: 0.7, level: "summary" },
+      { id: "node-c", label: "note:unrelated-c", content: "xxx more filler content", type: "note", importance: 0.65, level: "intermediate" },
+      { id: "node-d", label: "note:match-d", content: "tell me about alpha bravo charlie delta — resolved in the auth fix", type: "note", importance: 0.4, level: "detail" },
+    ]);
+    // rate=1 → Math.random() < 1 always true → deterministic exploration row.
+    const config = makeConfig({ dreamRsi: { enabled: true, explorationRate: 1 } });
+    const handler = createMessagesTransformHandler(store, config, { value: "ses-exploration" });
+    const output = learnedOutput();
+    await handler["chat.messages.transform"]!({} as any, output);
+
+    expect(captured).toHaveLength(1);
+    // Learned keyword mode exists but the quota forces the natural
+    // drilldown order — the row attributes to drilldown (counterfactual).
+    expect(captured[0]!.rerankStrategy).toBe("drilldown");
+    expect(captured[0]!.postRerankIds).toEqual(["node-a", "node-b", "node-c"]);
+  });
+
+  test("no learned strategy node → drilldown attribution (default path)", async () => {
+    const captured: Array<{ rerankStrategy?: string }> = [];
+    const store = {
+      drilldownQuery: async () => [
+        { node: { id: "node-1", label: "test:memory-1", content: "Some context.", type: "note", importance: 0.8, usefulnessScore: 3 }, score: 0.95 },
+        { node: { id: "node-2", label: "test:memory-2", content: "More context.", type: "fact", importance: 0.6, usefulnessScore: 2 }, score: 0.85 },
+      ],
+      getNodeByLabel: async () => null,
+      logInjectionMetrics: async (_sid: string, data: { rerankStrategy?: string }) => {
+        captured.push(data);
+      },
+    } as unknown as MemoryStore;
+    const handler = createMessagesTransformHandler(store, makeConfig(), { value: "ses-learned-default" });
+    const output = learnedOutput();
+    await handler["chat.messages.transform"]!({} as any, output);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.rerankStrategy).toBe("drilldown");
+  });
+
   test("bumps usefulness when the agent drills into an injected node", async () => {
     const updates: Array<{ id: string; u: Record<string, unknown> }> = [];
+    const verdicts: Array<{ sid: string; id: string; used: boolean }> = [];
     const store = {
       drilldownQuery: async () => [
         {
@@ -347,6 +511,9 @@ describe("createMessagesTransformHandler", () => {
         updates.push({ id, u });
       },
       logInjectionMetrics: async () => {},
+      recordInjectionNodeVerdict: async (sid: string, id: string, used: boolean) => {
+        verdicts.push({ sid, id, used });
+      },
     } as unknown as MemoryStore;
     const config = makeConfig();
     const handler = createMessagesTransformHandler(store, config, { value: "ses-judge-use" });
@@ -381,10 +548,13 @@ describe("createMessagesTransformHandler", () => {
     expect(updates[0]!.u.usefulnessScore).toBeCloseTo(1.3);
     expect(updates[0]!.u.timesHelpful).toBe(4);
     expect(out2.messages.length).toBe(4);
+    // Verdict also lands on the injection_metrics row that injected node-1.
+    expect(verdicts).toEqual([{ sid: "ses-judge-use", id: "node-1", used: true }]);
   });
 
   test("decays usefulness for injections ignored past the grace window", async () => {
     const updates: Array<{ id: string; u: Record<string, unknown> }> = [];
+    const verdicts: Array<{ sid: string; id: string; used: boolean }> = [];
     const store = {
       drilldownQuery: async () => [
         {
@@ -413,6 +583,9 @@ describe("createMessagesTransformHandler", () => {
         updates.push({ id, u });
       },
       logInjectionMetrics: async () => {},
+      recordInjectionNodeVerdict: async (sid: string, id: string, used: boolean) => {
+        verdicts.push({ sid, id, used });
+      },
     } as unknown as MemoryStore;
     const config = makeConfig();
     const handler = createMessagesTransformHandler(store, config, { value: "ses-judge-ignore" });
@@ -437,5 +610,6 @@ describe("createMessagesTransformHandler", () => {
     expect(updates[0]!.id).toBe("node-9");
     expect(updates[0]!.u.usefulnessScore).toBeCloseTo(0.55);
     expect(updates[0]!.u.timesHelpful).toBeUndefined();
+    expect(verdicts).toEqual([{ sid: "ses-judge-ignore", id: "node-9", used: false }]);
   });
 });

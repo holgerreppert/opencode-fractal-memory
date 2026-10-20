@@ -643,7 +643,7 @@ describe("applyWordAbbreviations", () => {
   });
 
   test("never rewrites tokens inside paths", () => {
-    const input = "src/management/public/app.js";
+    const input = "src/management/routes/nodes.ts";
     expect(applyWordAbbreviations(input)).toBe(input);
   });
 
