@@ -33,7 +33,7 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { registerTuiEntry } from "../src/infrastructure/tui-self-register";
+import { registerTuiEntry, registerV2LocalPlugin } from "../src/infrastructure/tui-self-register";
 
 const HOME = homedir();
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -131,11 +131,13 @@ async function copyNestedDeps(target: string): Promise<void> {
 }
 
 /**
- * Register dist/tui.js in the GLOBAL tui.json (~/.config/opencode/tui.json).
- * OpenCode only scans project .opencode/tui.json + global config dir for TUI
- * manifests — a tui.json inside the installed package is never discovered.
- * OpenCode 2.x moved terminal client config to a single global cli.json, so
- * both files are written.
+ * Register the plugin for the terminal client and the server.
+ *
+ * - V1 (opencode 1.x): the npm spec in the global `tui.json` `plugin` key.
+ * - V2 (opencode 2.x): this repo's own directory in the `plugins` key of
+ *   `cli.json` (terminal client) and `opencode.json` (server). A local
+ *   directory lets V2 load the built plugin directly — no package-manager
+ *   install, no registry resolution, and the live `dist/` is used as-is.
  */
 async function ensureGlobalTuiRegistration(): Promise<void> {
   const globalDir = path.join(homedir(), ".config", "opencode");
@@ -145,11 +147,18 @@ async function ensureGlobalTuiRegistration(): Promise<void> {
     log(`WARN: ${distEntry} missing — cannot register TUI plugin`);
     return;
   }
-  for (const fileName of ["tui.json", "cli.json"]) {
-    const target = path.join(globalDir, fileName);
-    const changed = registerTuiEntry(target, entry);
-    log(changed ? `TUI registered in ${target}` : `TUI already registered in ${target}`);
-  }
+  const tuiTarget = path.join(globalDir, "tui.json");
+  const changed = registerTuiEntry(tuiTarget, entry);
+  log(changed ? `TUI registered in ${tuiTarget}` : `TUI already registered in ${tuiTarget}`);
+
+  const v2 = registerV2LocalPlugin(REPO_ROOT, entry, {
+    projectConfig: path.join(REPO_ROOT, ".opencode", "opencode.json"),
+  });
+  log(
+    v2.opencode || v2.cli || v2.project
+      ? `V2 plugin registered (local path) in global opencode.json + cli.json${v2.project ? " + project .opencode/opencode.json" : ""}`
+      : "V2 plugin already registered (local path)",
+  );
 }
 
 async function main(): Promise<void> {
