@@ -6,12 +6,22 @@ import { memLog } from "../logging";
 interface TuiJson {
   $schema?: string;
   plugin?: string[];
+  /** OpenCode 2.x renamed the `plugin` key to `plugins`. */
+  plugins?: string[];
 }
 
 const LEGACY_ENTRY_MARKER = "dist/tui.js";
 
 function globalTuiJsonPath(): string {
   return path.join(homedir(), ".config", "opencode", "tui.json");
+}
+
+/**
+ * OpenCode 2.x moved terminal client configuration from the layered
+ * `tui.json(c)` files to a single global `cli.json`.
+ */
+function globalCliJsonPath(): string {
+  return path.join(homedir(), ".config", "opencode", "cli.json");
 }
 
 function readTuiJson(file: string): TuiJson {
@@ -28,17 +38,33 @@ function readTuiJson(file: string): TuiJson {
  * Merge-preserving: other plugins' entries stay untouched. Legacy absolute
  * `dist/tui.js` entries for this plugin are dropped (they caused duplicate
  * boxes — npm vs file specs are not deduped by OpenCode).
+ *
+ * Both the V1 `plugin` key and the V2 `plugins` key are written so the same
+ * file registers the plugin on either runtime.
  */
 export function registerTuiEntry(file: string, pkgName: string): boolean {
   const json = readTuiJson(file);
-  const existing = json.plugin ?? [];
-  // Keep the exact npm spec; drop only legacy absolute dist/tui.js variants of this package
-  const cleaned = existing.filter((p) => !(p.includes(pkgName) && p.includes(LEGACY_ENTRY_MARKER)));
-  const changed = cleaned.length !== existing.length || !cleaned.includes(pkgName);
+  // OpenCode 2.x has a single `plugins` key, so it must carry every entry the
+  // V1 `plugin` key holds. Union both, then drop this package's legacy
+  // absolute `dist/tui.js` entries (they caused duplicate sidebar boxes
+  // because npm specs and file paths are not deduped by OpenCode). Other
+  // packages' entries are left untouched.
+  const others: string[] = [];
+  for (const list of [json.plugin ?? [], json.plugins ?? []]) {
+    for (const p of list) {
+      if (p.includes(pkgName) && p.includes(LEGACY_ENTRY_MARKER)) continue;
+      if (p === pkgName) continue;
+      if (!others.includes(p)) others.push(p);
+    }
+  }
+  const changed = !(json.plugin ?? []).includes(pkgName) || !(json.plugins ?? []).includes(pkgName);
   if (!changed) return false;
   const next: TuiJson = { ...json };
-  if (!next.$schema) next.$schema = "https://opencode.ai/tui.json";
-  next.plugin = [pkgName, ...cleaned];
+  if (!next.$schema) {
+    next.$schema = path.basename(file) === "cli.json" ? "https://opencode.ai/cli.json" : "https://opencode.ai/tui.json";
+  }
+  next.plugin = [pkgName, ...others];
+  next.plugins = [pkgName, ...others];
   mkdirSync(path.dirname(file), { recursive: true });
   const tmp = path.join(tmpdir(), `.tuijson-${process.pid}-${Date.now()}`);
   writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
@@ -86,21 +112,38 @@ export interface TuiSelfRegisterResult {
   registered: boolean;
   linked: boolean;
   tuiJsonPath: string;
+  cliJsonPath: string;
 }
 
 /**
  * Server-side self-heal: make sure this plugin's TUI entry survives fresh
  * installs where lifecycle scripts never ran (OpenCode installs packages with
  * --ignore-scripts). Called from plugin init; never throws.
+ *
+ * Registers in both `tui.json` (OpenCode 1.x terminal client) and `cli.json`
+ * (OpenCode 2.x terminal client) so the sidebar works on either runtime.
  */
 export function selfRegisterTui(pkgRoot: string, pkgName: string): TuiSelfRegisterResult {
-  const result: TuiSelfRegisterResult = { registered: false, linked: false, tuiJsonPath: globalTuiJsonPath() };
+  const result: TuiSelfRegisterResult = {
+    registered: false,
+    linked: false,
+    tuiJsonPath: globalTuiJsonPath(),
+    cliJsonPath: globalCliJsonPath(),
+  };
   try {
     result.registered = registerTuiEntry(result.tuiJsonPath, pkgName);
+    try {
+      if (registerTuiEntry(result.cliJsonPath, pkgName)) result.registered = true;
+    } catch (err) {
+      memLog("warn", "init", "[tui-self-register] cli.json registration failed (non-fatal)", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     result.linked = ensureNodeModulesLink(pkgRoot, pkgName);
     if (result.registered || result.linked) {
       memLog("info", "init", "[tui-self-register] ensured TUI registration", {
         tuiJson: result.tuiJsonPath,
+        cliJson: result.cliJsonPath,
         registered: result.registered,
         linked: result.linked,
         pkgName,

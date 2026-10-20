@@ -1,2 +1,2 @@
-export { MemoryPlugin } from "./plugin/index";
+export { default, MemoryPlugin } from "./plugin/index";
 export type { CachedMemoryNode } from "./application/cache";

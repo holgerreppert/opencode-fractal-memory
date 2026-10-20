@@ -1,4 +1,4 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import type { Provider, Model } from "@opencode-ai/sdk/v2";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -14,6 +14,8 @@ import { createRegisterAgentsHandler } from "./hooks/register-agents";
 import { createJournalStore } from "../application/journal";
 import { ToastService } from "../infrastructure/toast-service";
 import { incrementTurn } from "../application/re-read-elimination";
+import { setupV2, createV2Client } from "./v2-adapter";
+import type { V2Context } from "./v2-adapter";
 
 // Read the plugin version from the installed package.json next to dist/ (covers
 // both the repo layout and the plugin-cache copy OpenCode actually loads).
@@ -29,11 +31,16 @@ function loadPluginVersion(): string {
   }
 }
 
-export const MemoryPlugin: Plugin = async (ctx) => {
-  const { directory, client } = ctx;
+/**
+ * Shared core: everything both the V1 and V2 entrypoints need.
+ *
+ * Built once per plugin instance so the V1 `server()` path and the V2
+ * `setup()` path register the exact same handlers and tools.
+ */
+async function createCore(directory: string, client: unknown, serverUrl?: string) {
   const t0 = perfNow();
 
-  memLog("info", "init", "Plugin initialization started", { directory, serverUrl: ctx.serverUrl.origin });
+  memLog("info", "init", "Plugin initialization started", { directory, serverUrl });
 
   memLog("info", "TestLogging", "PLUGIN_LOADED_FROM", {
     resolvedDir: import.meta.dir,
@@ -185,14 +192,41 @@ export const MemoryPlugin: Plugin = async (ctx) => {
     await handlers["experimental.chat.messages.transform"]?.(input, output);
   };
 
+  const dispose = async () => {
+    stopManagementServer();
+    await store.close();
+  };
+
   return {
-    ...handlers,
-    "chat.message": composedChatMessage,
-    "experimental.chat.messages.transform": composedMessagesTransform,
-    config: registerAgentsHandler,
-    tool: toolMap,
+    handlers,
+    toolMap,
+    registerAgentsHandler,
+    smallModelMap,
+    composedChatMessage,
+    composedMessagesTransform,
+    dispose,
+  };
+}
+
+/**
+ * V1 entrypoint (OpenCode 1.18.x).
+ *
+ * Returns the string-keyed hook map, the tool map, the config hook, and the
+ * dispose hook — the shape V1 expects from a plugin function.
+ */
+export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
+  const { directory, client } = ctx;
+
+  const core = await createCore(directory, client, ctx.serverUrl?.origin);
+
+  return {
+    ...core.handlers,
+    "chat.message": core.composedChatMessage,
+    "experimental.chat.messages.transform": core.composedMessagesTransform,
+    config: core.registerAgentsHandler,
+    tool: core.toolMap,
     "experimental.provider.small_model": async (input: { provider: Provider }, output: { model?: Model }) => {
-      const configured = smallModelMap[input.provider.id];
+      const configured = core.smallModelMap[input.provider.id];
       if (configured) {
         const model = input.provider.models[configured];
         if (model) {
@@ -200,9 +234,39 @@ export const MemoryPlugin: Plugin = async (ctx) => {
         }
       }
     },
-    dispose: async () => {
-      stopManagementServer();
-      await store.close();
-    },
+    dispose: core.dispose,
   };
+};
+
+/**
+ * V2 entrypoint (OpenCode 2.x).
+ *
+ * V2 plugins register hooks on the domain that owns the operation and get a
+ * single mutable event instead of separate input/output objects, so the
+ * adapter bridges the V1 handlers onto the V2 domains.
+ */
+async function setupV2Entry(ctx: V2Context): Promise<() => Promise<void>> {
+  const directory = ctx.location.directory;
+  // The shared core calls the SDK client with the V1 nested request shape;
+  // bridge it onto the V2 session domain.
+  const client = createV2Client(ctx as unknown as Parameters<typeof createV2Client>[0]);
+  const core = await createCore(directory, client);
+  return setupV2(ctx, {
+    handlers: core.handlers as Record<string, unknown>,
+    toolMap: core.toolMap,
+    dispose: core.dispose,
+  });
+}
+
+/**
+ * Dual-shape entrypoint.
+ *
+ * OpenCode 1.18.29+ calls `server()`; OpenCode 2.x calls `setup()`. The two
+ * APIs are separate — the spread does not translate hooks automatically, so
+ * each side registers the same handlers through its own adapter.
+ */
+export default {
+  id: "opencode-fractal-memory",
+  setup: setupV2Entry,
+  server: MemoryPlugin,
 };

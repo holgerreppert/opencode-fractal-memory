@@ -134,17 +134,22 @@ async function copyNestedDeps(target: string): Promise<void> {
  * Register dist/tui.js in the GLOBAL tui.json (~/.config/opencode/tui.json).
  * OpenCode only scans project .opencode/tui.json + global config dir for TUI
  * manifests — a tui.json inside the installed package is never discovered.
+ * OpenCode 2.x moved terminal client config to a single global cli.json, so
+ * both files are written.
  */
 async function ensureGlobalTuiRegistration(): Promise<void> {
-  const globalTui = path.join(homedir(), ".config", "opencode", "tui.json");
+  const globalDir = path.join(homedir(), ".config", "opencode");
   const entry = "opencode-fractal-memory";
   const distEntry = path.join(TARGETS[1], "dist", "tui.js");
   if (!existsSync(distEntry)) {
     log(`WARN: ${distEntry} missing — cannot register TUI plugin`);
     return;
   }
-  const changed = registerTuiEntry(globalTui, entry);
-  log(changed ? `TUI registered in ${globalTui}` : `TUI already registered in ${globalTui}`);
+  for (const fileName of ["tui.json", "cli.json"]) {
+    const target = path.join(globalDir, fileName);
+    const changed = registerTuiEntry(target, entry);
+    log(changed ? `TUI registered in ${target}` : `TUI already registered in ${target}`);
+  }
 }
 
 async function main(): Promise<void> {

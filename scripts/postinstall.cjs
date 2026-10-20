@@ -21,6 +21,8 @@ copyFiles("commands", "commands");
 // Register dist/tui.js in the GLOBAL tui.json so the Fractal Memory sidebar box
 // renders in every project. OpenCode only scans <project>/.opencode/tui.json and
 // ~/.config/opencode/tui.json — a manifest inside this package is never discovered.
+// OpenCode 2.x moved terminal client config to a single global cli.json, so both
+// files are written.
 function registerGlobalTui() {
   try {
     // Use npm spec "opencode-fractal-memory" (resolved via node_modules), not absolute path.
@@ -29,19 +31,32 @@ function registerGlobalTui() {
     if (!require("fs").existsSync(expectedDist)) throw new Error("dist/tui.js missing");
     const tuiEntry = "opencode-fractal-memory";
     const globalDir = path.join(process.env.HOME || process.env.USERPROFILE || "", ".config", "opencode");
-    const globalTui = path.join(globalDir, "tui.json");
     fs.mkdirSync(globalDir, { recursive: true });
-    let json = {};
-    try {
-      if (fs.existsSync(globalTui)) json = JSON.parse(fs.readFileSync(globalTui, "utf8"));
-    } catch (e) { /* corrupt file — start fresh */ }
-    const cleaned = (Array.isArray(json.plugin) ? json.plugin : []).filter((p) => !String(p).includes("dist/tui.js"));
-    const plugins = new Set(cleaned);
-    plugins.add(tuiEntry);
-    if (!json.$schema) json.$schema = "https://opencode.ai/tui.json";
-    json.plugin = [...plugins];
-    fs.writeFileSync(globalTui, JSON.stringify(json, null, 2) + "\n");
-    console.log(`[opencode-memory] TUI registered in ${globalTui}`);
+    for (const fileName of ["tui.json", "cli.json"]) {
+      const globalTui = path.join(globalDir, fileName);
+      let json = {};
+      try {
+        if (fs.existsSync(globalTui)) json = JSON.parse(fs.readFileSync(globalTui, "utf8"));
+      } catch (e) { /* corrupt file — start fresh */ }
+      // OpenCode 2.x has a single `plugins` key, so it carries the union of
+      // both keys. This package's legacy absolute dist/tui.js entries are
+      // dropped (duplicate sidebar boxes — npm specs and file paths are not
+      // deduped); other packages' entries are left untouched.
+      const others = [];
+      for (const list of [json.plugin, json.plugins]) {
+        for (const p of Array.isArray(list) ? list : []) {
+          const s = String(p);
+          if (s.includes(tuiEntry) && s.includes("dist/tui.js")) continue;
+          if (s === tuiEntry) continue;
+          if (!others.includes(s)) others.push(s);
+        }
+      }
+      if (!json.$schema) json.$schema = fileName === "cli.json" ? "https://opencode.ai/cli.json" : "https://opencode.ai/tui.json";
+      json.plugin = [tuiEntry, ...others];
+      json.plugins = [tuiEntry, ...others];
+      fs.writeFileSync(globalTui, JSON.stringify(json, null, 2) + "\n");
+      console.log(`[opencode-memory] TUI registered in ${globalTui}`);
+    }
   } catch (e) {
     console.error(`[opencode-memory] TUI registration skipped: ${e.message}`);
   }
