@@ -1,10 +1,11 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import type { MemConfig } from "../infrastructure/config/config";
 import type { ToastService } from "../infrastructure/toast-service";
 import { memLog } from "../logging";
 import { recordCompressBlock, nextMsgRef, getCompressState, rebuildCompressState } from "../application/context-compression/state";
 import { estimateMessageTokens, realMessageTokens, partPayloadText, type SizableMessage } from "../application/context-compression/message-size";
+import type { SessionApi } from "../plugin/session-api";
 
 const MAX_HISTORY_NODE_CHARS = 50_000;
 const MAX_MESSAGE_TEXT_CHARS = 2_000;
@@ -17,16 +18,19 @@ const ALL_FLAGGED_MAX = 10;
 const AUTO_DESC_CHARS = 200;
 
 type FetchedMessage = {
-  info?: { id?: string; role?: string; agent?: string | null; time?: { created?: number } };
+  id?: string;
+  role?: string;
+  agent?: string | null;
+  created?: number;
   parts?: Array<{ type?: string; text?: string; name?: string; input?: unknown; isError?: boolean }>;
 };
 
 // Build a structured archive entry from a message's parts (same format as the
 // compaction hook used for storedcontext captures — caps per part).
 function formatMessageEntry(msg: FetchedMessage): string {
-  const role = msg.info?.role ?? "unknown";
-  const agent = msg.info?.agent ?? "";
-  const time = msg.info?.time?.created ? new Date(msg.info.time.created).toISOString() : "";
+  const role = msg.role ?? "unknown";
+  const agent = msg.agent ?? "";
+  const time = msg.created ? new Date(msg.created).toISOString() : "";
   let textContent = "";
   if (msg.parts && Array.isArray(msg.parts)) {
     for (const part of msg.parts) {
@@ -57,7 +61,7 @@ function formatArchivedSlice(entry: { msgRef: string; topic: string; description
   return lines.join("\n");
 }
 
-export function createContextCompressTool(store: MemoryStore, client: unknown, config: MemConfig, toast?: ToastService) {
+export function createContextCompressTool(store: MemoryStore, session: SessionApi, config: MemConfig, toast?: ToastService) {
   return tool({
     description: `Compress (prune) conversation messages to free context. Two modes — choose carefully:
 
@@ -113,16 +117,11 @@ The plugin either replaces archived messages with a compact placeholder linking 
 
       await rebuildCompressState(store, sessionId);
 
-      const typedClient = client as { session?: { messages: (opts: unknown) => Promise<{ data?: Array<FetchedMessage>; [key: string]: unknown }> } };
-      const messagesResponse = typedClient?.session?.messages
-        ? await typedClient.session.messages({ path: { id: sessionId } })
-        : null;
-      const messages: FetchedMessage[] =
-        ((messagesResponse?.data ?? messagesResponse) as unknown as FetchedMessage[]) ?? [];
+      const messages = (await session.messages({ sessionID: sessionId })) as unknown as FetchedMessage[];
 
       const byId = new Map<string, FetchedMessage>();
       for (const m of messages) {
-        if (m.info?.id) byId.set(m.info.id, m);
+        if (m.id) byId.set(m.id, m);
       }
 
       const state = getCompressState(sessionId);
@@ -135,9 +134,9 @@ The plugin either replaces archived messages with a compact placeholder linking 
       if (args.allFlagged) {
         const flagged: Array<{ messageId: string; description: string; tokens: number }> = [];
         for (const m of messages) {
-          const id = m.info?.id;
+          const id = m.id;
           if (!id || skipIds.has(id)) continue;
-          const role = m.info?.role;
+          const role = m.role;
           if (role !== "user" && role !== "assistant") continue;
           const real = realMessageTokens(m as unknown as SizableMessage);
           const tokens = real !== null ? real : estimateMessageTokens(m as unknown as SizableMessage);
@@ -175,10 +174,10 @@ The plugin either replaces archived messages with a compact placeholder linking 
           const b = parts[1].trim();
           // Resolve indices in view order (messages array order = chronological view)
           const idxOf = (needle: string): number => {
-            const exact = messages.findIndex((m) => m.info?.id === needle);
+            const exact = messages.findIndex((m) => m.id === needle);
             if (exact !== -1) return exact;
             // prefix match (nudge shows full id but allow short prefix)
-            const pref = messages.findIndex((m) => (m.info?.id ?? "").startsWith(needle) || needle.startsWith(m.info?.id ?? "___"));
+            const pref = messages.findIndex((m) => (m.id ?? "").startsWith(needle) || needle.startsWith(m.id ?? "___"));
             return pref;
           };
           const ia = idxOf(a);
@@ -186,9 +185,9 @@ The plugin either replaces archived messages with a compact placeholder linking 
           if (ia === -1) return `Error: range start "${a}" not found in current view.`;
           if (ib === -1) return `Error: range end "${b}" not found in current view.`;
           if (ib < ia) return `Error: range is reversed — "${a}" appears after "${b}" in view order. Use "START:END" in view order.`;
-          candidateIds = messages.slice(ia, ib + 1).map((m) => m.info?.id).filter((x): x is string => Boolean(x));
+          candidateIds = messages.slice(ia, ib + 1).map((m) => m.id).filter((x): x is string => Boolean(x));
         } else {
-          candidateIds = messages.map((m) => m.info?.id).filter((x): x is string => Boolean(x));
+          candidateIds = messages.map((m) => m.id).filter((x): x is string => Boolean(x));
         }
 
         // Time bounds (inclusive)
@@ -204,11 +203,11 @@ The plugin either replaces archived messages with a compact placeholder linking 
           if (skipIds.has(id)) continue;
           const msg = byId.get(id);
           if (!msg) continue;
-          const role = msg.info?.role;
+          const role = msg.role;
           if (role !== "user" && role !== "assistant") continue;
           // time filter
           if (!Number.isNaN(fromMs) || !Number.isNaN(toMs)) {
-            const t = msg.info?.time?.created;
+            const t = msg.created;
             const ms = typeof t === "number" ? t : typeof t === "string" ? Date.parse(t) : NaN;
             if (!Number.isNaN(fromMs) && (Number.isNaN(ms) || ms < fromMs)) continue;
             if (!Number.isNaN(toMs) && (Number.isNaN(ms) || ms > toMs)) continue;
@@ -266,7 +265,7 @@ The plugin either replaces archived messages with a compact placeholder linking 
         if (!messageEntry) {
           // Fallback for tool-output/binary messages that have tokens but no extractable text
           const tok = (() => { try { const r = realMessageTokens(msg as unknown as SizableMessage); return r !== null ? `${r.toLocaleString()} tok` : ""; } catch { return ""; } })();
-          messageEntry = `[${msg.info?.role ?? "unknown"} ${msg.info?.id ?? target.messageId} ${tok}] (no extractable text — archived by range)`;
+          messageEntry = `[${msg.role ?? "unknown"} ${msg.id ?? target.messageId} ${tok}] (no extractable text — archived by range)`;
         }
         removedChars += messageEntry.length;
         summaryChars += (target.description ?? "").length;

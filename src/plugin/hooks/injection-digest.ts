@@ -7,7 +7,7 @@ import {
   getInjectionVisibilityConfig,
   type InjectionRecord,
 } from "../../application/injection-visibility";
-import type { HookHandler } from "./types";
+import type { MessagesEvent, PluginHooks } from "./types";
 
 function persistRecords(store: MemoryStore, sid: string, records: InjectionRecord[]): void {
   if (!sid || records.length === 0) return;
@@ -43,16 +43,16 @@ export function createInjectionDigestHandler(
   store: MemoryStore,
   config: MemConfig,
   currentSessionId: { value: string },
-): HookHandler {
+): PluginHooks {
   const vis = getInjectionVisibilityConfig(config);
   if (!vis.enabled || !vis.digest) return {};
 
   const sid = () => currentSessionId?.value ?? "";
 
   return {
-    "chat.messages.transform": async (_input: unknown, output: unknown) => {
-      const out = output as {
-        messages: Array<{ info: { role?: string }; parts: Array<{ type?: string; text?: string }> }>;
+    "messages": async (event: MessagesEvent) => {
+      const out = event as unknown as {
+        messages: Array<{ role?: string; parts: Array<{ type?: string; text?: string }> }>;
       };
       if (!out.messages || out.messages.length === 0) return;
 
@@ -63,7 +63,7 @@ export function createInjectionDigestHandler(
 
       try {
         out.messages.splice(out.messages.length - 1, 0, {
-          info: { role: "user" },
+          role: "user",
           parts: [{
             type: "text" as const,
             text: digest,

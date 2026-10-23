@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import type { MemConfig } from "../../infrastructure/config/config";
-import { ensureBackgroundGraph, refreshGraphFile } from "../../application/graph/build";
+import { ensureBackgroundGraph, getActiveGraph, refreshGraphFile } from "../../application/graph/build";
 import { setGraphCacheEnabled } from "../../application/graph/persist";
 import { trackFileRefresh, writePluginGraphUsage } from "../../application/graph/usage";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 import { writeGraphLog, writeFileSumLog } from "../../logging";
 
-export function createGraphRefreshHandler(config: MemConfig): HookHandler {
+export function createGraphRefreshHandler(config: MemConfig, directory: string): PluginHooks {
   const graphConfig = config.graph ?? { enabled: false, maxFiles: 5000, refreshEnabled: true, cacheEnabled: true };
 
   if (!graphConfig.enabled) return {};
@@ -14,17 +14,17 @@ export function createGraphRefreshHandler(config: MemConfig): HookHandler {
 
   setGraphCacheEnabled(graphConfig.cacheEnabled !== false);
 
-  const root = process.cwd();
+  // Never build at plugin init: the first real need (an edit/write) triggers it.
+  const root = directory;
   const maxFiles = graphConfig.maxFiles ?? 5000;
 
-  ensureBackgroundGraph(root, maxFiles);
-
   return {
-    "tool.after": async (_input: unknown, _output: unknown) => {
-      const input = _input as { tool?: string; args?: { filePath?: string } };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: { filePath?: string } };
       const tool = input.tool;
       const filePath = input.args?.filePath;
       if (!filePath) return;
+      if (!getActiveGraph()) ensureBackgroundGraph(root, maxFiles);
 
       if (tool === "edit" || tool === "write") {
         try {

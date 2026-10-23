@@ -16,6 +16,10 @@ interface ManagementConfig {
 
 let activeProcess: import("bun").Subprocess | null = null;
 let activeServer: http.Server | null = null;
+// True while the port-free wait + spawn sequence is in flight (up to ~3s).
+// Without it a second startManagementServer call during the wait window would
+// pass the activeProcess guard and queue a duplicate spawn.
+let spawnPending = false;
 let serverStore: ReturnType<typeof createSqliteMemoryStore> | null = null;
 
 let mgmtConfig: { enabled: boolean; port: number; directory: string; publicDir?: string } | null = null;
@@ -274,8 +278,18 @@ export function startManagementServer(
 ): void {
   memLog("info", "management", "startManagementServer called", { port: config.port, dir: directory });
 
-  if (activeProcess || activeServer) {
-    memLog("warn", "management", "Management server already running, stopping old instance");
+  // The server is process-global (one dashboard, one port). A second location
+  // hosted by the same process must reuse the running instance instead of
+  // killing it and spawning another one on the same port.
+  if (activeProcess || activeServer || spawnPending) {
+    if (mgmtConfig?.port === config.port) {
+      memLog("info", "management", "Management server already running on port — reusing", {
+        port: config.port,
+        pid: activeProcess?.pid,
+      });
+      return;
+    }
+    memLog("warn", "management", "Management server running on a different port, stopping old instance");
     stopManagementServer();
   }
 
@@ -288,6 +302,44 @@ export function startManagementServer(
     memLog("debug", "management", "Shutdown request failed", { error: String(e) });
   }
 
+  // Wait for the port to actually free before spawning. Two opencode
+  // processes (the background service + a direct run) can boot the plugin
+  // for the same directory at the same moment; without this gate the second
+  // spawn raced the first, crashed with EADDRINUSE — and, worse, its exit
+  // handler used to delete the WINNER's PID file, which made the TUI
+  // sidebar read "stopped" forever. A first spawn sees a dead port and
+  // proceeds immediately.
+  spawnPending = true;
+  void waitForPortFree(config.port, 3000)
+    .then(() => spawnManagement(directory, config))
+    .catch((err: unknown) => {
+      memLog("error", "management", "Spawn sequence failed", { error: String(err) });
+    })
+    .finally(() => {
+      spawnPending = false;
+    });
+}
+
+async function waitForPortFree(port: number, deadlineMs: number): Promise<void> {
+  const deadline = Date.now() + deadlineMs;
+  for (;;) {
+    const alive = await probeHttpPort(port);
+    if (!alive) return;
+    if (Date.now() >= deadline) {
+      memLog("warn", "management", "Port still busy after shutdown window — spawning anyway", { port });
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
+function probeHttpPort(port: number): Promise<boolean> {
+  return fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(800) })
+    .then(() => true)
+    .catch(() => false);
+}
+
+function spawnManagement(directory: string, config: ManagementConfig): void {
   const standalonePath = path.join(__dirname, "management-standalone.js");
   memLog("info", "management", "Resolved standalone path", { standalonePath });
 

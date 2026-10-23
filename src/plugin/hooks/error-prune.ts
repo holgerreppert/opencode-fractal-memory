@@ -1,6 +1,6 @@
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { MessagesEvent, PluginHooks, ToolBeforeEvent } from "./types";
 
 export interface ErrorPruningConfig {
   enabled: boolean;
@@ -8,21 +8,21 @@ export interface ErrorPruningConfig {
   protectedTools: string[];
 }
 
-export function createErrorPruneHandler(config: MemConfig): HookHandler {
+export function createErrorPruneHandler(config: MemConfig): PluginHooks {
   const epConfig = config.errorPruning as ErrorPruningConfig | undefined;
   if (!epConfig?.enabled) return {};
 
   let turnCounter = 0;
 
   return {
-    "tool.before": async () => {
+    "tool.execute.before": async (_event: ToolBeforeEvent) => {
       turnCounter++;
     },
 
-    "chat.messages.transform": async (_input: unknown, output: unknown) => {
-      const out = output as {
+    "messages": async (event: MessagesEvent) => {
+      const out = event as unknown as {
         messages: Array<{
-          info: { role?: string };
+          role?: string;
           parts: Array<{
             type?: string;
             name?: string;

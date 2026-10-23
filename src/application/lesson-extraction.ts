@@ -2,6 +2,7 @@ import type { MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
 import { inferSubtask } from "./subtask";
 import { classifyExtraction } from "./dream-rsi/exploration-rules";
+import type { SessionApi } from "../plugin/session-api";
 
 export interface AutoLessonsConfig {
   enabled: boolean;
@@ -20,7 +21,7 @@ export async function extractSessionLessons(
   store: MemoryStore,
   config: AutoLessonsConfig,
   sessionId: string,
-  client?: { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined,
+  client?: SessionApi | undefined,
 ): Promise<string> {
   if (!config.enabled) return "Lessons: disabled";
 
@@ -79,8 +80,12 @@ export async function extractSessionLessons(
 
   let content = lines.join("\n");
 
-  if (config.useLlm && client?.session?.prompt) {
+  if (config.useLlm && client?.lastModel && client.generate) {
     try {
+      const model = await client.lastModel(sessionId);
+      if (!model) {
+        memLog("debug", "lessons", "LLM lesson generation skipped: session has no recorded model", { sessionId });
+      }
       const failedList = [...toolFailureCounts].map(([t, c]) => `${t} (${c}x)`).join(", ");
       const prompt = `Analyze these tool failures from a coding-agent session and provide specific, actionable lessons:
 
@@ -98,14 +103,7 @@ Example good lessons:
 
 Your lessons:`;
 
-      const result = await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          noReply: true,
-          parts: [{ type: "text", text: prompt }],
-        },
-      });
-      const response = await (await result.text()).trim();
+      const response = model ? (await client.generate({ model, prompt }))?.trim() : undefined;
       if (response) {
         const rules = response.split("\n").filter((line: string) => line.trim().startsWith("-"));
         if (rules.length > 0) {

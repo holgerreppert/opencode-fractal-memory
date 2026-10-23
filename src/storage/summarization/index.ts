@@ -1,5 +1,7 @@
 import type { MemoryNode, MemoryNodeLevel } from "../types";
 import { cosineSimilarity } from "../../math";
+import { memLog } from "../../logging";
+import type { SessionApi } from "../../plugin/session-api";
 import {
   generateSummary,
   generateStructuredSummary,
@@ -111,19 +113,16 @@ ${allContent}
 Structured summary:`;
 
     try {
-      const sessionClient = client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } };
-      const result = await sessionClient.session?.prompt({
-        path: { id: sessionId ?? 'compression' },
-        body: {
-          noReply: true,
-          parts: [{ type: 'text', text: prompt }],
-        },
-      });
-
-      if (result) {
-        const response = await result.text();
-        const trimmed = response.trim();
+      const sessionClient = client as SessionApi | undefined;
+      const model = sessionId && sessionClient?.lastModel
+        ? await sessionClient.lastModel(sessionId)
+        : undefined;
+      if (model && sessionClient?.generate) {
+        const trimmed = (await sessionClient.generate({ model, prompt }))?.trim();
         if (trimmed) return trimmed;
+      }
+      if (sessionClient && !model) {
+        memLog("debug", "compress", "LLM node summary skipped: no model for session", { sessionId });
       }
     } catch  {
       // LLM failed, fall through to regex fallback

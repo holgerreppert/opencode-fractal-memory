@@ -1,6 +1,7 @@
 import type { MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
 import { inferSubtask } from "./subtask";
+import type { SessionApi } from "../plugin/session-api";
 
 export interface AutoCaptureConfig {
   enabled: boolean;
@@ -22,7 +23,7 @@ export async function captureSessionWork(
   store: MemoryStore,
   config: AutoCaptureConfig,
   sessionId: string,
-  client?: { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined,
+  client?: SessionApi | undefined,
 ): Promise<string> {
   if (!config.enabled) return "Work: disabled";
 
@@ -69,8 +70,12 @@ export async function captureSessionWork(
   // work node (filenames, session-bound), distill a portable workflow node —
   // procedure + validation + insight with NO filenames, transferable across
   // projects. Only when LLM summarization is enabled.
-  if (config.useLlm && client?.session?.prompt) {
+  if (config.useLlm && client?.lastModel && client.generate) {
     try {
+      const model = await client.lastModel(sessionId);
+      if (!model) {
+        memLog("debug", "work", "LLM summary skipped: session has no recorded model", { sessionId });
+      }
       const filesList = filesTouched.join(", ");
       const toolsList = [...toolCounts].map(([t, c]) => `${t} (${c}x)`).join(", ");
       const prompt = `A coding-agent session completed work and made ${edits.length} edits. Summarize what was likely accomplished so a future agent can resume or reference it.
@@ -81,14 +86,7 @@ Tools: ${toolsList}
 
 Produce a concise "What was done" summary (2-4 sentences) describing the most plausible work from the file names and tool usage. Focus on the changes' purpose, not mechanics.`;
 
-      const result = await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          noReply: true,
-          parts: [{ type: "text", text: prompt }],
-        },
-      });
-      const response = await (await result.text()).trim();
+      const response = model ? (await client.generate({ model, prompt }))?.trim() : undefined;
       if (response) {
         content += `\n### What Was Done (LLM)\n${response}\n`;
       }
@@ -107,14 +105,7 @@ Format EXACTLY as:
 ## Insight
 - (1-2 sentences: when to apply this workflow, and the non-obvious lesson)`;
 
-      const wfResult = await client.session.prompt({
-        path: { id: sessionId },
-        body: {
-          noReply: true,
-          parts: [{ type: "text", text: wfPrompt }],
-        },
-      });
-      const wfResponse = await (await wfResult.text()).trim();
+      const wfResponse = model ? (await client.generate({ model, prompt: wfPrompt }))?.trim() : undefined;
       if (wfResponse && wfResponse.includes("## Procedure")) {
         const wfLabel = `workflow:${Date.now()}`;
         await store.createNode({

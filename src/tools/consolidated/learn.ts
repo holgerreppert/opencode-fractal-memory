@@ -1,4 +1,4 @@
-import { tool, type ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "../../tools/define-tool";
 import type { MemoryStore } from "../../storage/sqlite";
 import { MemoryVerify } from "../compress";
 import { MemoryRate } from "../core";
@@ -7,6 +7,8 @@ import { MemoryReflect, MemoryDistill } from "../reflect";
 import { MemoryExtractPatterns } from "../compress";
 import { MemoryDashboard } from "../dashboard";
 import { MemoryTemporalEdges } from "../temporal";
+import type { ToolDefinition } from "../define-tool";
+import type { SessionApi } from "../../plugin/session-api";
 
 const SUGGESTIONS: Record<string, string> = {
   reflect: "\n\n---\nNEXT: `learn(mode=distill)` to extract actionable rules from lessons, or `learn(mode=dashboard)` for health.",
@@ -21,7 +23,7 @@ const SUGGESTIONS: Record<string, string> = {
   injection_feedback: "\n\n---\nNEXT: `context(mode=inject)` for automatic injection, or `memory(mode=search)` to find nodes.",
 };
 
-export function createLearnTool(store: MemoryStore, client?: unknown) {
+export function createLearnTool(store: MemoryStore, client?: SessionApi | undefined) {
   const handlers: Record<string, ToolDefinition> = {
     reflect: MemoryReflect(store, client),
     distill: MemoryDistill(store, client),

@@ -1,12 +1,12 @@
 import type { MemoryStore } from "../../storage/sqlite";
 import { addToWorkingCache } from "../../application/cache";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
-export function createWorkingCacheHandler(_store: MemoryStore): HookHandler {
+export function createWorkingCacheHandler(_store: MemoryStore): PluginHooks {
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; sessionID?: string; args?: Record<string, unknown> };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; sessionID?: string; args?: Record<string, unknown> };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
 
       if (!input.tool?.startsWith("memory_")) return;
       if (out.metadata?.error !== undefined) return;

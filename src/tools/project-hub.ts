@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import { MemoryGet, MemoryFetch, MemorySet } from "./core";
 import { MemoryDrilldown, MemorySearch } from "./search";
@@ -132,11 +132,12 @@ TIPS: search → network → pick parent → set with correct parent_ids. If you
         return result;
       }
       if (mode === "network") {
-        const hubId = await getHubId(store, scope === "all" ? "project" : (scope as any));
         let hub: any = null;
         try {
           hub = await store.getNodeByLabel((scope === "all" ? "project" : scope) as any, HUB_LABEL);
-        } catch {}
+        } catch {
+          // A missing hub is reported below.
+        }
         if (!hub) return `No hub found for scope=${scope}. Create via project_hub(mode="set", label="${HUB_LABEL}", ...) or ensureProjectHub seeder.`;
         const all = await store.listNodes(scope === "all" ? "all" : (scope as any), undefined, 50, 0, false, scope === "project" ? store.projectName : undefined);
         const children = all.filter((n) => (n.parentIds ?? []).includes(hub.id) || (n.parentIds ?? []).includes(HUB_LABEL as any));

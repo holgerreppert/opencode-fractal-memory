@@ -22,3 +22,4 @@ tests/dbs/synthetic-seeded/
 build_output.txt
 docs/questions/
 docs/sqlitesqls/
+.playwright-mcp/

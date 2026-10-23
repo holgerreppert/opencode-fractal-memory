@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryScope, MemoryStore } from "../storage/sqlite";
 import { wrapWithTracking } from "./shared";
 

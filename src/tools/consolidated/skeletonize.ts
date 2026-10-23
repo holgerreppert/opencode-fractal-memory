@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../../tools/define-tool";
 import { readFile } from "node:fs/promises";
 import { extractSkeleton } from "../../application/skeletonize";
 

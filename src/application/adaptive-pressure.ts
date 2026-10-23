@@ -45,7 +45,7 @@ export function getPressurePhase(config: AdaptivePressureConfig): PressureState[
   return state.phase;
 }
 
-export function estimateTokensForOutput(output: string): number {
+function estimateTokensForOutput(output: string): number {
   return Math.ceil(output.length / 4);
 }
 

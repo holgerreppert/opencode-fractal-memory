@@ -2,20 +2,19 @@ import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, appendSessionLog } from "../../logging";
 import { getWorkingCache, addToWorkingCache } from "../../application/cache";
-import type { HookHandler } from "./types";
-
-const MAX_MESSAGES_FETCHED = 20;
+import type { CompactionEvent, PluginHooks } from "./types";
+import type { SessionApi } from "../session-api";
 
 function isExcludedSnapshotLabel(label: string | null | undefined): boolean {
   if (!label) return false;
   return label.startsWith("middle-term:") || label.startsWith("storedcontext:");
 }
 
-export function createCompactionHandler(store: MemoryStore, config: MemConfig, client: unknown): HookHandler {
+export function createCompactionHandler(store: MemoryStore, config: MemConfig, session: SessionApi): PluginHooks {
   return {
-    "compacting": async (_input: unknown, output: unknown) => {
-      const input = _input as { sessionID: string };
-      const out = output as { context: string[]; prompt?: string };
+    "compaction": async (event: CompactionEvent) => {
+      const input = event as unknown as { sessionID: string };
+      const out = event as unknown as { context: string[]; prompt?: string };
       const sessionId = input.sessionID;
 
       if (!config?.enableMiddleTermCapture) {
@@ -56,42 +55,40 @@ export function createCompactionHandler(store: MemoryStore, config: MemConfig, c
         }
 
         try {
-          const typedClient = client as { session?: { messages: (opts: { path: { id: string }; query: { limit: number } }) => Promise<{ data?: Array<Record<string, unknown>>; [key: string]: unknown }> } };
-          if (typedClient?.session?.messages) {
-            const msgResponse = await typedClient.session.messages({ path: { id: sessionId }, query: { limit: MAX_MESSAGES_FETCHED } });
+          {
             type ChatMessage = {
-              info?: {
-                role?: string;
-                tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } };
+              id?: string;
+              role?: string;
+              tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } };
+              metadata?: {
                 model?: { providerID?: string; modelID?: string };
                 cost?: number;
                 agent?: string | null;
-                time?: { created?: number };
+                timeCreated?: number;
               };
               parts?: Array<{ type?: string; text?: string; name?: string; input?: unknown; isError?: boolean }>;
             };
-            const messages: ChatMessage[] =
-              ((msgResponse?.data ?? msgResponse) as unknown as ChatMessage[]) ?? [];
-            if (Array.isArray(messages) && messages.length > 0) {
+            const chatMessages = (await session.messages({ sessionID: sessionId })) as unknown as ChatMessage[];
+            if (Array.isArray(chatMessages) && chatMessages.length > 0) {
               // Record per-turn token usage
               let turnIndex = 0;
-              for (const msg of messages) {
-                if (msg.info?.role === "assistant" && msg.info?.tokens) {
-                  const t = msg.info.tokens;
-                  const modelStr = msg.info?.model
-                    ? `${msg.info.model.providerID ?? ""}/${msg.info.model.modelID ?? ""}`
+              for (const msg of chatMessages) {
+                if (msg.role === "assistant" && msg.tokens) {
+                  const t = msg.tokens;
+                  const modelStr = msg.metadata?.model
+                    ? `${msg.metadata.model.providerID ?? ""}/${msg.metadata.model.modelID ?? ""}`
                     : null;
                   store.recordTokenUsage({
                     sessionId,
-                    timestamp: msg.info?.time?.created ?? Date.now(),
+                    timestamp: msg.metadata?.timeCreated ?? Date.now(),
                     inputTokens: t.input ?? 0,
                     outputTokens: t.output ?? 0,
                     reasoningTokens: t.reasoning ?? 0,
                     cacheReadTokens: t.cache?.read ?? 0,
                     cacheWriteTokens: t.cache?.write ?? 0,
-                    cost: msg.info?.cost ?? 0,
+                    cost: msg.metadata?.cost ?? 0,
                     turnIndex,
-                    agent: msg.info?.agent ?? null,
+                    agent: msg.metadata?.agent ?? null,
                     model: modelStr,
                   }).catch(() => { /* empty */ });
                   turnIndex++;

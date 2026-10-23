@@ -7,21 +7,27 @@ import { getSessionCache, recordSessionCache } from "../../application/command-c
 import { cleanupMiddleTermCaptures } from "../state";
 import { ensureBackgroundGraph } from "../../application/graph/build";
 import { replaySessionQueries, formatReplayResult, persistBestStrategy, sweepNodeRatings, adaptBeta } from "../../application/dream-rsi";
-import type { HookHandler } from "./types";
+import type { SessionApi } from "../session-api";
+import type { PluginHooks } from "./types";
 
 export function createEventHandler(
   store: MemoryStore,
   config: MemConfig,
-  client: unknown,
+  client: SessionApi | undefined,
   managementServer: { start: () => void; stop: () => void },
-): HookHandler {
+  directory: string,
+): PluginHooks {
   let activeSessionCount = 0;
   const sl = () => config?.sessionLog?.enabled;
 
   return {
     "event": async (_input: unknown) => {
-      const input = _input as { event: { type: string; properties: Record<string, unknown> } };
-      const { type, properties } = input.event;
+      // The registration layer maps the runtime event onto `{type, properties}`
+      // (payload arrives in `data`); a null/undefined event is ignored.
+      const input = _input as { type?: string; properties?: Record<string, unknown> } | null | undefined;
+      if (!input) return;
+      const type = typeof input.type === "string" ? input.type : "";
+      const properties = input.properties ?? {};
 
       if (type === "session.created") {
         const sessionId = (properties.info as { id?: string } | undefined)?.id ?? "unknown";
@@ -39,19 +45,19 @@ export function createEventHandler(
 
         const tasks: string[] = [];
         if (config?.autoLessons?.enabled) {
-          extractSessionLessons(store, config.autoLessons, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
+          extractSessionLessons(store, config.autoLessons, sessionId, client).then(msg =>
             memLog("info", "auto-lessons", msg)
           ).catch(err => memLog("error", "auto-lessons", "Failed", { error: String(err) }));
           tasks.push("lessons");
         }
         if (config?.autoCapture?.enabled) {
-          captureSessionWork(store, config.autoCapture, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
+          captureSessionWork(store, config.autoCapture, sessionId, client).then(msg =>
             memLog("info", "auto-capture", msg)
           ).catch(err => memLog("error", "auto-capture", "Failed", { error: String(err) }));
           tasks.push("capture");
         }
         if (config?.autoDistill?.enabled) {
-          distillRules(store, config.autoDistill, sessionId, client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } } | undefined).then(msg =>
+          distillRules(store, config.autoDistill, sessionId, client).then(msg =>
             memLog("info", "auto-distill", msg)
           ).catch(err => memLog("error", "auto-distill", "Failed", { error: String(err) }));
           tasks.push("distill");
@@ -70,7 +76,7 @@ export function createEventHandler(
         }
 
         if (config?.graph?.enabled) {
-          const root = process.cwd();
+          const root = directory;
           const maxFiles = config.graph.maxFiles ?? 5000;
           ensureBackgroundGraph(root, maxFiles);
           tasks.push("graph-rebuild");

@@ -33,8 +33,8 @@ describe("createOutputTokenControlHandler", () => {
 
   test("injects rule into system array at position 1", async () => {
     const handler = createOutputTokenControlHandler(baseConfig);
-    const output = { system: ["static prompt content"] };
-    await handler["system.transform"]!({ args: { userMessage: "hello" }, sessionID: "test-1" }, output);
+    const output = { sessionID: "test-1", system: ["static prompt content"] };
+    await handler["system"]!(output);
     expect(output.system.length).toBe(2);
     expect(output.system[1]).toContain("system_reminder");
     expect(output.system[1]).toContain("5 sentences");
@@ -42,21 +42,21 @@ describe("createOutputTokenControlHandler", () => {
 
   test("does not inject when config is not present", () => {
     const handler = createOutputTokenControlHandler({} as unknown as MemConfig);
-    expect(handler["system.transform"]).toBeUndefined();
+    expect(handler["system"]).toBeUndefined();
   });
 
   test("rule is wrapped in system_reminder tag", async () => {
     const handler = createOutputTokenControlHandler(baseConfig);
-    const output = { system: ["first"] };
-    await handler["system.transform"]!({ args: { userMessage: "hello" }, sessionID: "test-2" }, output);
+    const output = { sessionID: "test-2", system: ["first"] };
+    await handler["system"]!(output);
     expect(output.system[1]).toMatch(/<system_reminder type="suggestion">/);
     expect(output.system[1]).toContain("</system_reminder>");
   });
 
   test("appends to empty system array", async () => {
     const handler = createOutputTokenControlHandler(baseConfig);
-    const output = { system: [] };
-    await handler["system.transform"]!({ args: { userMessage: "hello" }, sessionID: "test-3" }, output);
+    const output = { sessionID: "test-3", system: [] };
+    await handler["system"]!(output);
     expect(output.system.length).toBe(1);
     expect(output.system[0]).toContain("system_reminder");
   });

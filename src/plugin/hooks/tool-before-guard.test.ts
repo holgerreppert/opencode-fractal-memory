@@ -100,100 +100,147 @@ describe("rewriteRgReplaceMisuse", () => {
 describe("createToolBeforeGuardHandler — tool.before rewrite", () => {
   test("rewrites args.command in tool.before (output shape)", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out: { args?: Record<string, unknown> } = { args: { command: 'rg -rn "flattenStructure" src/' } };
-    await handler["tool.before"]!(
-      { tool: "bash", sessionID: "b1", callID: "c1" },
-      out,
-    );
-    expect(out.args?.command).toBe('rg -n "flattenStructure" src/');
+    const event = {
+      tool: "bash",
+      sessionID: "b1",
+      callID: "c1",
+      args: { command: 'rg -rn "flattenStructure" src/' },
+    };
+    await handler["tool.execute.before"]!(event);
+    expect(event.args.command).toBe('rg -n "flattenStructure" src/');
   });
 
-  test("rewrites args.command when passed via input", async () => {
+  test("rewrites args.command carried on the event", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out: { args?: Record<string, unknown> } = {};
-    await handler["tool.before"]!(
-      { tool: "bash", args: { command: 'rg -rn "flattenStructure" src/' }, sessionID: "b1b", callID: "c1b" },
-      out,
-    );
-    expect(out.args).toBeUndefined();
+    const event = {
+      tool: "bash",
+      sessionID: "b1b",
+      callID: "c1b",
+      args: { command: 'rg -rn "flattenStructure" src/' },
+    };
+    await handler["tool.execute.before"]!(event);
+    expect(event.args.command).toBe('rg -n "flattenStructure" src/');
   });
 
   test("does not touch non-bash tools", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out: { args?: Record<string, unknown> } = { args: { filePath: "a.ts" } };
-    await handler["tool.before"]!({ tool: "read", sessionID: "b2", callID: "c2" }, out);
-    expect(out.args?.command).toBeUndefined();
+    const event = { tool: "read", sessionID: "b2", callID: "c2", args: { filePath: "a.ts" } };
+    await handler["tool.execute.before"]!(event);
+    expect(event.args.command).toBeUndefined();
   });
 
   test("does not mutate correct commands", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out: { args?: Record<string, unknown> } = { args: { command: 'rg -n "foo" src/' } };
-    await handler["tool.before"]!({ tool: "bash", sessionID: "b3", callID: "c3" }, out);
-    expect(out.args?.command).toBe('rg -n "foo" src/');
+    const event = {
+      tool: "bash",
+      sessionID: "b3",
+      callID: "c3",
+      args: { command: 'rg -n "foo" src/' },
+    };
+    await handler["tool.execute.before"]!(event);
+    expect(event.args.command).toBe('rg -n "foo" src/');
   });
 
   test("appends auto-correct note in tool.after after a rewrite", async () => {
     const handler = createToolBeforeGuardHandler();
-    const beforeOut: { args?: Record<string, unknown> } = { args: { command: 'rg -rn "x" src/' } };
-    await handler["tool.before"]!(
-      { tool: "bash", sessionID: "b4", callID: "c4" },
-      beforeOut,
-    );
-    const afterOut = { output: "clean results here" };
-    await handler["tool.after"]!(
-      { tool: "bash", args: { command: beforeOut.args?.command as string }, sessionID: "b4", callID: "c4" },
-      afterOut,
-    );
-    expect(afterOut.output).toContain("[rg-footgun] auto-corrected");
-    expect(afterOut.output).toContain("rg -rn");
-    expect(afterOut.output).toContain("rg -n");
-    expect(afterOut.output).toContain("clean results here");
+    const beforeEvent = {
+      tool: "bash",
+      sessionID: "b4",
+      callID: "c4",
+      args: { command: 'rg -rn "x" src/' },
+    };
+    await handler["tool.execute.before"]!(beforeEvent);
+    const afterEvent = {
+      tool: "bash",
+      sessionID: "b4",
+      callID: "c4",
+      args: { command: beforeEvent.args.command as string },
+      output: "clean results here",
+    };
+    await handler["tool.execute.after"]!(afterEvent);
+    expect(afterEvent.output).toContain("[rg-footgun] auto-corrected");
+    expect(afterEvent.output).toContain("rg -rn");
+    expect(afterEvent.output).toContain("rg -n");
+    expect(afterEvent.output).toContain("clean results here");
   });
 });
 
 describe("createToolBeforeGuardHandler — tool.after delivery", () => {
   test("appends rg-footgun hint to bash output", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out = { output: "export function n(items) { ... }" };
-    await handler["tool.after"]!(
-      { tool: "bash", args: { command: 'rg -rn "flattenStructure" src/' }, sessionID: "s1" },
-      out,
-    );
-    expect(out.output).toContain("[rg-footgun]");
-    expect(out.output).toContain("`rg -rn`");
-    expect(out.output).toContain("Use `rg -n` instead");
+    const event = {
+      tool: "bash",
+      sessionID: "s1",
+      callID: "c1",
+      args: { command: 'rg -rn "flattenStructure" src/' },
+      output: "export function n(items) { ... }",
+    };
+    await handler["tool.execute.after"]!(event);
+    expect(event.output).toContain("[rg-footgun]");
+    expect(event.output).toContain("`rg -rn`");
+    expect(event.output).toContain("Use `rg -n` instead");
   });
 
   test("creates output when undefined", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out: { output?: string } = {};
-    await handler["tool.after"]!({ tool: "bash", args: { command: 'rg -rn "x" src/' }, sessionID: "s2" }, out);
-    expect(out.output).toContain("[rg-footgun]");
+    const event = {
+      tool: "bash",
+      sessionID: "s2",
+      callID: "c2",
+      args: { command: 'rg -rn "x" src/' },
+      output: "",
+    };
+    await handler["tool.execute.after"]!(event);
+    expect(event.output).toContain("[rg-footgun]");
   });
 
   test("does not touch non-bash tools", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out = { output: "file content" };
-    await handler["tool.after"]!({ tool: "read", args: { filePath: "a.ts" }, sessionID: "s3" }, out);
-    expect(out.output).toBe("file content");
+    const event = {
+      tool: "read",
+      sessionID: "s3",
+      callID: "c3",
+      args: { filePath: "a.ts" },
+      output: "file content",
+    };
+    await handler["tool.execute.after"]!(event);
+    expect(event.output).toBe("file content");
   });
 
   test("does not touch bash without the footgun", async () => {
     const handler = createToolBeforeGuardHandler();
-    const out = { output: "clean result" };
-    await handler["tool.after"]!({ tool: "bash", args: { command: 'rg -n "foo" src/' }, sessionID: "s4" }, out);
-    expect(out.output).toBe("clean result");
+    const event = {
+      tool: "bash",
+      sessionID: "s4",
+      callID: "c4",
+      args: { command: 'rg -n "foo" src/' },
+      output: "clean result",
+    };
+    await handler["tool.execute.after"]!(event);
+    expect(event.output).toBe("clean result");
   });
 
   test("respects per-session hint cap", async () => {
     const handler = createToolBeforeGuardHandler();
     for (let i = 1; i <= 3; i++) {
-      const out = { output: `call-${i}` };
-      await handler["tool.after"]!({ tool: "bash", args: { command: 'rg -rn "x" src/' }, sessionID: "s5" }, out);
-      expect(out.output).toContain("[rg-footgun]");
+      const event = {
+        tool: "bash",
+        sessionID: "s5",
+        callID: `c${i}`,
+        args: { command: 'rg -rn "x" src/' },
+        output: `call-${i}`,
+      };
+      await handler["tool.execute.after"]!(event);
+      expect(event.output).toContain("[rg-footgun]");
     }
-    const out4 = { output: "fourth" };
-    await handler["tool.after"]!({ tool: "bash", args: { command: 'rg -rn "x" src/' }, sessionID: "s5" }, out4);
+    const out4 = {
+      tool: "bash",
+      sessionID: "s5",
+      callID: "c4",
+      args: { command: 'rg -rn "x" src/' },
+      output: "fourth",
+    };
+    await handler["tool.execute.after"]!(out4);
     expect(out4.output).toBe("fourth");
   });
 });

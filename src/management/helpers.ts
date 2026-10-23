@@ -332,11 +332,6 @@ export function computeStats(nodes: NodeLike[]): StatsResult {
   };
 }
 
-export function getAvailableProjects(_scope: string): string[] {
-  // This function is kept for compat; management routes now use store.listNodes()
-  return [];
-}
-
 export function readProjectConfig(): Record<string, unknown> {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json");
   if (!fs.existsSync(configPath)) return {};

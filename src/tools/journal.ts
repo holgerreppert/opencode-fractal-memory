@@ -1,5 +1,5 @@
 import type { JournalStore, JournalContext } from "../application/journal";
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 
 export function JournalWrite(store: JournalStore, ctx: JournalContext) {
   const t = tool({

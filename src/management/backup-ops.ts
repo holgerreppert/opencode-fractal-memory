@@ -51,11 +51,11 @@ export function getBackupDir(): string {
   return path.join(getConfigDir(), "backups");
 }
 
-export function getCacheDir(): string {
+function getCacheDir(): string {
   return process.env.MGMT_CACHE_DIR || path.join(os.homedir(), ".cache", "opencode");
 }
 
-export function getOpencodeHomeDir(): string {
+function getOpencodeHomeDir(): string {
   return process.env.MGMT_OPENCODE_HOME_DIR || path.join(os.homedir(), ".opencode");
 }
 
@@ -108,15 +108,19 @@ async function copyFile(src: string, dest: string): Promise<number> {
   return stat.size;
 }
 
-async function copyDir(src: string, dest: string): Promise<number> {
+async function copyDir(src: string, dest: string, exclude?: string): Promise<number> {
   let totalSize = 0;
   mkdirSync(dest);
   const entries = fs.readdirSync(src, { withFileTypes: true });
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
+    // The backup dir lives INSIDE the config source (~/.config/opencode/backups),
+    // so walking a dir source would copy the backup being created into itself
+    // until ENAMETOOLONG. Never copy the backup root (or anything under it).
+    if (exclude && (srcPath === exclude || srcPath.startsWith(exclude + path.sep))) continue;
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
-      totalSize += await copyDir(srcPath, destPath);
+      totalSize += await copyDir(srcPath, destPath, exclude);
     } else if (entry.isFile()) {
       totalSize += await copyFile(srcPath, destPath);
     }
@@ -168,7 +172,8 @@ export async function createBackup(
     if (src.isDir && src.files.length > 0) {
       const srcPath = src.files[0]!.original;
       if (fs.existsSync(srcPath)) {
-        totalSize += await copyDir(srcPath, srcDir);
+        // Exclude the backup root: it sits inside the config source dir.
+        totalSize += await copyDir(srcPath, srcDir, backupDir);
         storedFiles.push({ original: srcPath, stored: src.key, size: totalSize, isDir: true });
       }
     } else {

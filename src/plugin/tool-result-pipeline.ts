@@ -1,4 +1,5 @@
 import { memLog } from "../logging"
+import type { ToolAfterEvent } from "./hooks/types"
 
 export type ToolResult = {
   tool: string
@@ -141,7 +142,7 @@ export async function runToolResultPipeline(
 export function wrapHookHandlerAsTransformer(
   name: string,
   priority: number,
-  handler: { "tool.after"?: (input: unknown, output: unknown) => Promise<void> },
+  handler: { "tool.execute.after"?: (event: ToolAfterEvent) => Promise<void> },
   applies?: (ctx: ToolResultContext) => boolean,
 ): ToolResultTransformer {
   return {
@@ -149,27 +150,26 @@ export function wrapHookHandlerAsTransformer(
     priority,
     applies,
     transform: async (ctx) => {
-      const input: Record<string, unknown> = {
+      const event: ToolAfterEvent = {
         tool: ctx.current.tool,
-        sessionID: ctx.current.sessionID,
-        args: ctx.current.args,
-      }
-      const output: Record<string, unknown> = {
-        output: ctx.current.output,
+        sessionID: ctx.current.sessionID ?? "",
+        callID: "",
+        args: ctx.current.args ?? {},
+        output: ctx.current.output ?? "",
         title: ctx.current.title,
-        metadata: ctx.current.metadata ? { ...ctx.current.metadata } : {},
-      }
-      const h = handler["tool.after"]
-      if (h) await h(input, output)
+        metadata: ctx.current.metadata ? { ...ctx.current.metadata } : undefined,
+      };
+      const h = handler["tool.execute.after"];
+      if (h) await h(event);
       return {
         ...ctx,
         current: {
           ...ctx.current,
-          output: output["output"] as string | undefined,
-          title: output["title"] as string | undefined,
-          metadata: output["metadata"] as Record<string, unknown> | undefined,
+          output: event.output,
+          title: event.title,
+          metadata: event.metadata,
         },
-      }
+      };
     },
-  }
+  };
 }

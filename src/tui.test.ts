@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import tuiModule, { tui as tuiV1 } from "./tui";
+import tuiModule from "./tui";
 
 /**
  * Mock V2 TUI context that records the keymap layer and slot claims.
@@ -52,18 +52,17 @@ function createMockTuiCtx() {
 }
 
 describe("V2 TUI entrypoint", () => {
-  test("exports the dual shape: tui() for V1, setup() for V2", () => {
-    expect(typeof tuiV1).toBe("function");
+  test("exports the V2-only shape: id + setup()", () => {
     expect(typeof tuiModule.setup).toBe("function");
-    expect(typeof tuiModule.tui).toBe("function");
-    // The V1 loader rejects a module exporting BOTH server() and tui().
+    expect(tuiModule.id).toBe("opencode-fractal-memory");
+    // V1 entrypoints are gone — the module must not look like a V1 TUI plugin.
+    expect("tui" in tuiModule).toBe(false);
     expect("server" in tuiModule).toBe(false);
-    expect("tui" in tuiModule).toBe(true);
   });
 
   test("setup registers a keymap layer with the /mem command", async () => {
     const mock = createMockTuiCtx();
-    const cleanup = await tuiModule.setup(mock.ctx as never);
+    await tuiModule.setup(mock.ctx as never);
 
     expect(mock.layers.length).toBe(1);
     const layer = mock.layers[0]?.() as {
@@ -81,8 +80,8 @@ describe("V2 TUI entrypoint", () => {
     const mock = createMockTuiCtx();
     await tuiModule.setup(mock.ctx as never);
 
-    const layer = mock.layers[0]?.() as { commands: Array<{ run: () => void }> };
-    layer.commands[0]?.run();
+    const layer = mock.layers[0]?.() as { commands: Array<{ run: () => void | Promise<void> }> };
+    await layer.commands[0]?.run();
 
     expect(mock.toasts.length).toBe(1);
     expect(mock.toasts[0]?.title).toBe("Fractal Memory");

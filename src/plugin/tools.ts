@@ -1,6 +1,7 @@
 import type { MemoryStore } from "../storage/sqlite";
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin";
+import type { ToolDefinition } from "../tools/define-tool";
+import type { SessionApi } from "./session-api";
+import { tool } from "../tools/define-tool";
 import type { MemConfig } from "../infrastructure/config/config";
 import { memLog } from "../logging";
 import { createMemoryTool } from "../tools/consolidated/memory";
@@ -19,14 +20,15 @@ import type { JournalStore, JournalContext } from "../application/journal";
 export function createToolMap(
   store: MemoryStore,
   journalTools: Record<string, ToolDefinition>,
-  client: unknown,
+  session: SessionApi,
   journalStore: JournalStore | null,
   journalCtx: JournalContext,
   memConfig: MemConfig,
   toastService: ToastService,
+  directory: string,
 ) {
   const rerankMode = memConfig.ollama?.strategy === "cross-encoder" ? "cross-encoder" : memConfig.ollama?.strategy === "llm" ? "keyword" : undefined;
-  const compressTool = createContextCompressTool(store, client, memConfig, toastService);
+  const compressTool = createContextCompressTool(store, session, memConfig, toastService);
   memLog("info", "tool-map", "CREATED archivecontext tool", {
     toolID: "archivecontext",
     hasExecute: typeof (compressTool as { execute?: unknown }).execute === "function",
@@ -98,12 +100,12 @@ export function createToolMap(
     memory_get: memoryGetAlias,
     memory_set: memorySetAlias,
     project_hub: createProjectHubTool(store),
-    context: createContextTool(store, client),
-    learn: createLearnTool(store, client),
+    context: createContextTool(store, session),
+    learn: createLearnTool(store, session),
     journal: createJournalTool(journalStore, journalCtx, store),
-    graph: createGraphPluginTool(),
+    graph: createGraphPluginTool(directory),
     skeletonize: createSkeletonizeTool(),
-    memory_session_messages: createSessionMessagesTool(client),
+    memory_session_messages: createSessionMessagesTool(session),
   };
   memLog("info", "tool-map", "TOOL-MAP-RETURNED", { keys: Object.keys(map) });
   return map;

@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import { CodeGraph } from "./graph";
 import { findCodeFiles } from "./detect";
 import { detectCommunities } from "./cluster";
@@ -19,13 +21,90 @@ export interface BuildResult {
   newFiles: number;
 }
 
+/** Files/dirs whose presence marks a directory as a real project root. */
+const PROJECT_MARKERS = [
+  ".git",
+  "package.json",
+  "Cargo.toml",
+  "go.mod",
+  "pyproject.toml",
+  "bun.lock",
+  "pnpm-lock.yaml",
+  "package-lock.json",
+];
+
+/** Roots that are never a project — indexing them walks the whole machine. */
+const BLOCKED_ROOTS = new Set(["/", "/home", "/tmp"]);
+
+export interface GraphRootCheck {
+  ok: boolean;
+  /** Real (symlink-resolved) path of the candidate root. */
+  root: string;
+  reason?: string;
+}
+
+function realPath(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Decide whether `root` is safe to index.
+ *
+ * The runtime hands the plugin the *location* directory, which for a global install can
+ * be `$HOME`. A full AST walk of `$HOME` never finishes and keeps the CLI's
+ * background service from becoming ready (endless restart loop), so refuse
+ * anything that is the home directory, one of its ancestors, a world-writable
+ * scratch root, or a directory with no project marker at all.
+ */
+export function checkGraphRoot(root: string): GraphRootCheck {
+  const resolved = realPath(root);
+  const home = realPath(homedir());
+
+  if (resolved === home) {
+    return { ok: false, root: resolved, reason: "home directory" };
+  }
+  if (BLOCKED_ROOTS.has(resolved)) {
+    return { ok: false, root: resolved, reason: "system/scratch root" };
+  }
+  if (home === resolved || home.startsWith(resolved + path.sep)) {
+    return { ok: false, root: resolved, reason: "ancestor of the home directory" };
+  }
+  const markers = PROJECT_MARKERS.filter((marker) => existsSync(path.join(resolved, marker)));
+  if (markers.length === 0) {
+    return { ok: false, root: resolved, reason: "no project marker" };
+  }
+  return { ok: true, root: resolved };
+}
+
+function emptyBuildResult(): BuildResult {
+  const graph = new CodeGraph();
+  const analysis = analyze(graph);
+  return {
+    graph,
+    analysis,
+    report: generateReport(analysis),
+    fileCount: 0,
+    symbolCount: 0,
+    edgeCount: 0,
+    newFiles: 0,
+  };
+}
 
 export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
+  const guard = checkGraphRoot(root);
+  if (!guard.ok) {
+    memLog("info", "graph", "buildGraph skipped", { root: guard.root, reason: guard.reason });
+    return emptyBuildResult();
+  }
   const rssMB = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
-  memLog("info", "graph", "buildGraph start", { root, rssMB: rssMB() });
+  memLog("info", "graph", "buildGraph start", { root: guard.root, rssMB: rssMB() });
   const graph = new CodeGraph();
-  const files = findCodeFiles(root);
-  memLog("info", "graph", "findCodeFiles result", { root, totalFound: files.length, sample: files.slice(0, 10).map(f => f.replace(root, "")).join(", "), rssMB: rssMB() });
+  const files = findCodeFiles(guard.root);
+  memLog("info", "graph", "findCodeFiles result", { root: guard.root, totalFound: files.length, sample: files.slice(0, 10).map(f => f.replace(guard.root, "")).join(", "), rssMB: rssMB() });
   const toProcess = files.slice(0, maxFiles);
 
   let readErrors = 0;
@@ -66,7 +145,7 @@ export function buildGraph(root: string, maxFiles = 5_000): BuildResult {
     surprisingConnections: analysis.surprisingConnections.slice(0, 10).map(c => `${c.source.label}(${c.source.kind}) --${c.relation}-> ${c.target.label}(${c.target.kind})`),
   });
   trackBuild(analysis.stats.files, analysis.stats.symbols, analysis.stats.edges, "buildGraph");
-  saveGraphCache(root, graph);
+  saveGraphCache(guard.root, graph);
 
   return {
     graph,
@@ -162,11 +241,12 @@ export function getActiveGraph(): CodeGraph | null {
   return activeGraph ?? backgroundGraph;
 }
 
-export function setActiveGraph(g: CodeGraph): void {
-  activeGraph = g;
-}
-
 export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
+  const guard = checkGraphRoot(root);
+  if (!guard.ok) {
+    memLog("info", "graph", "ensureBackgroundGraph skipped", { root: guard.root, reason: guard.reason });
+    return;
+  }
   const rssMB = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
   trackBackgroundBuild("ensureBackgroundGraph");
   memLog("info", "graph", "ensureBackgroundGraph start", { hasGraph: !!backgroundGraph, rssMB: rssMB() });
@@ -174,7 +254,7 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
     // temp-swap: clone → incremental on clone → atomic swap only on success (no partial mutation)
     try {
       const clone = CodeGraph.fromJSON(backgroundGraph.toJSON());
-      const result = incrementalBuildGraph(clone, root, maxFiles);
+      const result = incrementalBuildGraph(clone, guard.root, maxFiles);
       backgroundGraph = clone;
       activeGraph = clone;
       memLog("info", "graph", "Background incremental build (temp-swap)", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, rssMB: rssMB() });
@@ -183,12 +263,12 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
     }
     return;
   }
-  const cached = loadGraphCache(root);
+  const cached = loadGraphCache(guard.root);
   if (cached) {
     // temp-swap from cache: incremental on clone, swap only on success
     try {
       const clone = CodeGraph.fromJSON(cached.toJSON());
-      const result = incrementalBuildGraph(clone, root, maxFiles);
+      const result = incrementalBuildGraph(clone, guard.root, maxFiles);
       backgroundGraph = clone;
       activeGraph = clone;
       memLog("info", "graph", "Background build from cache (temp-swap)", { newFiles: result.newFiles, skippedUnchanged: result.fileCount, symbols: result.symbolCount, edges: result.edgeCount, rssMB: rssMB() });
@@ -200,7 +280,7 @@ export function ensureBackgroundGraph(root: string, maxFiles = 5_000): void {
   if (backgroundBuildPromise) return;
   backgroundBuildPromise = (async () => {
     try {
-      const result = buildGraph(root, maxFiles);
+      const result = buildGraph(guard.root, maxFiles);
       backgroundGraph = result.graph;
       activeGraph = backgroundGraph;
       memLog("info", "graph", "ensureBackgroundGraph done", { fileCount: result.fileCount, symbolCount: result.symbolCount, rssMB: rssMB() });

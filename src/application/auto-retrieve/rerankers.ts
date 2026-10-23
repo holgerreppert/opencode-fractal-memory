@@ -1,4 +1,5 @@
 import { fallbackScore, llmJudgeScore, type Candidate } from "./scoring";
+import type { ModelRef, SessionApi } from "../../plugin/session-api";
 import { rerankDocuments } from "../../infrastructure/llm/ollama";
 import type { MemConfig } from "../../infrastructure/config/config";
 
@@ -18,7 +19,8 @@ export interface RerankedItem {
 }
 
 export interface RerankDeps {
-  client?: unknown;
+  session?: SessionApi | undefined;
+  model?: ModelRef | undefined;
   currentSessionId?: { value: string } | undefined;
   ollama: MemConfig["ollama"];
   llmJudgeEnabled: boolean;
@@ -27,7 +29,7 @@ export interface RerankDeps {
 
 export function rerankStrategyLabel(deps: RerankDeps): string {
   if (deps.ollama?.enabled) return deps.ollama.strategy ?? "ollama";
-  if (deps.llmJudgeEnabled && deps.client && deps.currentSessionId?.value) return "llm_judge";
+  if (deps.llmJudgeEnabled && deps.session && deps.model) return "llm_judge";
   return "fallback";
 }
 
@@ -68,17 +70,17 @@ export async function rerankCandidates(
     return ordered;
   }
 
-  if (deps.llmJudgeEnabled && deps.client && deps.currentSessionId?.value) {
-    deps.log("info", "memory-rerank: Using LLM judge via SDK prompt", {
+  if (deps.llmJudgeEnabled && deps.session && deps.model) {
+    deps.log("info", "memory-rerank: Using LLM judge", {
       candidateCount: candidates.length,
-      sessionId: deps.currentSessionId.value,
+      model: deps.model,
     });
-    const scored = await llmJudgeScore(deps.client, deps.currentSessionId.value, query, candidates);
+    const scored = await llmJudgeScore(deps.session!, deps.model, query, candidates);
     const cMap = new Map(candidates.map(c => [c.id, c]));
     return scored.map(s => ({ ...s, type: cMap.get(s.id)?.type ?? null, level: cMap.get(s.id)?.level ?? 0 }));
   }
 
-  deps.log("info", "memory-rerank: No LLM client available, using fallback scoring");
+  deps.log("info", "memory-rerank: No LLM judge available, using fallback scoring");
   const scored = fallbackScore(candidates, query);
   const cMap = new Map(candidates.map(c => [c.id, c]));
   return scored.map(s => ({ ...s, type: cMap.get(s.id)?.type ?? null, level: cMap.get(s.id)?.level ?? 0 }));

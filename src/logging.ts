@@ -24,10 +24,6 @@ export function setLogLevel(level: LogLevel): void {
   logLevel = level;
 }
 
-export function getLogLevel(): LogLevel {
-  return logLevel;
-}
-
 const SKIP_CATEGORIES = ["event"];
 
 export function setSessionId(sessionId: string | null): void {
@@ -98,10 +94,6 @@ export function memLog(
     (Object.keys(data || {}).length > 0 ? ` ${JSON.stringify(data)}` : "");
 
   writeLog(line);
-}
-
-export function memLogSimple(msg: string, data?: Record<string, unknown>): void {
-  memLog("info", "general", msg, data);
 }
 
 export function perfNow(): number {

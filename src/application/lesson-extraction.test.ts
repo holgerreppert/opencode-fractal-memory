@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { extractSessionLessons } from "./lesson-extraction";
 import type { MemoryStore } from "../storage/sqlite";
+import type { SessionApi } from "../plugin/session-api";
 
 const CONFIG = { enabled: true, minFailures: 2, useLlm: false };
 
@@ -89,5 +90,27 @@ describe("extractSessionLessons", () => {
     } as unknown as MemoryStore;
     const msg = await extractSessionLessons(store, CONFIG, "ses-x");
     expect(msg).toContain("skipped");
+  });
+
+  test("LLM pass generates lessons using the session's last model", async () => {
+    let created: Record<string, unknown> | null = null;
+    const store = makeStore() as unknown as MemoryStore & {
+      createNode: (n: Record<string, unknown>) => Promise<unknown>;
+    };
+    store.createNode = async (n: Record<string, unknown>) => { created = n; return { label: n.label }; };
+    const calls: Array<{ model: { providerID: string; id: string }; prompt: string }> = [];
+    const client: SessionApi = {
+      messages: async () => [],
+      prompt: async () => undefined,
+      synthetic: async () => undefined,
+      generate: async (input) => { calls.push(input); return "- Always verify the label with memory(search) first"; },
+      lastModel: async () => ({ providerID: "anthropic", id: "claude-4" }),
+    };
+    const msg = await extractSessionLessons(store as unknown as MemoryStore, { ...CONFIG, useLlm: true }, "ses-x", client);
+    expect(msg).toContain("created");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toEqual({ providerID: "anthropic", id: "claude-4" });
+    expect((created?.content as string)).toContain("### LLM-Generated Lessons");
+    expect((created?.content as string)).toContain("Always verify the label");
   });
 });

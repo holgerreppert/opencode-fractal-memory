@@ -3,22 +3,22 @@ import { ensureBackgroundGraph, getActiveGraph, buildGraph } from "../../applica
 import { getFileContext } from "../../application/graph/query";
 import { recordInjection } from "../../application/injection-visibility";
 import { writeGraphLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
 function hasGraph(graph: ReturnType<typeof getActiveGraph>): boolean {
   return graph !== null && graph.nodeCount() >= 10;
 }
 
-export function createGraphEditCheckHandler(config: MemConfig): HookHandler {
+export function createGraphEditCheckHandler(config: MemConfig, directory: string): PluginHooks {
   const graphConfig = config.graph;
   if (!graphConfig?.enabled) return {};
 
-  const root = process.cwd();
+  const root = directory;
   const maxFiles = graphConfig.maxFiles ?? 5000;
 
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: { filePath?: string } };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: { filePath?: string } };
       if (input.tool !== "edit" && input.tool !== "write") return;
 
       const filePath = input.args?.filePath;
@@ -49,7 +49,7 @@ export function createGraphEditCheckHandler(config: MemConfig): HookHandler {
       writeGraphLog("info", "Edit dependency warning injected", { file: filePath, dependents: context.dependents.length });
       recordInjection(config, "graph-edit-check", `${context.dependents.length} dependent(s) on ${filePath}`);
 
-      const out = output as { output?: string };
+      const out = event as unknown as { output?: string };
       if (typeof out.output === "string") {
         out.output += warning;
       }

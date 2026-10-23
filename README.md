@@ -53,7 +53,7 @@ No manual `tui.json` edit, no `postinstall` — `src/plugin/install.ts: patchPlu
 
 **Local dev** (this repo): `bun run dev-install` (build + sync cache + ensure `tui.json` npm spec + platform binaries for `sqlite-vec`).
 
-Published `0.8.4` (`sqlite-vec v0.1.9` brute-force, `oc-plugin`, compress router + squeez).
+Published `0.8.5` (opencode 2.x V2-only entry, `sqlite-vec v0.1.9` brute-force, `oc-plugin`, compress router + squeez).
 
 ## Features
 
@@ -126,7 +126,7 @@ Published `0.8.4` (`sqlite-vec v0.1.9` brute-force, `oc-plugin`, compress router
 
 | Requirement | Version | Notes |
 |---|---|---|
-| **OpenCode** | v1.17.0+ | SDK peer dependency |
+| **OpenCode** | >=2.0.0 | Plugin runtime (V2-only entry since v0.8.5) |
 | **Bun** | >=1.0.0 | Plugin runtime |
 | **Node.js** | >=18 | For npm-based installs only |
 
@@ -663,7 +663,7 @@ The server starts automatically when `management.enabled: true` is set in `~/.co
 bun run view
 ```
 
-Opens at [http://localhost:8788](http://localhost:8788). The server starts as a background process and auto-stops on plugin shutdown.
+Opens at [http://localhost:8788](http://localhost:8788). The server runs as a child of the OpenCode service (not the TUI client), so it stays up across TUI exits and is replaced on the next start. The TUI sidebar's **Fractal Memory** box shows its live status — a port probe refreshed every few seconds, independent of the PID file.
 
 ### Usage
 

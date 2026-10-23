@@ -66,21 +66,21 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about test memory" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     // Should have injected a memory context message before the last user message
     expect(output.messages.length).toBe(4);
     const injected = output.messages[2]!;
-    expect(injected.info?.role).toBe("user");
+    expect(injected.role).toBe("user");
     expect(injected.parts[0]?.text).toContain("<memory_context>");
     expect(injected.parts[0]?.text).toContain("test:memory-1");
   });
@@ -92,14 +92,14 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about test memory" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"]!;
-    await transform({} as any, output);
+    const transform = handler["messages"]!;
+    await transform({ sessionID: "ses_test", messages: output.messages });
 
     const injected = output.messages.find(m => m.parts[0]?.text?.includes("<memory_context>"));
     expect(injected).toBeDefined();
@@ -114,15 +114,15 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "hello" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "hi" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "anything?" }] },
+        { role: "user", parts: [{ type: "text", text: "hello" }] },
+        { role: "assistant", parts: [{ type: "text", text: "hi" }] },
+        { role: "user", parts: [{ type: "text", text: "anything?" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     expect(output.messages.length).toBe(3);
@@ -135,14 +135,14 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "hi" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "hello" }] },
+        { role: "user", parts: [{ type: "text", text: "hi" }] },
+        { role: "assistant", parts: [{ type: "text", text: "hello" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     expect(output.messages.length).toBe(2);
@@ -155,15 +155,15 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about test memory" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     // Only the 0.8 node passes the 0.7 gate; the 0.6 node is dropped
@@ -181,24 +181,24 @@ describe("createMessagesTransformHandler", () => {
 
     const makeOutput = () => ({
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory again" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about test memory again" }] },
       ],
     });
 
-    const transform = handler["chat.messages.transform"]!;
+    const transform = handler["messages"]!;
 
     // First turn: both nodes pass (minScore 0.05 default) → injected.
     const out1 = makeOutput();
-    await transform({} as any, out1);
+    await transform({ sessionID: "ses_test", messages: out1.messages });
     expect(out1.messages.length).toBe(4);
     const injected1 = out1.messages[2]!;
     expect(injected1.parts[0]?.text).toContain("test:memory-1");
 
     // Second turn, same session: both nodes already seen → nothing injected.
     const out2 = makeOutput();
-    await transform({} as any, out2);
+    await transform({ sessionID: "ses_test", messages: out2.messages });
     expect(out2.messages.length).toBe(3);
   });
 
@@ -210,22 +210,22 @@ describe("createMessagesTransformHandler", () => {
 
     const makeOutput = () => ({
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory once more" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about test memory once more" }] },
       ],
     });
 
-    const transform = handler["chat.messages.transform"]!;
+    const transform = handler["messages"]!;
 
     const out1 = makeOutput();
-    await transform({} as any, out1);
+    await transform({ sessionID: "ses_test", messages: out1.messages });
     expect(out1.messages.length).toBe(4);
 
     // New session id → fresh dedup set → injects again.
     sessionId.value = "ses-2";
     const out2 = makeOutput();
-    await transform({} as any, out2);
+    await transform({ sessionID: "ses_test", messages: out2.messages });
     expect(out2.messages.length).toBe(4);
   });
 
@@ -261,14 +261,14 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "fix the memory bug now" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "fix the memory bug now" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"]!;
-    await transform({} as any, output);
+    const transform = handler["messages"]!;
+    await transform({ sessionID: "ses_test", messages: output.messages });
 
     // High-importance research node is excluded by type; the fix node injects.
     const injected = output.messages.find(m => m.parts[0]?.text?.includes("<memory_context>"));
@@ -302,14 +302,14 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about big node" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about big node" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"]!;
-    await transform({} as any, output);
+    const transform = handler["messages"]!;
+    await transform({ sessionID: "ses_test", messages: output.messages });
 
     // Old formula reported 4000/4 = 1000t; the truncated ~300-char block is ~100t.
     expect(captured).not.toBeNull();
@@ -342,14 +342,14 @@ describe("createMessagesTransformHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about injected node" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about injected node" }] },
       ],
     };
 
-    const transform = handler["chat.messages.transform"]!;
-    await transform({} as any, output);
+    const transform = handler["messages"]!;
+    await transform({ sessionID: "ses_test", messages: output.messages });
 
     expect(captured).not.toBeNull();
     expect(captured!.postRerankIds).toEqual(["node-abc"]);
@@ -376,9 +376,9 @@ describe("createMessagesTransformHandler", () => {
 
   const learnedOutput = () => ({
     messages: [
-      { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-      { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-      { info: { role: "user" }, parts: [{ type: "text", text: "tell me about alpha bravo charlie delta" }] },
+      { role: "user", parts: [{ type: "text", text: "first message" }] },
+      { role: "assistant", parts: [{ type: "text", text: "response" }] },
+      { role: "user", parts: [{ type: "text", text: "tell me about alpha bravo charlie delta" }] },
     ],
   });
 
@@ -391,7 +391,7 @@ describe("createMessagesTransformHandler", () => {
     ]);
     const handler = createMessagesTransformHandler(store, makeConfig({ dreamRsi: { enabled: true, explorationRate: 0 } }), { value: "ses-learned-reorder" });
     const output = learnedOutput();
-    await handler["chat.messages.transform"]!({} as any, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
 
     expect(captured).toHaveLength(1);
     // Natural drilldown order is [a, b, c]; keyword rerank promotes the
@@ -413,7 +413,7 @@ describe("createMessagesTransformHandler", () => {
     ]);
     const handler = createMessagesTransformHandler(store, makeConfig({ dreamRsi: { enabled: true, explorationRate: 0 } }), { value: "ses-learned-band" });
     const output = learnedOutput();
-    await handler["chat.messages.transform"]!({} as any, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
 
     expect(captured).toHaveLength(1);
     // Keyword ranks the three summaries first, but the cap (2/level) admits
@@ -433,7 +433,7 @@ describe("createMessagesTransformHandler", () => {
     const config = makeConfig({ dreamRsi: { enabled: true, applyToInjection: false } });
     const handler = createMessagesTransformHandler(store, config, { value: "ses-learned-off" });
     const output = learnedOutput();
-    await handler["chat.messages.transform"]!({} as any, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
 
     expect(captured).toHaveLength(1);
     expect(captured[0]!.rerankStrategy).toBe("drilldown");
@@ -451,7 +451,7 @@ describe("createMessagesTransformHandler", () => {
     const config = makeConfig({ dreamRsi: { enabled: true, explorationRate: 1 } });
     const handler = createMessagesTransformHandler(store, config, { value: "ses-exploration" });
     const output = learnedOutput();
-    await handler["chat.messages.transform"]!({} as any, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
 
     expect(captured).toHaveLength(1);
     // Learned keyword mode exists but the quota forces the natural
@@ -474,7 +474,7 @@ describe("createMessagesTransformHandler", () => {
     } as unknown as MemoryStore;
     const handler = createMessagesTransformHandler(store, makeConfig(), { value: "ses-learned-default" });
     const output = learnedOutput();
-    await handler["chat.messages.transform"]!({} as any, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
 
     expect(captured).toHaveLength(1);
     expect(captured[0]!.rerankStrategy).toBe("drilldown");
@@ -517,30 +517,30 @@ describe("createMessagesTransformHandler", () => {
     } as unknown as MemoryStore;
     const config = makeConfig();
     const handler = createMessagesTransformHandler(store, config, { value: "ses-judge-use" });
-    const transform = handler["chat.messages.transform"]!;
+    const transform = handler["messages"]!;
 
     // Turn 1: inject.
     const out1 = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me about test memory" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me about test memory" }] },
       ],
     };
-    await transform({} as any, out1);
+    await transform({ sessionID: "ses_test", messages: out1.messages });
     expect(out1.messages.length).toBe(4);
     expect(updates).toHaveLength(0);
 
     // Turn 2: agent drills into the injected node via a memory tool.
     const out2 = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "tool_use", name: "memory_get", input: { id: "node-1" } }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: "tell me more about that node" }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "tool_use", name: "memory_get", input: { id: "node-1" } }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: "tell me more about that node" }] },
       ],
     };
-    await transform({} as any, out2);
+    await transform({ sessionID: "ses_test", messages: out2.messages });
 
     // Judged used: +0.5 usefulness, timesHelpful +1. Dedup blocks re-injection.
     expect(updates).toHaveLength(1);
@@ -589,23 +589,23 @@ describe("createMessagesTransformHandler", () => {
     } as unknown as MemoryStore;
     const config = makeConfig();
     const handler = createMessagesTransformHandler(store, config, { value: "ses-judge-ignore" });
-    const transform = handler["chat.messages.transform"]!;
+    const transform = handler["messages"]!;
 
     const makeOutput = (n: number) => ({
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "first message" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "response" }] },
-        { info: { role: "user" }, parts: [{ type: "text", text: `unrelated question number ${n} here` }] },
+        { role: "user", parts: [{ type: "text", text: "first message" }] },
+        { role: "assistant", parts: [{ type: "text", text: "response" }] },
+        { role: "user", parts: [{ type: "text", text: `unrelated question number ${n} here` }] },
       ],
     });
 
-    await transform({} as any, makeOutput(1));
-    await transform({} as any, makeOutput(2));
-    await transform({} as any, makeOutput(3));
+    await transform({ sessionID: "ses_test", messages: makeOutput(1).messages });
+    await transform({ sessionID: "ses_test", messages: makeOutput(2).messages });
+    await transform({ sessionID: "ses_test", messages: makeOutput(3).messages });
     expect(updates).toHaveLength(0);
 
     // 4th turn: 3 turns past injection → gentle decay, judged once.
-    await transform({} as any, makeOutput(4));
+    await transform({ sessionID: "ses_test", messages: makeOutput(4).messages });
     expect(updates).toHaveLength(1);
     expect(updates[0]!.id).toBe("node-9");
     expect(updates[0]!.u.usefulnessScore).toBeCloseTo(0.55);

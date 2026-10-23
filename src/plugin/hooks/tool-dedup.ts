@@ -1,9 +1,9 @@
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { createToolDedupCache, type ToolDedupConfig } from "../../application/tool-dedup";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent, ToolBeforeEvent } from "./types";
 
-export function createToolDedupHandler(config: MemConfig): HookHandler {
+export function createToolDedupHandler(config: MemConfig): PluginHooks {
   const tdConfig = config.toolDedup as ToolDedupConfig | undefined;
   if (!tdConfig?.enabled) return {};
 
@@ -16,13 +16,13 @@ export function createToolDedupHandler(config: MemConfig): HookHandler {
     // metadata }`). The tool still executes (this API has no skip mechanism),
     // but the output is replaced with the cached copy + `deduped` metadata so
     // downstream handlers (recording, compression) can treat it as a duplicate.
-    "tool.before": async () => {
+    "tool.execute.before": async (_event: ToolBeforeEvent) => {
       cache.nextTurn();
     },
 
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: Record<string, unknown> };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: Record<string, unknown> };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
 
       if (out.metadata?.deduped) return;
 

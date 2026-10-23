@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore, MemoryNode } from "../storage/sqlite";
 import { generateEmbedding, estimateTokens } from "../infrastructure/llm/embeddings";
 import { computeHybridScore, tokenize } from "../utils/hybridScore";

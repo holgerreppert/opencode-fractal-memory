@@ -1,20 +1,20 @@
 import type { MemConfig } from "../../infrastructure/config/config";
 import { getPressurePhase } from "../../application/adaptive-pressure";
 import { writeCompressLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { OptionsEvent, PluginHooks } from "./types";
 
-export function createChatParamsHandler(config: MemConfig): HookHandler {
+export function createChatParamsHandler(config: MemConfig): PluginHooks {
   const apConfig = config.adaptivePressure;
   if (!apConfig?.enabled) {
     return {};
   }
 
   return {
-    "chat.params": async (_input: unknown, output: unknown) => {
+    "options": async (event: OptionsEvent) => {
       const phase = getPressurePhase(apConfig);
       if (phase === "normal") return;
 
-      const out = output as {
+      const out = event as unknown as {
         temperature: number;
         topP: number;
         topK: number;

@@ -79,12 +79,6 @@ export function trackExport(source = "unknown"): void {
   logUsage("export", { count: stats.exports.count }, source);
 }
 
-export function trackReadAnnotation(source = "unknown"): void {
-  stats.readAnnotations.count++;
-  stats.readAnnotations.lastAnnotation = now();
-  logUsage("read-annotation", { count: stats.readAnnotations.count }, source);
-}
-
 export function trackGraphTool(relation: string, source = "unknown"): void {
   logUsage("graph-tool", { relation, count: 1 }, source);
 }
@@ -93,10 +87,6 @@ export function trackFileRefresh(source = "unknown"): void {
   stats.fileRefreshes.count++;
   stats.fileRefreshes.lastRefresh = now();
   logUsage("file-refresh", { count: stats.fileRefreshes.count }, source);
-}
-
-export function getPluginUsageFile(): string {
-  return PLUGIN_USAGE_FILE;
 }
 
 export function writePluginGraphUsage(): void {

@@ -10,14 +10,14 @@ import {
   DEDUP_CACHE, DELTA_CACHE, contentSnippet, contentPreview, offloadOutput, offloadPathFor,
   purgeOldScratch, getSessionCache, trySessionCache, recordSessionCache, droppedIdentifiers,
 } from "../../application/command-compression/hook-support";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
-export function createCompressionHandler(store: MemoryStore, config: MemConfig): HookHandler {
+export function createCompressionHandler(store: MemoryStore, config: MemConfig): PluginHooks {
   purgeOldScratch().catch(() => { /* empty */ });
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: { command?: string }; sessionID?: string };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: { command?: string }; sessionID?: string };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
       const compressConfig = config.commandCompression;
       if (!compressConfig?.enabled) {
         memLog("info", "compress", "hook-skip reason=compression-disabled", { tool: input.tool ?? "?" });

@@ -2,7 +2,7 @@ import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { memLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { MessagesEvent, PluginHooks } from "./types";
 import { getCompressState, rebuildCompressState, markDeadCompressEntries } from "../../application/context-compression/state";
 import { estimateMessageTokens, realMessageTokens, type SizableMessage } from "../../application/context-compression/message-size";
 
@@ -11,7 +11,11 @@ const MEDIUM_PRIORITY_TOKENS = 500;
 const CONTEXT_LIMIT_TOKENS = 128000;
 
 type TransformMessage = {
-  info: { role?: string; id?: string; type?: string; tokens?: Record<string, unknown>; [key: string]: unknown };
+  id?: string;
+  role?: string;
+  type?: string;
+  tokens?: number;
+  metadata?: Record<string, unknown>;
   parts: Array<{ type?: string; text?: string; state?: { output?: unknown; input?: unknown; error?: unknown }; source?: { text?: { value?: unknown } }; [key: string]: unknown }>;
 };
 
@@ -20,8 +24,8 @@ type TransformMessage = {
 // only reset once per compaction event, not once per request).
 function compactionKeyOf(messages: TransformMessage[]): string | null {
   for (const msg of messages) {
-    if (msg.info?.type === "compaction" || msg.info?.type === "session.compacted") {
-      return msg.info?.id ?? `type:${msg.info?.type}`;
+    if (msg.type === "compaction" || msg.type === "session.compacted") {
+      return msg.id ?? `type:${msg.type}`;
     }
     // opencode marks compaction as a PART type ({"type":"compaction","tail_start_id":...}),
     // not info.type — info spreads row.data which has no `type` field for compaction messages.
@@ -38,9 +42,9 @@ function compactionKeyOf(messages: TransformMessage[]): string | null {
 // to messages that are NOT already compressed.
 function injectMessageMarkers(messages: TransformMessage[], compressed: Set<string>): void {
   for (const msg of messages) {
-    const id = msg.info?.id;
+    const id = msg.id;
     if (!id || compressed.has(id)) continue;
-    const role = msg.info?.role;
+    const role = msg.role;
     if (role !== "user" && role !== "assistant") continue;
     const textPart = msg.parts?.find((p) => p.type === "text");
     if (!textPart || typeof textPart.text !== "string") continue;
@@ -64,7 +68,7 @@ function replaceCompressedMessages(
   let replaced = 0;
   let deleted = 0;
   for (const msg of messages) {
-    const entry = state.blocks.get(msg.info?.id ?? "");
+    const entry = state.blocks.get(msg.id ?? "");
     if (!entry) {
       out.push(msg);
       continue;
@@ -77,7 +81,7 @@ function replaceCompressedMessages(
     // ARCHIVE: replace with synthetic placeholder linking to the saved node.
     const marker = injectionMarker(config, "context-compress", "compressed " + entry.blockId);
     const synthetic = {
-      info: { role: "user", id: msg.info?.id },
+      role: "user", id: msg.id,
       parts: [{
         type: "text" as const,
         text: `${marker}[Compressed conversation section]
@@ -123,9 +127,9 @@ function buildNudgeLine(
   let totalTokens = 0;
   let largest: { id: string; tokens: number } | null = null;
   for (const msg of messages) {
-    const id = msg.info?.id;
+    const id = msg.id;
     if (!id || compressed.has(id)) continue;
-    const role = msg.info?.role;
+    const role = msg.role;
     if (role !== "user" && role !== "assistant") continue;
     const real = realMessageTokens(msg as SizableMessage);
     const tokens = real !== null ? real : estimateMessageTokens(msg as SizableMessage);
@@ -177,7 +181,7 @@ export function createContextCompressTransformHandler(
   store: MemoryStore,
   config: MemConfig,
   currentSessionId: { value: string },
-): HookHandler {
+): PluginHooks {
   const ccConfig = config.contextCompression;
   if (!ccConfig?.enabled) {
     return {};
@@ -189,8 +193,8 @@ export function createContextCompressTransformHandler(
   const seenCompactionKeys = new Set<string>();
 
   return {
-    "chat.messages.transform": async (_input: unknown, output: unknown) => {
-      const out = output as { messages?: TransformMessage[] };
+    "messages": async (event: MessagesEvent) => {
+      const out = event as unknown as { messages?: TransformMessage[] };
       if (!out.messages || out.messages.length === 0) return;
 
       const sessionId = currentSessionId?.value || "default";
@@ -207,7 +211,7 @@ export function createContextCompressTransformHandler(
       const compactionKey = compactionKeyOf(out.messages);
       if (compactionKey !== null && !seenCompactionKeys.has(compactionKey)) {
         seenCompactionKeys.add(compactionKey);
-        const liveIds = new Set(out.messages.map((m) => m.info?.id).filter((x): x is string => Boolean(x)));
+        const liveIds = new Set(out.messages.map((m) => m.id).filter((x): x is string => Boolean(x)));
         state.blocks.clear();
         nudgeSeen.clear();
         await markDeadCompressEntries(store, sessionId, liveIds);
@@ -227,7 +231,7 @@ export function createContextCompressTransformHandler(
       // message view at a true turn boundary — the last message is a fresh
       // user message. Mid-turn requests pass through untouched.
       const lastMsg = out.messages[out.messages.length - 1];
-      const atTurnBoundary = lastMsg?.info?.role === "user";
+      const atTurnBoundary = lastMsg?.role === "user";
       if (!atTurnBoundary) return;
 
       const compressedIds = new Set(state.blocks.keys());
@@ -240,11 +244,11 @@ export function createContextCompressTransformHandler(
       // 3. Priority nudge line after the last user message (deduped per turn).
       const nudge = buildNudgeLine(pruned, compressedIds, nudgeSeen, ccConfig?.nudgePressureThreshold ?? 0.6, state.blocks.size, store, sessionId);
       if (nudge) {
-        const lastUserIdx = [...pruned].reverse().findIndex((m) => m.info?.role === "user");
+        const lastUserIdx = [...pruned].reverse().findIndex((m) => m.role === "user");
         if (lastUserIdx >= 0) {
           const insertAt = pruned.length - lastUserIdx;
           pruned.splice(insertAt, 0, {
-            info: { role: "user" },
+            role: "user",
             parts: [{ type: "text" as const, text: nudge }],
           } as TransformMessage);
           recordInjection(config, "context-compress", "nudge: " + nudge.slice(0, 120));

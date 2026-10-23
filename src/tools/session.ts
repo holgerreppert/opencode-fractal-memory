@@ -1,7 +1,8 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import { estimateTokens } from "../infrastructure/llm/embeddings";
 import { CONTEXT_LIMIT, wrapWithTracking } from "./shared";
+import type { SessionApi } from "../plugin/session-api";
 
 export function MemorySessionStats(store: MemoryStore) {
   const t = tool({
@@ -117,40 +118,42 @@ export function MemoryTotalTokens(store: MemoryStore, client: unknown) {
       }> = [];
 
       try {
-        const messagesResponse = await (client as { session?: { messages: (opts: unknown) => Promise<unknown> } })?.session?.messages({
-          path: { id: sessionId },
-        });
+        const sessionApi = client as SessionApi | undefined;
+        const messages = sessionApi?.messages
+          ? await sessionApi.messages({ sessionID: sessionId })
+          : [];
 
-        if (messagesResponse && Array.isArray(messagesResponse)) {
-          for (const { info: message } of messagesResponse) {
-            if (message.role === "assistant") {
-              messageCount++;
-              
-              const tokens = message.tokens || { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
-              conversationTokens.input += tokens.input || 0;
-              conversationTokens.output += tokens.output || 0;
-              conversationTokens.reasoning += tokens.reasoning || 0;
-              conversationTokens.cacheRead += tokens.cache?.read || 0;
-              conversationTokens.cacheWrite += tokens.cache?.write || 0;
-              
-              if (args.include_messages) {
-                messageBreakdown.push({
-                  id: message.id.slice(0, 8),
-                  role: message.role,
-                  tokens: {
-                    input: tokens.input || 0,
-                    output: tokens.output || 0,
-                    reasoning: tokens.reasoning || 0,
-                  },
-                  cost: message.cost || 0,
-                });
-              }
-            }
+        for (const message of messages) {
+          if (message.role !== "assistant") continue;
+          messageCount++;
+
+          const t = (message.tokens ?? {}) as {
+            input?: number;
+            output?: number;
+            reasoning?: number;
+            cache?: { read?: number; write?: number };
+          };
+          const input = t.input ?? 0;
+          const output = t.output ?? 0;
+          const reasoning = t.reasoning ?? 0;
+          conversationTokens.input += input;
+          conversationTokens.output += output;
+          conversationTokens.reasoning += reasoning;
+          conversationTokens.cacheRead += t.cache?.read ?? 0;
+          conversationTokens.cacheWrite += t.cache?.write ?? 0;
+
+          if (args.include_messages) {
+            messageBreakdown.push({
+              id: message.id.slice(0, 8),
+              role: message.role,
+              tokens: { input, output, reasoning },
+              cost: message.cost ?? 0,
+            });
           }
-          
-          conversationTokens.total = conversationTokens.input + conversationTokens.output + 
-            conversationTokens.reasoning + conversationTokens.cacheRead + conversationTokens.cacheWrite;
         }
+
+        conversationTokens.total = conversationTokens.input + conversationTokens.output + 
+          conversationTokens.reasoning + conversationTokens.cacheRead + conversationTokens.cacheWrite;
       } catch  {
         // If we can't fetch messages, just show memory tokens
       }

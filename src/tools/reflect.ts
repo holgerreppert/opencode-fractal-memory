@@ -1,9 +1,10 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import { wrapWithTracking } from "./shared";
 import { memLog } from "../logging";
+import type { SessionApi } from "../plugin/session-api";
 
-export function MemoryReflect(store: MemoryStore, client?: unknown) {
+export function MemoryReflect(store: MemoryStore, client?: SessionApi | undefined) {
   const t = tool({
     description: "Analyze a session to create lesson nodes from failures. Creates structured lessons with analysis, root cause, and actionable fix. Call this after session ends to learn from mistakes.",
     args: {
@@ -104,8 +105,12 @@ export function MemoryReflect(store: MemoryStore, client?: unknown) {
       const label = `lesson:${timestamp}`;
       let content = analysisLines.join("\n");
 
-      if (args.use_llm && client && (client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } }).session?.prompt) {
+      if (args.use_llm && client?.lastModel && client.generate) {
         try {
+          const model = await client.lastModel(toolCtx.sessionID);
+          if (!model) {
+            memLog("debug", "reflect", "LLM analysis skipped: no model for session", { sessionId: toolCtx.sessionID });
+          }
           const prompt = `Analyze these tool failures and provide specific, actionable fixes:
 
 Session: ${sessionId}
@@ -122,26 +127,15 @@ Example good rules:
 
 Your rules:`;
 
-          const result = await (client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } })
-            .session?.prompt({
-              path: { id: toolCtx.sessionID },
-              body: { 
-                noReply: true, 
-                parts: [{ type: 'text', text: prompt }] 
-              },
-            });
+          const llmResponse = model ? (await client.generate({ model, prompt }))?.trim() : undefined;
+          if (llmResponse) {
+            const llmRules = llmResponse.split("\n")
+              .filter((line: string) => line.trim().startsWith("-"))
+              .map((line: string) => line.trim());
 
-          if (result) {
-            const llmResponse = await (await result.text()).trim();
-            if (llmResponse) {
-              const llmRules = llmResponse.split("\n")
-                .filter((line: string) => line.trim().startsWith("-"))
-                .map((line: string) => line.trim());
-              
-              if (llmRules.length > 0) {
-                lessons.push(...llmRules);
-                content += `\n\n### LLM-Generated Analysis\n${llmResponse}`;
-              }
+            if (llmRules.length > 0) {
+              lessons.push(...llmRules);
+              content += `\n\n### LLM-Generated Analysis\n${llmResponse}`;
             }
           }
         } catch (error) {
@@ -192,7 +186,7 @@ Your rules:`;
   return wrapWithTracking(t, store, "memory_reflect");
 }
 
-export function MemoryDistill(store: MemoryStore, client?: unknown) {
+export function MemoryDistill(store: MemoryStore, client?: SessionApi | undefined) {
   const t = tool({
     description: "Extract actionable rules from recent lesson nodes and update rule:mandatory nodes. Call this after reviewing lessons from memory(mode=\"reflect\").",
     args: {
@@ -243,8 +237,12 @@ export function MemoryDistill(store: MemoryStore, client?: unknown) {
         }
       }
 
-      if (args.use_llm && client && (client as { session?: { prompt: string } })?.session?.prompt) {
+      if (args.use_llm && client?.lastModel && client.generate) {
         try {
+          const model = await client.lastModel(toolCtx.sessionID);
+          if (!model) {
+            memLog("debug", "reflect", "LLM distillation skipped: no model for session", { sessionId: toolCtx.sessionID });
+          }
           const lessonContent = recentLessons.map(l => l.content).join("\n---\n");
           const prompt = `Based on these lesson summaries, generate specific, actionable rules for the agent.
 
@@ -263,25 +261,14 @@ Format as bullet points starting with "- ".
 
 Your rules:`;
 
-          const result = await (client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } })
-            .session?.prompt({
-              path: { id: toolCtx.sessionID },
-              body: { 
-                noReply: true, 
-                parts: [{ type: 'text', text: prompt }] 
-              },
-            });
+          const llmResponse = model ? (await client.generate({ model, prompt }))?.trim() : undefined;
+          if (llmResponse) {
+            const llmRules = llmResponse.split("\n")
+              .filter((line: string) => line.trim().startsWith("-"))
+              .map((line: string) => line.trim());
 
-          if (result) {
-            const llmResponse = await (await result.text()).trim();
-            if (llmResponse) {
-              const llmRules = llmResponse.split("\n")
-                .filter((line: string) => line.trim().startsWith("-"))
-                .map((line: string) => line.trim());
-              
-              if (llmRules.length > 0) {
-                distilledRules.push(...llmRules);
-              }
+            if (llmRules.length > 0) {
+              distilledRules.push(...llmRules);
             }
           }
         } catch (error) {

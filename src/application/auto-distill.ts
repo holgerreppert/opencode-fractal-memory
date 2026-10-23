@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../storage/sqlite";
 import { memLog } from "../logging";
+import type { SessionApi } from "../plugin/session-api";
 
 export interface AutoDistillConfig {
   minLessons: number;
@@ -10,7 +11,7 @@ export async function distillRules(
   store: MemoryStore,
   config: AutoDistillConfig,
   sessionId?: string,
-  client?: { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } }
+  client?: SessionApi | undefined
 ): Promise<string> {
   const lessons = await store.listNodes("global");
   const lessonNodes = lessons.filter(n => n.label?.startsWith("lesson:") && !n.label.includes(":", 7));
@@ -55,8 +56,12 @@ export async function distillRules(
     }
   }
 
-  if (config.useLlm && client?.session?.prompt) {
+  if (config.useLlm && client?.lastModel && client.generate) {
     try {
+      const model = sessionId ? await client.lastModel(sessionId) : undefined;
+      if (!model) {
+        memLog("debug", "auto-distill", "LLM distillation skipped: no model for session", { sessionId });
+      }
       const lessonContent = recentLessons.map(l => l.content).join("\n---\n");
       const prompt = `Based on these lesson summaries, generate specific, actionable rules for the agent.
 
@@ -75,25 +80,14 @@ Format as bullet points starting with "- ".
 
 Your rules:`;
 
-      const result = await (client as { session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> } })
-        .session?.prompt({
-          path: { id: sessionId ?? "auto-distill" },
-          body: {
-            noReply: true,
-            parts: [{ type: 'text', text: prompt }],
-          },
-        });
+      const llmResponse = model ? (await client.generate({ model, prompt }))?.trim() : undefined;
+      if (llmResponse) {
+        const llmRules = llmResponse.split("\n")
+          .filter((line: string) => line.trim().startsWith("-"))
+          .map((line: string) => line.trim());
 
-      if (result) {
-        const llmResponse = await (await result.text()).trim();
-        if (llmResponse) {
-          const llmRules = llmResponse.split("\n")
-            .filter((line: string) => line.trim().startsWith("-"))
-            .map((line: string) => line.trim());
-
-          if (llmRules.length > 0) {
-            distilledRules.push(...llmRules);
-          }
+        if (llmRules.length > 0) {
+          distilledRules.push(...llmRules);
         }
       }
     } catch (error) {

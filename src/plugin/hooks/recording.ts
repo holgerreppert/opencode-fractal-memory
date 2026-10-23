@@ -3,15 +3,15 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog } from "../../logging";
 import { predictiveRateToolCall } from "../../application";
 import { lastSearchResults } from "../../tools/shared";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
 const FOLLOWUP_TOOLS = new Set(["edit", "bash", "write", "replace", "create"]);
 
-export function createRecordingHandler(store: MemoryStore, config: MemConfig): HookHandler {
+export function createRecordingHandler(store: MemoryStore, config: MemConfig): PluginHooks {
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; sessionID?: string; args?: Record<string, unknown> };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; sessionID?: string; args?: Record<string, unknown> };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
       const success = !out.metadata?.error;
 
       if (input.tool?.startsWith("memory_")) {

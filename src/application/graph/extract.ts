@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import type { CodeGraph } from "./graph";
-import { memLog } from "../../logging";
 
 // Types for the wasm-bindgen generated classes
 interface WasmProcessResult {
@@ -248,30 +247,6 @@ export function extractFile(
   } catch {
     // cleanup failure — ignore
   }
-}
-
-export function freeParsers(): void {
-  // no-op: process() API manages its own parsers internally
-}
-
-export function logExtractDiagnostics(): void {
-  const count = _extNoLang + _extProcessFailed + _extSuccess;
-  memLog("info", "graph-extract", "diagnostics", {
-    total: _extTotal,
-    counted: count,
-    noLang: _extNoLang,
-    processFailed: _extProcessFailed,
-    success: _extSuccess,
-    extractErrors: _extTotal - count,
-  });
-}
-
-export function resetExtractDiagnostics(): void {
-  _extTotal = 0;
-  _extNoLang = 0;
-  _extProcessFailed = 0;
-  _extUnsupported = 0;
-  _extSuccess = 0;
 }
 
 export function extractFromFile(filePath: string, graph: CodeGraph, wasmMod: WasmModule): void {

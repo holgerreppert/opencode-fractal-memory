@@ -28,12 +28,12 @@
  *   bun run scripts/dev-install.ts          # build + install
  *   bun run scripts/dev-install.ts --skip-build   # install only (dist already fresh)
  */
-import { cp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { registerTuiEntry, registerV2LocalPlugin } from "../src/infrastructure/tui-self-register";
+import { registerPluginEntry } from "../src/infrastructure/plugin-registration";
 
 const HOME = homedir();
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -49,6 +49,8 @@ const TARGETS = [
 /** Top-level files/dirs copied verbatim from the repo into each location. */
 const TOP_LEVEL_ITEMS = [
   "dist",
+  "index.js",
+  "tui.js",
   "frontend",
   "package.json",
   "LICENSE",
@@ -56,7 +58,6 @@ const TOP_LEVEL_ITEMS = [
   "commands",
   "agent",
   "scripts",
-  "tui.json",
 ];
 
 /**
@@ -97,10 +98,45 @@ function log(msg: string): void {
   console.log(`[dev-install] ${msg}`);
 }
 
+/**
+ * Prepare an install target WITHOUT removing its contents.
+ *
+ * The target may be the directory the running OpenCode process is loading the
+ * plugin from. Deleting the files makes the in-flight import fail with
+ * ENOENT, which makes OpenCode reload the plugin and restart the service —
+ * and that in turn re-triggers the install, i.e. a restart loop. Overwriting
+ * in place (atomically, per file) keeps the plugin loadable throughout.
+ */
 async function cleanTarget(target: string): Promise<void> {
-  log(`Cleaning ${target}`);
-  await rm(target, { recursive: true, force: true });
+  log(`Preparing ${target}`);
   await mkdir(target, { recursive: true });
+}
+
+/**
+ * Copy `src` over `dest` without ever removing a file that is already there.
+ *
+ * Each file is copied to a temp name and renamed over the target, so a
+ * concurrent import always finds a complete file — the plugin never fails to
+ * load with ENOENT mid-install.
+ */
+async function copyAtomic(
+  src: string,
+  dest: string,
+  options?: { filter?: (from: string) => boolean },
+): Promise<void> {
+  const info = await stat(src);
+  if (info.isDirectory()) {
+    await mkdir(dest, { recursive: true });
+    for (const entry of await readdir(src)) {
+      if (options?.filter && !options.filter(path.join(src, entry))) continue;
+      await copyAtomic(path.join(src, entry), path.join(dest, entry), options);
+    }
+    return;
+  }
+  const tmp = `${dest}.tmp-${process.pid}`;
+  await rm(tmp, { force: true });
+  await cp(src, tmp, { force: true });
+  await rename(tmp, dest);
 }
 
 async function copyTopLevel(target: string): Promise<void> {
@@ -113,7 +149,7 @@ async function copyTopLevel(target: string): Promise<void> {
     // Skip nested tooling dirs (frontend/node_modules is ~287MB; only frontend/build is served)
     const filter = (from: string): boolean =>
       !/(^|[\\/])(node_modules|\.svelte-kit)([\\/]|$)/.test(from);
-    await cp(src, path.join(target, item), { recursive: true, filter });
+    await copyAtomic(src, path.join(target, item), { filter });
   }
 }
 
@@ -126,39 +162,42 @@ async function copyNestedDeps(target: string): Promise<void> {
       log(`  WARN: missing dep ${dep} in repo node_modules — skipping`);
       continue;
     }
-    await cp(src, path.join(destRoot, dep), { recursive: true });
+    await copyAtomic(src, path.join(destRoot, dep));
   }
 }
 
 /**
- * Register the plugin for the terminal client and the server.
+ * A `plugins` entry that belongs to this package but is NOT the repo path.
  *
- * - V1 (opencode 1.x): the npm spec in the global `tui.json` `plugin` key.
- * - V2 (opencode 2.x): this repo's own directory in the `plugins` key of
- *   `cli.json` (terminal client) and `opencode.json` (server). A local
- *   directory lets V2 load the built plugin directly — no package-manager
- *   install, no registry resolution, and the live `dist/` is used as-is.
+ * Stale shapes from earlier installs: the bare npm spec (triggers a
+ * package-manager install), package-cache paths, shim directories under
+ * `~/.config/opencode/plugins/`, and absolute `dist/*.js` paths. All of them
+ * survive config edits and turn into "Plugin failed" popups.
  */
-async function ensureGlobalTuiRegistration(): Promise<void> {
-  const globalDir = path.join(homedir(), ".config", "opencode");
-  const entry = "opencode-fractal-memory";
-  const distEntry = path.join(TARGETS[1], "dist", "tui.js");
-  if (!existsSync(distEntry)) {
-    log(`WARN: ${distEntry} missing — cannot register TUI plugin`);
-    return;
-  }
-  const tuiTarget = path.join(globalDir, "tui.json");
-  const changed = registerTuiEntry(tuiTarget, entry);
-  log(changed ? `TUI registered in ${tuiTarget}` : `TUI already registered in ${tuiTarget}`);
+function isStaleFractalMemoryEntry(entry: string, repoRoot: string): boolean {
+  if (entry === repoRoot) return false;
+  // Bare npm spec, package-cache paths, shim dirs under
+  // ~/.config/opencode/plugins/, and absolute dist/*.js paths all contain the
+  // package name — none of them is the repo directory we want.
+  return entry.includes(PLUGIN_NAME);
+}
 
-  const v2 = registerV2LocalPlugin(REPO_ROOT, entry, {
-    projectConfig: path.join(REPO_ROOT, ".opencode", "opencode.json"),
-  });
-  log(
-    v2.opencode || v2.cli || v2.project
-      ? `V2 plugin registered (local path) in global opencode.json + cli.json${v2.project ? " + project .opencode/opencode.json" : ""}`
-      : "V2 plugin already registered (local path)",
-  );
+/**
+ * Register the plugin exactly once, as the absolute repo directory.
+ *
+ * OpenCode 2.x `plugins` accepts absolute directory paths and resolves them
+ * through the package's `exports` map — no package-manager install, no shim
+ * directory, and the live `dist/` is used as-is. The same single entry goes
+ * into `opencode.json` (server) and `cli.json` (terminal client).
+ */
+function ensureGlobalRegistration(): void {
+  const globalDir = path.join(HOME, ".config", "opencode");
+  const strip = (entry: string): boolean => isStaleFractalMemoryEntry(entry, REPO_ROOT);
+  for (const name of ["opencode.json", "cli.json"]) {
+    const file = path.join(globalDir, name);
+    const changed = registerPluginEntry(file, REPO_ROOT, { strip });
+    log(changed ? `Registered ${REPO_ROOT} in ${file}` : `Already registered in ${file}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -181,7 +220,7 @@ async function main(): Promise<void> {
     await copyNestedDeps(target);
   }
 
-  await ensureGlobalTuiRegistration();
+  ensureGlobalRegistration();
 
   const cacheTarget = TARGETS[1];
   const cachePkg = path.join(cacheTarget, "package.json");

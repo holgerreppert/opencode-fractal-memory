@@ -25,9 +25,16 @@ afterEach(() => {
 });
 
 async function readOnce(handler: ReturnType<typeof createReReadEliminationHandler>, filePath: string, callID: string, output: string) {
-  const out: { output?: string; metadata?: Record<string, unknown> } = { output };
-  await handler["tool.after"]!({ tool: "read", args: { filePath }, sessionID: "s1", callID }, out);
-  return out;
+  const event = {
+    tool: "read",
+    sessionID: "s1",
+    callID,
+    args: { filePath },
+    output,
+    metadata: {} as Record<string, unknown>,
+  };
+  await handler["tool.execute.after"]!(event);
+  return event;
 }
 
 describe("createReReadEliminationHandler — tool.after serve + cache", () => {
@@ -80,7 +87,7 @@ describe("createReReadEliminationHandler — tool.after serve + cache", () => {
     const handler = createReReadEliminationHandler(makeConfig(true));
 
     const out: { output?: string; metadata?: Record<string, unknown> } = { output: content };
-    await handler["tool.after"]!({ tool: "read", args: { filePath: file, offset: 5 }, sessionID: "s1", callID: "c1" }, out);
+    await handler["tool.execute.after"]!({ tool: "read", args: { filePath: file, offset: 5 }, sessionID: "s1", callID: "c1" }, out);
     expect(out.metadata?.reread_eliminated).toBeUndefined();
     expect(out.output).toBe(content);
   });
@@ -88,7 +95,7 @@ describe("createReReadEliminationHandler — tool.after serve + cache", () => {
   test("does not touch non-read tools", async () => {
     const handler = createReReadEliminationHandler(makeConfig(true));
     const out: { output?: string; metadata?: Record<string, unknown> } = { output: "x" };
-    await handler["tool.after"]!({ tool: "bash", args: { command: "ls" }, sessionID: "s1", callID: "c1" }, out);
+    await handler["tool.execute.after"]!({ tool: "bash", args: { command: "ls" }, sessionID: "s1", callID: "c1" }, out);
     expect(out.output).toBe("x");
     expect(out.metadata).toBeUndefined();
   });

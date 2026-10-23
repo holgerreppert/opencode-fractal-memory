@@ -18,20 +18,33 @@ const publicDir = process.env.MGMT_PUBLIC_DIR
 // Apply the configured log level (defaults to "info" when unset).
 loadMemConfig(projectDir).then((cfg) => setLogLevel(cfg.logLevel ?? "info")).catch(() => { /* keep default */ });
 
-// Write PID file so the next session can kill this orphaned server
+// PID file lifecycle: written ONLY after the port is bound (see server.listen
+// below) and unlinked on exit ONLY if it still holds our own pid.
+// Why: two spawns racing for the port used to clobber each other — the loser
+// overwrote the winner's file at startup, then unlinked it on its way out
+// (exit code 1, EADDRINUSE), leaving a LIVE server with NO pid file. The TUI
+// sidebar read that as "stopped" forever.
 const pidFile = process.env.MGMT_PID_FILE || "";
-if (pidFile) {
+
+function writePidFile(): void {
+  if (!pidFile) return;
   try {
     fs.writeFileSync(pidFile, String(process.pid));
-    process.on("exit", () => {
-      if (fs.existsSync(pidFile)) {
-        try { fs.unlinkSync(pidFile); } catch { /* best-effort */ }
-      }
-    });
   } catch (e) {
     memLog("warn", "management", "Failed to write PID file", { error: e instanceof Error ? e.message : e });
   }
 }
+
+function unlinkOwnPidFile(): void {
+  if (!pidFile) return;
+  try {
+    if (fs.readFileSync(pidFile, "utf-8").trim() === String(process.pid)) {
+      fs.unlinkSync(pidFile);
+    }
+  } catch { /* best-effort — a missing or replaced file must be left alone */ }
+}
+
+process.on("exit", unlinkOwnPidFile);
 
 const store = createSqliteMemoryStore(projectDir);
 
@@ -169,6 +182,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
+  writePidFile();
   console.log(`Management UI running at http://localhost:${port}`);
   memLog("info", "management", `Management UI started on http://localhost:${port}`);
 });

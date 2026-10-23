@@ -7,7 +7,6 @@ export let CRITICAL_CONTEXT_THRESHOLD = 0.8;
 export let MAX_INJECTION_TOKENS = 8000;
 export let CORE_INJECTION_TOKENS = 2000;
 export let AUTO_COMPRESS_THRESHOLD = 0.7;
-export function setContextLimit(v: number) { CONTEXT_LIMIT = v; }
 export function setHighContextThreshold(v: number) { HIGH_CONTEXT_THRESHOLD = v; }
 export function setCriticalContextThreshold(v: number) { CRITICAL_CONTEXT_THRESHOLD = v; }
 export function setMaxInjectionTokens(v: number) { MAX_INJECTION_TOKENS = v; }

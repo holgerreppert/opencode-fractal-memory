@@ -6,6 +6,7 @@ import { loadMemConfig } from "./config/config";
 import { generateEmbeddingWithSegments } from "./llm/embeddings";
 import { ensureModels, ensureAgentFiles, ensureCommandFiles } from "../ensure-models";
 import { createAutoRetrieveHook } from "../application";
+import type { SessionApi } from "../plugin/session-api";
 import { startManagementServer } from "../management-server";
 import { SEED_NODES } from "../seed-nodes";
 import { memLog, setLogLevel } from "../logging";
@@ -149,34 +150,64 @@ function maybeStartManagement(store: MemoryStore, memConfig: MemConfig, director
   return true;
 }
 
-export async function createApplication(directory: string, globalDbPath?: string): Promise<ApplicationContext> {
+export async function createApplication(
+  directory: string,
+  globalDbPath?: string,
+  options?: { deferBackground?: boolean },
+): Promise<ApplicationContext> {
   const store = await initializeStore(directory, globalDbPath);
+
+  memLog("info", "init", "Loading config");
+  const memConfig = await loadMemConfig(directory);
+  await initializeConfig(directory, memConfig);
+
+  if (options?.deferBackground === true) {
+    return { store, memConfig, managementStarted: false };
+  }
 
   await ensureAssets();
 
   memLog("info", "init", "Cleaning up old middle-term captures");
   await cleanupMiddleTermCaptures(store).catch(() => { /* empty */ });
 
-  memLog("info", "init", "Loading config");
-  const memConfig = await loadMemConfig(directory);
-  await initializeConfig(directory, memConfig);
-
   const managementStarted = maybeStartManagement(store, memConfig, directory);
 
   return { store, memConfig, managementStarted };
 }
 
+/**
+ * Start the optional, heavy subsystems after the plugin's `setup()` returned.
+ *
+ * Model/asset provisioning, middle-term cleanup and the management server used
+ * to run inside plugin initialization. OpenCode's background service must
+ * become ready quickly — anything that blocks the boot path shows up as
+ * "Background service is unresponsive" and a service restart loop.
+ */
+export function startApplicationBackground(ctx: ApplicationContext, directory: string): void {
+  void (async () => {
+    try {
+      await ensureAssets();
+      await cleanupMiddleTermCaptures(ctx.store).catch(() => { /* empty */ });
+      maybeStartManagement(ctx.store, ctx.memConfig, directory);
+    } catch (err) {
+      memLog("error", "init", "Background application startup failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
 export function createAutoRetrieve(
   store: MemoryStore,
   memConfig: MemConfig,
-  client?: unknown,
+  session?: SessionApi | undefined,
   currentSessionId?: { value: string } | undefined,
 ) {
   return memConfig?.autoRetrieve?.enabled
     ? createAutoRetrieveHook({
         store,
         config: memConfig,
-        client,
+        session,
         currentSessionId,
         log: (level: string, msg: string, data?: unknown) => memLog(level as "debug" | "info" | "warn" | "error", "auto-retrieve", msg, data as Record<string, unknown> | undefined),
       })

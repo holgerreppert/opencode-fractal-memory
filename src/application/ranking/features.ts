@@ -33,7 +33,7 @@ function clamp01(v: number): number {
  * labels boosted); rescale to a feature so it composes additively with the
  * other signals instead of multiplying the whole score.
  */
-export function qualityFeature(node: MemoryNode): number {
+function qualityFeature(node: MemoryNode): number {
   const multiplier = computeQualityMultiplier(node);
   return clamp01((multiplier - 0.5) / (1.3 - 0.5));
 }

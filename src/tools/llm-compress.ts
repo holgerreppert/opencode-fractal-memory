@@ -1,6 +1,6 @@
 import type { MemoryNodeLevel } from "../storage/types";
 import type { MemoryStore } from "../storage/sqlite";
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import { wrapWithTracking } from "./shared";
 
 export function MemoryLlmCompress(store: MemoryStore, client?: unknown) {

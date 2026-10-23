@@ -4,7 +4,7 @@ import { estimateTokens } from "../../infrastructure/llm/embeddings";
 // the session-messages tool both need "how much context does this message
 // occupy" — text parts, reasoning traces, and especially TOOL OUTPUTS
 // (state.output — the 3MB bash dumps that dominate real sessions) and file
-// parts (source.text.value). info.tokens on assistant messages only counts
+// parts (source.text.value). The runtime's token usage on assistant messages only counts
 // generated text/reasoning, never tool outputs, so part-payload sizing is the
 // complete measure.
 
@@ -17,12 +17,15 @@ export type SizablePart = {
 };
 
 export type SizableMessage = {
-  info?: { id?: string; role?: string; tokens?: Record<string, unknown>; [key: string]: unknown };
+  id?: string;
+  role?: string;
+  /** The runtime's token usage for the message. */
+  tokens?: unknown;
   parts?: SizablePart[];
 };
 
 // Raw character length of a part's payload (text/reasoning/tool/file).
-export function partPayloadChars(part: SizablePart): number {
+function partPayloadChars(part: SizablePart): number {
   const type = part.type;
   if (type === "text" || type === "reasoning") {
     return typeof part.text === "string" ? part.text.length : 0;
@@ -80,10 +83,10 @@ export function partPayloadText(part: SizablePart): string {
 }
 
 // Real provider-reported tokens for an assistant message when available
-// (info.tokens: {input, output, reasoning, cache}). Returns the generated
+// (tokens: {input, output, reasoning, cache}). Returns the generated
 // text+reasoning tokens, or null when absent (user messages, old rows).
 export function realMessageTokens(msg: SizableMessage): number | null {
-  const tokens = msg.info?.tokens;
+  const tokens = msg.tokens as Record<string, unknown> | undefined;
   if (!tokens || typeof tokens !== "object") return null;
   const output = tokens.output;
   const reasoning = tokens.reasoning;

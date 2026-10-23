@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { CodeGraph, type GraphJSON } from "./graph";
 import { memLog } from "../../logging";
 
-export const GRAPH_BATCH_SIZE = 100;
+const GRAPH_BATCH_SIZE = 100;
 
 interface BatchWorkerOutput {
   graph: GraphJSON;

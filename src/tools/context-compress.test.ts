@@ -17,14 +17,13 @@ function makeConfig(): MemConfig {
 
 function makeClient(sessionId: string) {
   return {
-    session: {
-      messages: async () => [
+    messages: async () => [
         {
-          info: { id: "msg-1", role: "user", time: { created: Date.now() - 5000 } },
+          id: "msg-1", role: "user", time: { created: Date.now() - 5000 },
           parts: [{ type: "text", text: "Can you explain how the ranking module works?" }],
         },
         {
-          info: { id: "msg-2", role: "assistant", time: { created: Date.now() - 3000 } },
+          id: "msg-2", role: "assistant", time: { created: Date.now() - 3000 },
           parts: [
             { type: "text", text: "The ranking module uses a feature-weighted linear model with semantic, bm25, quality, confidence, and usefulness features. It replaced RRF fusion." },
             { type: "tool_use", name: "read", input: { filePath: "src/application/ranking/weights.ts" } },
@@ -32,11 +31,14 @@ function makeClient(sessionId: string) {
           ],
         },
         {
-          info: { id: "msg-3", role: "user", time: { created: Date.now() - 1000 } },
+          id: "msg-3", role: "user", time: { created: Date.now() - 1000 },
           parts: [{ type: "text", text: "And how do the weights interact?" }],
         },
       ],
-    },
+    prompt: async () => undefined,
+    synthetic: async () => undefined,
+    generate: async () => undefined,
+    lastModel: async () => undefined,
   };
 }
 
@@ -131,13 +133,14 @@ describe("createContextCompressTool", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
     const dbPath = path.join(tmp, "memory.db");
     const store = createSqliteMemoryStore(tmp, dbPath);
-    const shown: Array<{ title?: string; message: string; variant?: string }> = [];
-    const toast = new ToastService(
-      { tui: { showToast: async (opts: { body: { title?: string; message: string; variant?: string } }) => { shown.push(opts.body); } } },
-      { enabled: true, mode: "toast" },
-    );
+    const shown: Array<{ sessionID: string; text: string }> = [];
+    const client = {
+      ...makeClient(SESSION),
+      synthetic: async (opts: { sessionID: string; text: string }) => { shown.push(opts); },
+    };
+    const toast = new ToastService(client, { enabled: true, mode: "toast" });
     try {
-      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig(), toast);
+      const tool = createContextCompressTool(store, client, makeConfig(), toast);
       const result = await tool.execute(
         {
           topic: "ranking module explanation",
@@ -149,9 +152,8 @@ describe("createContextCompressTool", () => {
       );
       expect(result).toContain("Archived 1 message(s)");
       expect(shown).toHaveLength(1);
-      expect(shown[0]!.title).toBe("archivecontext: Compression");
-      expect(shown[0]!.message).toContain("1 archived");
-      expect(shown[0]!.message).toContain("contexthistory:index:ses-tool-test");
+      expect(shown[0]!.text).toContain("1 archived");
+      expect(shown[0]!.text).toContain("contexthistory:index:ses-tool-test");
     } finally {
       await store.close();
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -162,13 +164,10 @@ describe("createContextCompressTool", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
     const dbPath = path.join(tmp, "memory.db");
     const store = createSqliteMemoryStore(tmp, dbPath);
-    const prompts: Array<{ path: { id: string }; body: { noReply?: boolean; parts?: Array<{ type: string; text: string; ignored?: boolean }> } }> = [];
+    const prompts: Array<{ sessionID: string; text: string }> = [];
     const client = {
       ...makeClient(SESSION),
-      session: {
-        ...makeClient(SESSION).session,
-        prompt: async (opts: { path: { id: string }; body: { noReply?: boolean; parts?: Array<{ type: string; text: string; ignored?: boolean }> } }) => { prompts.push(opts); },
-      },
+      synthetic: async (opts: { sessionID: string; text: string }) => { prompts.push(opts); },
     };
     const toast = new ToastService(client, { enabled: true, mode: "chat" });
     try {
@@ -178,15 +177,12 @@ describe("createContextCompressTool", () => {
         { sessionID: SESSION, agent: "main" } as never,
       );
       expect(prompts).toHaveLength(1);
-      expect(prompts[0]!.path.id).toBe(SESSION);
-      expect(prompts[0]!.body.noReply).toBe(true);
-      expect(prompts[0]!.body.agent).toBe("main");
-      const part = prompts[0]!.body.parts![0]!;
-      expect(part.type).toBe("text");
-      expect(part.ignored).toBe(true);
-      expect(part.text).toContain("1 archived");
-      expect(part.text).toContain("saved");
-      expect(part.text).toContain("contexthistory:index:ses-tool-test");
+      expect(prompts[0]!.sessionID).toBe(SESSION);
+      expect(prompts[0]!.text).toContain("context");
+      expect(prompts[0]!.text).toContain("archived");
+      expect(prompts[0]!.text).toContain("1 archived");
+      expect(prompts[0]!.text).toContain("saved");
+      expect(prompts[0]!.text).toContain("contexthistory:index:ses-tool-test");
     } finally {
       await store.close();
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -201,17 +197,14 @@ describe("createContextCompressTool", () => {
     const prompts: Array<unknown> = [];
     const client = {
       ...makeClient(SESSION),
-      session: {
-        ...makeClient(SESSION).session,
-        prompt: async (opts: unknown) => { prompts.push(opts); },
-      },
+      prompt: async (opts: unknown) => { prompts.push(opts); },
     };
     const toast = new ToastService(
       client,
       { enabled: false },
     );
     try {
-      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig(), toast);
+      const tool = createContextCompressTool(store, client, makeConfig(), toast);
       await tool.execute(
         { topic: "t", content: JSON.stringify([{ messageId: "msg-2", topic: "t1", description: "d1" }]) },
         { sessionID: SESSION } as never,
@@ -230,13 +223,11 @@ describe("createContextCompressTool", () => {
     const store = createSqliteMemoryStore(tmp, dbPath);
     const big = "word ".repeat(7000); // 7000 words → ≥7000 tok under BOTH estimate modes (exact tokenizer ~1 tok/word, fallback 1.5×) → HIGH (>5000)
     const client = {
-      session: {
-        messages: async () => [
-          { info: { id: "msg-big", role: "user" }, parts: [{ type: "text", text: big }] },
-          { info: { id: "msg-small", role: "user" }, parts: [{ type: "text", text: "tiny" }] },
-        ],
-      },
-    };
+      messages: async () => [
+          { id: "msg-big", role: "user", parts: [{ type: "text", text: big }] },
+          { id: "msg-small", role: "user", parts: [{ type: "text", text: "tiny" }] },
+    ],
+      };
     try {
       const tool = createContextCompressTool(store, client, makeConfig());
       const result = await tool.execute(
@@ -258,12 +249,10 @@ describe("createContextCompressTool", () => {
     const dbPath = path.join(tmp, "memory.db");
     const store = createSqliteMemoryStore(tmp, dbPath);
     const client = {
-      session: {
-        messages: async () => [
-          { info: { id: "msg-small", role: "user" }, parts: [{ type: "text", text: "tiny" }] },
-        ],
-      },
-    };
+      messages: async () => [
+          { id: "msg-small", role: "user", parts: [{ type: "text", text: "tiny" }] },
+    ],
+      };
     try {
       const tool = createContextCompressTool(store, client, makeConfig());
       const result = await tool.execute(
@@ -283,15 +272,13 @@ describe("createContextCompressTool", () => {
     const dbPath = path.join(tmp, "memory.db");
     const store = createSqliteMemoryStore(tmp, dbPath);
     const client = {
-      session: {
-        messages: async () => [
+      messages: async () => [
           {
-            info: { id: "msg-real", role: "assistant", tokens: { output: 6000, reasoning: 1000 } },
+            id: "msg-real", role: "assistant", tokens: { output: 6000, reasoning: 1000 },
             parts: [{ type: "text", text: "short" }],
           },
-        ],
-      },
-    };
+    ],
+      };
     try {
       const tool = createContextCompressTool(store, client, makeConfig());
       const result = await tool.execute(
@@ -378,12 +365,10 @@ describe("createContextCompressTool", () => {
     const store = createSqliteMemoryStore(tmp, dbPath);
     const big = "word ".repeat(7000);
     const client = {
-      session: {
-        messages: async () => [
-          { info: { id: "msg-big", role: "user" }, parts: [{ type: "text", text: big }] },
-        ],
-      },
-    };
+      messages: async () => [
+          { id: "msg-big", role: "user", parts: [{ type: "text", text: big }] },
+    ],
+      };
     try {
       const tool = createContextCompressTool(store, client, makeConfig());
       const result = await tool.execute(

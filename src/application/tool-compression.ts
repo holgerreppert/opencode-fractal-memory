@@ -30,29 +30,6 @@ export function stashOriginal(output: string): string | null {
   }
 }
 
-export function applyToolWordAbbreviations(text: string): string {
-  const WORD_ABBRS: Record<string, string> = {
-    implementation: "impl", configuration: "config", authentication: "auth",
-    authorization: "authz", directory: "dir", executable: "exe",
-    environment: "env", variable: "var", function: "fn", property: "prop",
-    parameter: "param", argument: "arg", attribute: "attr", reference: "ref",
-    identifier: "id", initialization: "init", repository: "repo",
-    management: "mgmt", application: "app", documentation: "docs",
-    notification: "notif", communication: "comm", utility: "util",
-  };
-  let changed = false;
-  const result = text.split("\n").map(line => {
-    const updated = line.replace(/\b([a-zA-Z]{6,})\b/g, (match) => {
-      const lower = match.toLowerCase();
-      const abbrev = WORD_ABBRS[lower];
-      if (abbrev) { changed = true; return match[0]!.toUpperCase() === match[0] ? abbrev[0]!.toUpperCase() + abbrev.slice(1) : abbrev; }
-      return match;
-    });
-    return updated;
-  });
-  return changed ? result.join("\n") : text;
-}
-
 export function compressReadOutput(raw: string, filePath?: string): ToolCompressResult | null {
   if (!raw || raw.length < MIN_TOOL_OUTPUT) return null;
 

@@ -6,7 +6,7 @@ import { injectionMarker, recordInjection } from "../../application/injection-vi
 import { getActiveRerankMode } from "../../application/dream-rsi";
 import { rerank } from "../../application/ranking/rerank";
 import { memLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { MessagesEvent, PluginHooks } from "./types";
 
 interface MemoryNode {
   label?: string | null;
@@ -46,7 +46,7 @@ interface HookPart {
 }
 
 interface HookMessage {
-  info?: { role?: string };
+  role?: string;
   parts?: HookPart[];
 }
 
@@ -112,7 +112,7 @@ async function judgePriorInjections(
         } catch {
           // ignore unserializable input
         }
-      } else if ((p.type === "text" || p.type === "reasoning") && m.info?.role === "assistant" && p.text && !isOwnInjectionText(p.text)) {
+      } else if ((p.type === "text" || p.type === "reasoning") && m.role === "assistant" && p.text && !isOwnInjectionText(p.text)) {
         evidence.push(p.text);
       }
     }
@@ -181,7 +181,7 @@ export function createMessagesTransformHandler(
   store: MemoryStore,
   config: MemConfig,
   currentSessionId: { value: string },
-): HookHandler {
+): PluginHooks {
   const arConfig = config.autoRetrieve;
   if (!arConfig?.enabled) {
     return {};
@@ -205,14 +205,14 @@ export function createMessagesTransformHandler(
   const drilldownCache = new Map<string, { at: number; results: QueryResult[] }>();
 
   return {
-    "chat.messages.transform": async (_input: unknown, output: unknown) => {
-      const out = output as {
-        messages: Array<{ info: { role?: string }; parts: Array<{ type?: string; text?: string }> }>;
+    "messages": async (event: MessagesEvent) => {
+      const out = event as unknown as {
+        messages: Array<{ role?: string; parts: Array<{ type?: string; text?: string }> }>;
       };
 
       if (!out.messages || out.messages.length < 3) return;
 
-      const lastUserMsg = [...out.messages].reverse().find(m => m.info?.role === "user");
+      const lastUserMsg = [...out.messages].reverse().find(m => m.role === "user");
       if (!lastUserMsg) return;
 
       const userText = lastUserMsg.parts?.filter(p => p.type === "text").map(p => p.text).join(" ") ?? "";
@@ -348,7 +348,7 @@ export function createMessagesTransformHandler(
         recordInjection(config, "memory-context", `${injectedNodes.length} node(s): ${injectedNodes.map(r => r.node?.label ?? r.node?.id).join(", ")} (phase=${phase})`);
 
         out.messages.splice(out.messages.length - 1, 0, {
-          info: { role: "user" },
+          role: "user",
           parts: [{
             type: "text" as const,
             text: body,

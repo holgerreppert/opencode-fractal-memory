@@ -106,10 +106,6 @@ export async function rebuildCompressState(store: MemoryStore, sessionId: string
   return state;
 }
 
-export function isMsgCompressed(sessionId: string, msgId: string): boolean {
-  return getCompressState(sessionId).blocks.has(msgId);
-}
-
 // Mark registry entries whose msgId is no longer in the model view as
 // "compacted" (dead). Called after OpenCode compaction: filterCompacted drops
 // every pre-tail message from the view, so archived entries pointing at them

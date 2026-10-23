@@ -6,19 +6,19 @@ import {
   shouldSkipGeneric,
   getPressurePhase,
 } from "../../application/adaptive-pressure";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
-export function createAdaptivePressureHandler(config: MemConfig): HookHandler {
+export function createAdaptivePressureHandler(config: MemConfig): PluginHooks {
   const apConfig = config.adaptivePressure;
   if (apConfig?.enabled) {
     resetPressureState();
   }
 
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
+    "tool.execute.after": async (event: ToolAfterEvent) => {
       if (!apConfig?.enabled) return;
-      const input = _input as { tool?: string; args?: { command?: string } };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+      const input = event as unknown as { tool?: string; args?: { command?: string } };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
 
       if (input.tool !== "bash") return;
 

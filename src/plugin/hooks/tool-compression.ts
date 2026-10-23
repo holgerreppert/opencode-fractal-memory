@@ -1,12 +1,12 @@
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 import { memLog } from "../../logging";
 import { compressReadOutput, compressGlobOutput, compressEditOutput } from "../../application/tool-compression";
 
-export function createNonBashCompressionHandler(): HookHandler {
+export function createNonBashCompressionHandler(): PluginHooks {
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: { command?: string; filePath?: string; path?: string; pattern?: string }; sessionID?: string };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: { command?: string; filePath?: string; path?: string; pattern?: string }; sessionID?: string };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
       const tool = input.tool;
 
       if (!tool || tool === "bash") return;

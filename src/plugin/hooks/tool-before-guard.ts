@@ -1,4 +1,4 @@
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent, ToolBeforeEvent } from "./types";
 import { memLog } from "../../logging";
 
 const MAX_HINTS_PER_SESSION = 3;
@@ -59,7 +59,7 @@ function shouldShowHint(sessionId: string, hintKey: string, hintCounts: Map<stri
   return true;
 }
 
-export function createToolBeforeGuardHandler(): HookHandler {
+export function createToolBeforeGuardHandler(): PluginHooks {
   // Per-handler-instance state — module-level maps leaked across instances and
   // test reruns in the same process (the hint cap for a session was consumed by
   // the first run, silently silencing subsequent runs).
@@ -69,13 +69,13 @@ export function createToolBeforeGuardHandler(): HookHandler {
     // Rewrite the footgun in `tool.before` so the command never executes
     // mangled: `rg -rn "pat"` → `rg -n "pat"`. `tool.before` output exposes a
     // writable `{ args }` (unlike `output.output`, which is dropped there).
-    "tool.before": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: Record<string, unknown>; sessionID?: string; callID?: string };
+    "tool.execute.before": async (event: ToolBeforeEvent) => {
+      const input = event as unknown as { tool?: string; args?: Record<string, unknown>; sessionID?: string; callID?: string };
       const tool = input.tool;
       if (tool !== "bash") return;
       // `args` may be passed via input (observed live) or output (per the
-      // @opencode-ai/plugin d.ts `{ args }` shape) — read from either.
-      const out = output as { args?: Record<string, unknown> };
+      // tool-definition `{ args }` shape) — read from either.
+      const out = event as unknown as { args?: Record<string, unknown> };
       const command = (input.args?.command ?? out.args?.command ?? "") as string;
       const rewritten = rewriteRgReplaceMisuse(command);
       if (!rewritten) return;
@@ -94,21 +94,21 @@ export function createToolBeforeGuardHandler(): HookHandler {
     },
 
     // NOTE: `tool.execute.before` output only exposes `{ args }` (see
-    // @opencode-ai/plugin v1.4.x types) — `output.output` mutations are silently
+    // — `output.output` mutations are silently
     // dropped there. Hints that must reach the model are delivered via
     // `tool.after`, which exposes a writable `{ output }` (same pattern as
     // graph-search-hint / graph-context). After a successful rewrite the
     // command no longer triggers the detector, so the note below only appears
     // when the rewrite happened (transparency) or when `tool.before` never
     // fired (fallback hint on the un-rewritten command).
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: Record<string, unknown>; sessionID?: string; callID?: string };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: Record<string, unknown>; sessionID?: string; callID?: string };
       const tool = input.tool;
       if (tool !== "bash") return;
       memLog("info", "rg-footgun", "tool.after entered", { tool: tool ?? "?", sessionID: input.sessionID ?? "?" });
       const command = (input.args?.command ?? "") as string;
       memLog("info", "rg-footgun", "bash command seen", { cmd: command.slice(0, 80) });
-      const out = output as { output?: string };
+      const out = event as unknown as { output?: string };
       const callKey = `${input.sessionID ?? "default"}:${input.callID ?? "?"}`;
       const rewrittenLetters = rewrittenCalls.get(callKey);
       if (rewrittenLetters !== undefined) {

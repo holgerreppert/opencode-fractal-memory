@@ -2,9 +2,9 @@ import type { MemConfig } from "../../infrastructure/config/config";
 import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { writeFileSumLog } from "../../logging";
 import { cacheReadResult, checkUnchangedRead, configureReadCache, getReadCacheSize, getReadCacheMaxSize } from "../../application/re-read-elimination";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
-export function createReReadEliminationHandler(config: MemConfig): HookHandler {
+export function createReReadEliminationHandler(config: MemConfig): PluginHooks {
   const rrConfig = config.reReadElimination;
   if (rrConfig?.enabled) {
     configureReadCache(rrConfig.maxCacheSize ?? 100);
@@ -12,14 +12,14 @@ export function createReReadEliminationHandler(config: MemConfig): HookHandler {
   }
 
   return {
-    // NOTE: `tool.before` output only exposes `{ args }` (see @opencode-ai/plugin
+    // NOTE: `tool.before` output only exposes `{ args }` (see the tool-definition
     // v1.4.x types) — `out.output`/`out.metadata` mutations are silently dropped
     // there. The serve MUST happen in `tool.after`, which exposes a writable
     // `{ output, metadata }` (same pattern as graph-search-hint / rg-footgun).
-    "tool.after": async (_input: unknown, output: unknown) => {
+    "tool.execute.after": async (event: ToolAfterEvent) => {
       if (!rrConfig?.enabled) return;
-      const input = _input as { tool?: string; args?: { filePath?: string; offset?: number } };
-      const out = output as { output?: string; metadata?: Record<string, unknown> };
+      const input = event as unknown as { tool?: string; args?: { filePath?: string; offset?: number } };
+      const out = event as unknown as { output?: string; metadata?: Record<string, unknown> };
       if (input.tool !== "read") return;
 
       const filePath = input.args?.filePath;

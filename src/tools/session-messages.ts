@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import { memLog } from "../logging";
 import {
   estimateMessageTokens,
@@ -7,15 +7,16 @@ import {
   partTypeChars,
   type SizableMessage,
 } from "../application/context-compression/message-size";
+import type { SessionApi } from "../plugin/session-api";
 
 const SNIPPET_MAX = 200;
 
 // List session messages ordered by context cost (real provider token counts
 // when available, part-payload estimation otherwise) and search their
-// content. Uses the SDK client.session.messages() — no direct DB access.
-export function createSessionMessagesTool(client: unknown) {
+// content. Reads the session through the runtime's session domain — no direct DB access.
+export function createSessionMessagesTool(session: SessionApi) {
   return tool({
-    description: `List the messages in the current session ordered by how much context they consume (largest first), and optionally search message content. Sizes come from real provider token counts (info.tokens) when available, otherwise from part-payload estimation — text, reasoning, tool outputs and file contents are all counted. Useful to find which messages are worth compressing with archivecontext, or to locate a specific tool output / reasoning trace by content.
+    description: `List the messages in the current session ordered by how much context they consume (largest first), and optionally search message content. Sizes come from real provider token counts when available, otherwise from part-payload estimation — text, reasoning, tool outputs and file contents are all counted. Useful to find which messages are worth compressing with archivecontext, or to locate a specific tool output / reasoning trace by content.
 
 Args:
   limit: max number of messages to return (default 10)
@@ -32,15 +33,9 @@ Args:
         return "No session ID available — run within a session.";
       }
 
-      const typedClient = client as { session?: { messages: (opts: unknown) => Promise<{ data?: Array<SizableMessage>; [key: string]: unknown }> } };
-      if (!typedClient?.session?.messages) {
-        return "SDK client session.messages() is not available.";
-      }
-
       let messages: SizableMessage[] = [];
       try {
-        const response = await typedClient.session.messages({ path: { id: sessionId } });
-        messages = ((response?.data ?? response) as unknown as SizableMessage[]) ?? [];
+        messages = (await session.messages({ sessionID: sessionId })) as unknown as SizableMessage[];
       } catch (err) {
         memLog("warn", "session-messages", "session.messages() failed", { error: String(err) });
         return `Error: session.messages() failed: ${String(err)}`;
@@ -73,8 +68,8 @@ Args:
         "",
       ];
       for (const m of sized) {
-        const id = m.msg.info?.id ?? "?";
-        const role = m.msg.info?.role ?? "?";
+        const id = m.msg.id ?? "?";
+        const role = m.msg.role ?? "?";
         const sizeTag = m.real !== null ? `real ${m.real.toLocaleString()}` : `est ${m.estimated.toLocaleString()}`;
         const types = Object.entries(partTypeChars(m.msg))
           .filter(([, chars]) => chars > 0)

@@ -94,6 +94,3 @@ export class SessionCache {
   }
 }
 
-export function createSessionCache(sessionId: string): SessionCache {
-  return new SessionCache(sessionId);
-}

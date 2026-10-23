@@ -5,7 +5,7 @@ import { estimateTokens } from "../infrastructure/llm/embeddings";
 export const CONTEXT_LIMIT = 128000;
 export const WARN_THRESHOLD = 0.8;
 export const MAX_RECENT_CALLS = 50;
-export const TOKEN_CAP_CHARS = 2000;
+const TOKEN_CAP_CHARS = 2000;
 
 export const recentCalls: string[] = [];
 export let pruneCallCounter = 0;

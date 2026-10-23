@@ -93,34 +93,3 @@ export function vecBruteSearch(
   }
 }
 
-/**
- * Insert a single embedding into memory_nodes is already done via
- * the normal INSERT. No separate vec table needed for brute-force
- * scalar mode. This is a no-op for compatibility with the HNSW API.
- */
-export function vecInsert(
-  _db: Database,
-  _scope: string,
-  _nodeId: string,
-  _embedding: number[],
-): void {
-  // No-op: vectors live in memory_nodes.embedding_blob
-}
-
-/**
- * Delete is handled by DELETE FROM memory_nodes.
- * No separate vec table to clean.
- */
-export function vecDelete(
-  _db: Database,
-  _nodeId: string,
-): void {
-  // No-op
-}
-
-/**
- * Rebuild is a no-op for scalar mode — vectors are already in memory_nodes.
- */
-export function vecRebuild(_db: Database): void {
-  // No-op
-}

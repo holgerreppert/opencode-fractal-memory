@@ -73,22 +73,31 @@ describe("formatSize", () => {
 });
 
 describe("getBackupSources", () => {
-  test("returns sources with existence info", () => {
+  test("returns dir-based sources with existence info", () => {
     const { getBackupSources } = require("./helpers");
     const sources = getBackupSources();
     expect(sources.length).toBeGreaterThanOrEqual(2);
-    const dbSource = sources.find(s => s.key === "db");
-    expect(dbSource).toBeDefined();
-    expect(dbSource!.exists).toBe(false);
-    expect(dbSource!.label).toBe("Memory Database");
+    const configSource = sources.find(s => s.key === "config");
+    expect(configSource).toBeDefined();
+    // MGMT_CONFIG_DIR (tmpDir) always exists in this suite
+    expect(configSource!.exists).toBe(true);
+    expect(configSource!.isDir).toBe(true);
   });
 
-  test("reports db as exists when memory.db is present", () => {
-    fs.writeFileSync(path.join(tmpDir, "memory.db"), "fake");
-    const { getBackupSources } = require("./helpers");
-    const sources = getBackupSources();
-    const dbSource = sources.find(s => s.key === "db");
-    expect(dbSource!.exists).toBe(true);
+  test("reports a source as missing when its dir does not exist", () => {
+    const missing = path.join(tmpDir, "no-such-cache");
+    const origCacheDir = process.env.MGMT_CACHE_DIR;
+    process.env.MGMT_CACHE_DIR = missing;
+    try {
+      const { getBackupSources } = require("./helpers");
+      const cacheSource = getBackupSources().find(s => s.key === "cache");
+      expect(cacheSource!.exists).toBe(false);
+      fs.mkdirSync(missing);
+      expect(getBackupSources().find(s => s.key === "cache")!.exists).toBe(true);
+    } finally {
+      if (origCacheDir !== undefined) process.env.MGMT_CACHE_DIR = origCacheDir;
+      else delete process.env.MGMT_CACHE_DIR;
+    }
   });
 });
 

@@ -35,32 +35,33 @@ describe("createCompactionHandler capture caps", () => {
   test("no longer creates middle-term/storedcontext capture nodes (migrated to contexthistory)", async () => {
     const store = makeStore();
     const handler = createCompactionHandler(store, CONFIG, {} as any);
-    const compact = handler["compacting"]!;
+    const compact = handler["compaction"]!;
 
-    const output = { context: [] as string[] };
-    await compact({ sessionID: "compact-s1" } as any, output as any);
+    const event = { sessionID: "compact-s1", context: [] as string[] };
+    await compact(event as any);
 
     // Node capture was removed with the storedcontext retirement — the
     // compaction hook now only provides working-cache context + token usage.
     expect(store.created.length).toBe(0);
-    expect(output.context.length).toBeGreaterThanOrEqual(1);
-    expect(output.context.join("\n")).toContain("Working cache");
+    expect(event.context.length).toBeGreaterThanOrEqual(1);
+    expect(event.context.join("\n")).toContain("Working cache");
   });
 
   test("still records token usage from fetched messages", async () => {
     const store = makeStore();
     const handler = createCompactionHandler(store, CONFIG, {
-      session: {
-        messages: async () => [{
-          info: { role: "assistant", tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 0, write: 0 } }, cost: 0.001 },
-          parts: [],
-        }],
-      },
+      messages: async () => [{
+        id: "m1",
+        role: "assistant",
+        tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 0, write: 0 } },
+        metadata: { cost: 0.001 },
+        parts: [],
+      }],
     } as any);
-    const compact = handler["compacting"]!;
+    const compact = handler["compaction"]!;
 
-    const output = { context: [] as string[] };
-    await compact({ sessionID: "compact-s2" } as any, output as any);
+    const event = { sessionID: "compact-s2", context: [] as string[] };
+    await compact(event as any);
 
     expect(store.created.length).toBe(0);
     expect(store.recordedTokens.length).toBe(1);

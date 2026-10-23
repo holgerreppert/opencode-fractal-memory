@@ -1,4 +1,4 @@
-import { tool, type ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "../../tools/define-tool";
 import type { MemoryStore } from "../../storage/sqlite";
 import { MemoryCompress } from "../compress";
 import { MemoryLlmCompress } from "../llm-compress";
@@ -8,6 +8,7 @@ import { MemoryInject } from "../inject";
 import { MemoryMiddleTerm } from "../middle-term";
 import { MemoryRecallContext } from "../recall-context";
 import { MemoryCacheStatus } from "../cache-status";
+import type { ToolDefinition } from "../define-tool";
 
 const SUGGESTIONS: Record<string, string> = {
   compress: "\n\n---\nNEXT: `context(mode=check)` to verify pressure dropped, or `context(mode=recall)` to recover state.",

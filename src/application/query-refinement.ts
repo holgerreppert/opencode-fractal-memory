@@ -1,3 +1,5 @@
+import type { ModelRef, SessionApi } from "../plugin/session-api";
+
 const REWRITE_PROMPT = `You are a memory retrieval query rewriter.
 Given the original search query and the user's reasoning context, rewrite the query to improve memory retrieval results.
 The original query failed to find highly relevant results — the top results had low confidence or were too similar to each other.
@@ -18,8 +20,8 @@ export interface RewriteInput {
 }
 
 export async function rewriteQuery(
-  client: unknown,
-  sessionId: string,
+  session: SessionApi,
+  model: ModelRef | undefined,
   input: RewriteInput,
 ): Promise<string | null> {
   const parts = [
@@ -29,28 +31,22 @@ export async function rewriteQuery(
     `Top scores: ${input.topScores.map(s => (s * 100).toFixed(0) + "%").join(", ")}`,
   ];
 
+  if (!model) return null;
   try {
-    const sdkClient = client as {
-      session?: {
-        prompt?: (opts: {
-          messages: Array<{ role: string; content: string }>;
-          noReply?: boolean;
-        }) => Promise<{ message?: { content?: string } }>;
-      };
-    };
-
-    const result = await sdkClient.session!.prompt!({
-      messages: [
-        { role: "system", content: REWRITE_PROMPT },
-        { role: "user", content: parts.join("\n") },
-      ],
-      noReply: true,
-    });
-
-    const rewritten = result?.message?.content?.trim() ?? null;
-    if (!rewritten || rewritten.length < 3 || rewritten.length > 100) return null;
-    return rewritten;
+    const text = await session.generate({ model, prompt: `${REWRITE_PROMPT}\n\n${parts.join("\n")}` });
+    if (!text) return null;
+    const parsed = parseRewrite(text);
+    return parsed;
   } catch {
     return null;
   }
+}
+
+/** Extract the rewritten query from the model's answer. */
+function parseRewrite(text: string): string | null {
+  const trimmed = text.trim();
+  const match = trimmed.match(/"([^"]{3,200})"/);
+  if (match?.[1]) return match[1];
+  const line = trimmed.split("\n").find((l) => l.trim().length > 0);
+  return line ? line.trim() : null;
 }

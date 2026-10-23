@@ -35,7 +35,9 @@ function makeRegistryStore(initialEntries: unknown[]): MemoryStore & { registryC
 
 function makeMessage(id: string, role: string, text: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    info: { id, role, ...extra },
+    id,
+    role,
+    ...extra,
     parts: [{ type: "text", text }],
   };
 }
@@ -44,7 +46,7 @@ const SESSION = "ses-test";
 
 // Messages carrying the always-on proprioception dashboard (injected after the
 // last user message) — filter them out so index-based assertions stay stable.
-function withoutDashboard(msgs: Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>) {
+function withoutDashboard(msgs: Array<{ id?: string; parts: Array<{ text?: string }> }>) {
   return msgs.filter(m => !(m.parts[0]?.text ?? "").startsWith("[memory-plugin:context-compress] context "));
 }
 
@@ -67,8 +69,8 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "Hi!"),
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
-    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
+    const msgs = output.messages as Array<{ id?: string; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
     expect(real).toHaveLength(3);
     expect(real[0]!.parts[0]!.text).toContain("[message msg-1]");
@@ -91,8 +93,8 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "Here is a very long explanation of the bug and the fix that should be archived"),
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
-    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
+    const msgs = output.messages as Array<{ id?: string; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
     expect(real).toHaveLength(3);
     expect(real[1]!.parts[0]!.text).toContain("[Compressed conversation section]");
@@ -116,9 +118,9 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "reply"),
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const msgs = output.messages as Array<{ parts: Array<{ text?: string }> }>;
-    const real = withoutDashboard(msgs as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>);
+    const real = withoutDashboard(msgs as Array<{ id?: string; parts: Array<{ text?: string }> }>);
     // msg-1 replaced by synthetic (no marker added), msg-2 gets marker
     expect(real[0]!.parts[0]!.text).toContain("[Compressed conversation section]");
     expect(real[1]!.parts[0]!.text).toContain("[message msg-2]");
@@ -138,13 +140,13 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "hi"),
       makeMessage("msg-2", "assistant", "bye"),
-      { info: { type: "compaction", id: "cmp-1" }, parts: [] },
+      { type: "compaction", id: "cmp-1", parts: [] },
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     expect(getCompressState(SESSION).blocks.size).toBe(0);
     // After clearing, msg-2 is NOT compressed anymore
-    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    const msgs = output.messages as Array<{ id?: string; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
     expect(real[1]!.parts[0]!.text).toContain("[message msg-2]");
   });
@@ -165,9 +167,9 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "hi"),
       makeMessage("msg-2", "assistant", "bye"),
-      { info: { role: "user", id: "cmp-1" }, parts: [{ type: "compaction", tail_start_id: "msg-old" }] },
+      { role: "user", id: "cmp-1", parts: [{ type: "compaction", tail_start_id: "msg-old" }] },
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     expect(getCompressState(SESSION).blocks.size).toBe(0);
   });
 
@@ -179,7 +181,7 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-1", "user", "small"),
       makeMessage("msg-2", "user", bigText),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("compress");
@@ -195,12 +197,12 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "run the command"),
       {
-        info: { id: "msg-2", role: "assistant" },
+        id: "msg-2", role: "assistant",
         parts: [{ type: "tool", tool: "bash", state: { status: "completed", output: bigOutput, input: { command: "ls" } } }],
       },
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("[message msg-2]");
@@ -214,12 +216,12 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "hi"),
       {
-        info: { id: "msg-2", role: "assistant", tokens: { input: 100, output: 9000, reasoning: 0, cache: { read: 0, write: 0 } } },
+        id: "msg-2", role: "assistant", tokens: { input: 100, output: 9000, reasoning: 0, cache: { read: 0, write: 0 } },
         parts: [{ type: "text", text: "short" }],
       },
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("[message msg-2]");
@@ -233,12 +235,12 @@ describe("createContextCompressTransformHandler", () => {
     const output = { messages: [
       makeMessage("msg-1", "user", "solve it"),
       {
-        info: { id: "msg-2", role: "assistant" },
+        id: "msg-2", role: "assistant",
         parts: [{ type: "reasoning", text: bigReasoning }, { type: "text", text: "done" }],
       },
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("[message msg-2]");
@@ -265,7 +267,7 @@ describe("createContextCompressTransformHandler", () => {
     ];
     const output = { messages };
     const originalArray = output.messages;
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     // The SAME array object must be mutated (identity preserved)
     expect(output.messages).toBe(originalArray);
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text);
@@ -282,7 +284,7 @@ describe("createContextCompressTransformHandler", () => {
     ];
     const output = { messages };
     const originalArray = output.messages;
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     expect(output.messages).toBe(originalArray);
     // Always-on dashboard inserted after the last user message (index 2).
     expect(output.messages).toHaveLength(4);
@@ -308,13 +310,13 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "Here is a very long explanation that should be pruned"),
       makeMessage("msg-3", "user", "run the command"),
       {
-        info: { id: "msg-4", role: "assistant" },
+        id: "msg-4", role: "assistant",
         parts: [{ type: "tool", tool: "bash", state: { status: "completed", output: bigText, input: { command: "ls" } } }],
       },
     ];
     const output = { messages };
     const originalArray = output.messages;
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     // Mid-turn (last message is assistant tool result): array identity AND
     // content must be preserved — no pruning, no markers, no nudge injection.
     expect(output.messages).toBe(originalArray);
@@ -330,9 +332,9 @@ describe("createContextCompressTransformHandler", () => {
     const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
     const bigText = "word ".repeat(2000);
     const output1 = { messages: [makeMessage("msg-1", "user", bigText)] };
-    await handler["chat.messages.transform"]!({}, output1);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output1.messages });
     const output2 = { messages: [makeMessage("msg-1", "user", bigText)] };
-    await handler["chat.messages.transform"]!({}, output2);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output2.messages });
     const texts2 = (output2.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     expect(texts2.join("\n")).not.toContain("compress");
   });
@@ -355,10 +357,10 @@ describe("createContextCompressTransformHandler", () => {
     const handler = createContextCompressTransformHandler(store, config, { value: SESSION });
     // Compaction fires; the view only contains msg-live (and the compaction msg).
     const output = { messages: [
-      { info: { type: "compaction", id: "cmp-1" }, parts: [] },
+      { type: "compaction", id: "cmp-1", parts: [] },
       makeMessage("msg-live", "assistant", "still in view"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
 
     // Dead entry marked, live entry untouched in the registry.
     const parsed = JSON.parse(store.registryContent()) as { entries: Array<{ msgId: string; status: string }> };
@@ -392,7 +394,7 @@ describe("createContextCompressTransformHandler", () => {
     // Big text pushes past the 1% threshold → imperative directive must appear.
     const bigText = "word ".repeat(2000); // ~4000+ tokens ≈ 3% of 128k
     const output = { messages: [makeMessage("msg-1", "user", bigText)] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("PRESSURE at ~");
@@ -403,7 +405,7 @@ describe("createContextCompressTransformHandler", () => {
     const config = makeConfig(); // threshold 0.6 (60%)
     const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
     const output = { messages: [makeMessage("msg-1", "user", "small text")] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).not.toContain("PRESSURE at ~");
@@ -413,7 +415,7 @@ describe("createContextCompressTransformHandler", () => {
     const config = makeConfig();
     const handler = createContextCompressTransformHandler(makeStore(), config, { value: SESSION });
     const output = { messages: [makeMessage("msg-1", "user", "small text")] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("[memory-plugin:context-compress] context ");
@@ -429,7 +431,7 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", bigText),
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
     const texts = (output.messages as Array<{ parts: Array<{ text?: string }> }>).map(m => m.parts[0]?.text ?? "");
     const joined = texts.join("\n");
     expect(joined).toContain("HIGH priority");
@@ -452,8 +454,8 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "Here is a useless tool output"),
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
-    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
+    const msgs = output.messages as Array<{ id?: string; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
     // msg-2 is deleted entirely — only msg-1, msg-3 remain (+ dashboard)
     expect(real).toHaveLength(2);
@@ -491,8 +493,8 @@ describe("createContextCompressTransformHandler", () => {
       makeMessage("msg-2", "assistant", "ls returned nothing useful"),
       makeMessage("msg-3", "user", "continue"),
     ] };
-    await handler["chat.messages.transform"]!({}, output);
-    const msgs = output.messages as Array<{ info: { id?: string }; parts: Array<{ text?: string }> }>;
+    await handler["messages"]!({ sessionID: "ses_test", messages: output.messages });
+    const msgs = output.messages as Array<{ id?: string; parts: Array<{ text?: string }> }>;
     const real = withoutDashboard(msgs);
     // msg-1 → placeholder, msg-2 → removed, msg-3 → marker
     expect(real).toHaveLength(2);

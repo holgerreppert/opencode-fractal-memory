@@ -3,7 +3,7 @@ import { searchNodes } from "../../application/graph/query";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { recordInjection } from "../../application/injection-visibility";
 import { writeGraphLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
 const SEARCH_TOOLS = new Set(["grep", "glob", "search"]);
 
@@ -18,16 +18,16 @@ function extractBashQuery(command: string): string | null {
   return null;
 }
 
-export function createGraphSearchHintHandler(config: MemConfig): HookHandler {
+export function createGraphSearchHintHandler(config: MemConfig, directory: string): PluginHooks {
   const graphConfig = config.graph;
   if (!graphConfig?.enabled) return {};
 
-  const root = process.cwd();
+  const root = directory;
   const maxFiles = graphConfig.maxFiles ?? 5000;
 
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: Record<string, unknown> };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: Record<string, unknown> };
       const tool = input.tool;
       if (!tool) return;
 
@@ -62,7 +62,7 @@ export function createGraphSearchHintHandler(config: MemConfig): HookHandler {
       writeGraphLog("info", "Search hint injected", { tool: input.tool, query, matches: matches.length });
       recordInjection(config, "graph-search-hint", `${suggestions.length} symbol(s) for "${query}" (${input.tool})`);
 
-      const out = output as { output?: string };
+      const out = event as unknown as { output?: string };
       if (typeof out.output === "string" && !out.output.includes("code graph")) {
         out.output += hint;
       }

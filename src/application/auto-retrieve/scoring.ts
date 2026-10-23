@@ -1,5 +1,6 @@
 import { tokenize } from "../../storage/sqlite";
 import { memLog } from "../../logging";
+import type { ModelRef, SessionApi } from "../../plugin/session-api";
 
 export interface Candidate {
   id: string;
@@ -52,8 +53,8 @@ export function fallbackScore(
 }
 
 export async function llmJudgeScore(
-  client: unknown,
-  sessionId: string,
+  session: SessionApi,
+  model: ModelRef | undefined,
   query: string,
   candidates: Candidate[],
 ): Promise<{ id: string; label: string; content: string; score: number }[]> {
@@ -72,20 +73,18 @@ ${candidateLines}
 
 Output only valid JSON, no other text:`;
 
-  try {
-    const result = await (client as {
-      session?: { prompt: (opts: unknown) => Promise<{ text: () => Promise<string> }> };
-    }).session?.prompt({
-      path: { id: sessionId },
-      body: { noReply: true, parts: [{ type: "text" as const, text: prompt }] },
-    });
+  if (!model) {
+    memLog("warn", "auto-retrieve", "LLM judge: no model available");
+    return fallbackScore(candidates, query);
+  }
 
-    if (!result) {
-      memLog("warn", "auto-retrieve", "LLM judge: no result from prompt");
+  try {
+    // A one-shot generation: no session, no tools, no reply in the transcript.
+    const text = await session.generate({ model, prompt });
+    if (!text) {
+      memLog("warn", "auto-retrieve", "LLM judge: no result from generation");
       return fallbackScore(candidates, query);
     }
-
-    const text = await result.text();
     const parsed = JSON.parse(text.trim());
     if (!Array.isArray(parsed)) {
       memLog("warn", "auto-retrieve", "LLM judge: response not an array");

@@ -4,14 +4,16 @@ import { estimateMessageTokens, partTypeChars, realMessageTokens } from "../appl
 
 function makeClient(messages: unknown[]) {
   return {
-    session: {
-      messages: async () => ({ data: messages }),
-    },
+    messages: async () => messages as never,
+    prompt: async () => undefined,
+    synthetic: async () => undefined,
+    generate: async () => undefined,
+    lastModel: async () => undefined,
   };
 }
 
 function makeMsg(id: string, role: string, parts: unknown[]) {
-  return { info: { id, role }, parts };
+  return { id, role, parts };
 }
 
 describe("message-size helpers", () => {
@@ -32,7 +34,7 @@ describe("message-size helpers", () => {
   test("realMessageTokens returns output+reasoning, null when absent", () => {
     expect(realMessageTokens(makeMsg("m1", "assistant", []))).toBeNull();
     expect(
-      realMessageTokens({ info: { tokens: { input: 1, output: 400, reasoning: 100, cache: { read: 0, write: 0 } } }, parts: [] }),
+      realMessageTokens({ tokens: { input: 1, output: 400, reasoning: 100, cache: { read: 0, write: 0 } }, parts: [] }),
     ).toBe(500);
   });
 
@@ -81,10 +83,10 @@ describe("createSessionMessagesTool", () => {
     expect(result).not.toContain("[message small]");
   });
 
-  test("returns error message when SDK client is unavailable", async () => {
+  test("returns error message when the session API is unavailable", async () => {
     const tool = createSessionMessagesTool({});
     const result = (await tool.execute({}, { sessionID: "ses-1" } as never)) as string;
-    expect(result).toContain("not available");
+    expect(result).toContain("Error: session.messages() failed");
   });
 
   test("returns no-match message when nothing matches", async () => {

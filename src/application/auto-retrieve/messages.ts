@@ -1,17 +1,15 @@
-export interface Part {
-  type: string;
-  text?: string;
-  name?: string;
-  isError?: boolean;
-  input?: Record<string, unknown>;
-}
+import type { MessagePart, MessageView } from "../../plugin/hooks/types";
 
-export interface Message {
-  info: { role: string; synthetic?: boolean };
-  parts: Part[];
-}
+/** A message part as the plugin's analysis helpers see it. */
+export type Part = MessagePart;
 
-export type MessagesHook = (input: unknown, output: { messages: Message[] }) => Promise<void>;
+/** A message as the plugin's analysis helpers see it. */
+export type Message = MessageView;
+
+export type MessagesHook = (event: {
+  messages: Message[];
+  model?: { providerID: string; id: string } | undefined;
+}) => Promise<void>;
 
 export interface MemorySearchResult {
   part: Part;
@@ -25,7 +23,7 @@ export function findMemorySearchResult(messages: Message[]): MemorySearchResult 
     if (!msg?.parts) continue;
     for (let pi = 0; pi < msg.parts.length; pi++) {
       const part = msg.parts[pi];
-      if (part && part.type === "tool_result" && part.name === "memory_search") {
+      if (part && part.type === "tool-result" && part.name === "memory_search") {
         return { part, msgIdx: mi, partIdx: pi };
       }
     }
@@ -38,7 +36,7 @@ export function extractLastAgentQuery(messages: Message[]): string | null {
     const msg = messages[i];
     if (!msg?.parts) continue;
     for (const part of msg.parts) {
-      if (part.type === "tool_use" && part.name === "memory_search" && part.input) {
+      if (part.type === "tool-call" && part.name === "memory_search" && part.input) {
         const input = part.input as Record<string, unknown>;
         return typeof input.query === "string" ? input.query : null;
       }
@@ -50,7 +48,7 @@ export function extractLastAgentQuery(messages: Message[]): string | null {
 export function extractLastAgentReasoning(messages: Message[]): string {
   for (let i = messages.length - 2; i >= 0; i--) {
     const msg = messages[i];
-    if (!msg?.parts || msg.info?.role !== "assistant") continue;
+    if (!msg?.parts || msg.role !== "assistant") continue;
     const texts: string[] = [];
     for (const part of msg.parts) {
       if (part.type === "reasoning" && part.text) {

@@ -1,8 +1,9 @@
-import { tool, type ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "../../tools/define-tool";
 import type { MemoryStore } from "../../storage/sqlite";
 import type { JournalStore, JournalContext } from "../../application/journal";
 import { JournalWrite, JournalRead, JournalSearch } from "../journal";
 import { migrateJournalFiles } from "./journal-migrate";
+import type { ToolDefinition } from "../define-tool";
 
 export function createJournalTool(store: JournalStore | null, ctx: JournalContext, memoryStore?: MemoryStore | undefined) {
   if (!store) {

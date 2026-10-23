@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import { generateEmbeddingWithSegments } from "../infrastructure/llm/embeddings";
 import { resolveNode, wrapWithTracking, normalizeScope } from "./shared";

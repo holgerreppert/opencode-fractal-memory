@@ -1,4 +1,5 @@
 import type { MemoryStore } from "../storage/sqlite";
+import type { SessionApi } from "./session-api";
 import type { MemConfig } from "../infrastructure/config/config";
 import { memLog } from "../logging";
 import { createRecordingHandler } from "./hooks/recording";
@@ -20,11 +21,9 @@ import { createGraphEditCheckHandler } from "./hooks/graph-edit-check";
 import { createGraphSearchHintHandler } from "./hooks/graph-search-hint";
 import { createToolDedupHandler } from "./hooks/tool-dedup";
 import { createErrorPruneHandler } from "./hooks/error-prune";
-import { createToolDefinitionHandler } from "./hooks/tool-definition";
 import { createToolBeforeGuardHandler } from "./hooks/tool-before-guard";
 import { createContextCompressTransformHandler } from "./hooks/context-compress-transform";
-import { createTextCompleteHandler } from "./hooks/text-complete";
-import type { HookHandler } from "./hooks/types";
+import type { CompactionEvent, PromptEvent, MessagesEvent, OptionsEvent, PluginEvent, PluginHooks, SystemEvent, ToolAfterEvent, ToolBeforeEvent } from "./hooks/types";
 import { runToolResultPipeline, wrapHookHandlerAsTransformer, type ToolResultTransformer } from "./tool-result-pipeline";
 
 const TURN_COUNTERS = new Map<string, number>();
@@ -37,7 +36,7 @@ function nextTurnIndex(sessionId: string): number {
 
 export function createHookHandlers(
   store: MemoryStore,
-  client: unknown,
+  session: SessionApi,
   memConfig: MemConfig,
   ruleCache: Map<string, { content: string; type: string }>,
   ruleCacheDirty: { value: boolean },
@@ -45,6 +44,7 @@ export function createHookHandlers(
   latestUserMessage: { value: string },
   managementServer: { start: () => void; stop: () => void },
   currentSessionId: { value: string },
+  directory: string,
 ) {
   const toolBeforeGuard = createToolBeforeGuardHandler();
 
@@ -57,26 +57,22 @@ export function createHookHandlers(
   const reReadHandler = createReReadEliminationHandler(memConfig);
   const adaptivePressureHandler = createAdaptivePressureHandler(memConfig);
   const seedRulesHandler = createSeedRulesHandler(store, memConfig, ruleCache, ruleCacheDirty, sessionInjectionLock);
-  const compactionHandler = createCompactionHandler(store, memConfig, client);
-  const eventHandler = createEventHandler(store, memConfig, client, managementServer);
+  const compactionHandler = createCompactionHandler(store, memConfig, session);
+  const eventHandler = createEventHandler(store, memConfig, session, managementServer, directory);
   const outputTokenHandler = createOutputTokenControlHandler(memConfig);
   const chatParamsHandler = createChatParamsHandler(memConfig);
   const messagesTransformHandler = createMessagesTransformHandler(store, memConfig, currentSessionId);
   const contextCompressHandler = createContextCompressTransformHandler(store, memConfig, currentSessionId);
-  const graphRefreshHandler = createGraphRefreshHandler(memConfig);
+  const graphRefreshHandler = createGraphRefreshHandler(memConfig, directory);
   const graphContextHandler = createGraphContextHandler(memConfig);
-  const graphEditCheckHandler = createGraphEditCheckHandler(memConfig);
-  const graphSearchHintHandler = createGraphSearchHintHandler(memConfig);
+  const graphEditCheckHandler = createGraphEditCheckHandler(memConfig, directory);
+  const graphSearchHintHandler = createGraphSearchHintHandler(memConfig, directory);
   const injectionDigestHandler = createInjectionDigestHandler(store, memConfig, currentSessionId);
-  const toolDefinitionHandler = createToolDefinitionHandler();
-  const textCompleteHandler = createTextCompleteHandler(store, currentSessionId, latestUserMessage);
 
-  const handlers: HookHandler[] = [
+  const handlers: PluginHooks[] = [
     dedupHandler,
     errorPruneHandler,
     toolBeforeGuard,
-    toolDefinitionHandler,
-    textCompleteHandler,
     recordingHandler,
     workingCacheHandler,
     compressionHandler,
@@ -115,12 +111,12 @@ export function createHookHandlers(
     wrapHookHandlerAsTransformer("injection-digest", 80, injectionDigestHandler),
   ];
 
-  async function callHooks(method: keyof HookHandler, ...args: Parameters<NonNullable<HookHandler[keyof HookHandler]>>): Promise<void> {
+  async function callHooks(method: keyof PluginHooks, event: never): Promise<void> {
     for (const handler of handlers) {
       const fn = handler[method];
       if (fn) {
         try {
-          await (fn as (...a: Parameters<NonNullable<HookHandler[keyof HookHandler]>>) => Promise<void>)(...args);
+          await (fn as (e: never) => Promise<void>)(event);
         } catch (err) {
           memLog("error", "hooks", `Handler ${method} failed`, { error: String(err) });
         }
@@ -129,34 +125,30 @@ export function createHookHandlers(
   }
 
   return {
-    "experimental.chat.system.transform": (input: unknown, output: unknown) =>
-      callHooks("system.transform", input, output),
-    "tool.execute.before": (input: unknown, output: unknown) =>
-      callHooks("tool.before", input, output),
-    "tool.execute.after": async (input: unknown, output: unknown) => {
-      const inp = input as { tool?: string; sessionID?: string; callID?: string; args?: Record<string, unknown> };
-      const out = output as { title?: string; output?: string; metadata?: Record<string, unknown> };
-      const toolName = inp?.tool;
-      const sid = inp?.sessionID;
+    "system": (event: SystemEvent) => callHooks("system", event as never),
+    "tool.execute.before": (event: ToolBeforeEvent) => callHooks("tool.execute.before", event as never),
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const toolName = event.tool;
+      const sid = event.sessionID;
       if (sid && toolName) {
         currentSessionId.value = sid;
         try {
-          const argsPreview = JSON.stringify(inp?.args || {}).slice(0, 500);
-          const outputPreview = (out?.output ?? "").slice(0, 500);
-          const success = out?.output === undefined ? null : true;
+          const argsPreview = JSON.stringify(event.args || {}).slice(0, 500);
+          const outputPreview = (event.output ?? "").slice(0, 500);
+          const success = event.output === undefined ? null : true;
           await store.recordConversationTurn({
             sessionId: sid,
             timestamp: Date.now(),
             turnIndex: nextTurnIndex(sid),
             role: "tool",
-            content: out?.title || `tool:${toolName}`,
+            content: event.title || `tool:${toolName}`,
             toolName,
             toolArgs: argsPreview,
             toolResult: outputPreview,
             tokenCount: Math.round(outputPreview.length / 4),
           });
           try {
-            await store.recordAgentToolCall(sid, toolName, inp?.args ?? null, out?.output ?? null, success, null);
+            await store.recordAgentToolCall(sid, toolName, event.args ?? null, event.output ?? null, success, null);
           } catch (recordErr) {
             memLog("warn", "live-capture", "Failed to record agent tool call", { tool: toolName, error: String(recordErr) });
           }
@@ -167,46 +159,28 @@ export function createHookHandlers(
       }
       // Explicit pipeline — ordered, typed, with provenance + per-transform metrics
       const raw: import("./tool-result-pipeline").ToolResult = {
-        tool: (inp?.tool as string) ?? "unknown",
-        ...(inp?.sessionID !== undefined ? { sessionID: inp.sessionID } : {}),
-        ...(inp?.args !== undefined ? { args: inp.args } : {}),
-        ...((out as { output?: string })?.output !== undefined ? { output: (out as { output: string }).output } : {}),
-        ...((out as { title?: string })?.title !== undefined ? { title: (out as { title: string }).title } : {}),
-        ...((out as { metadata?: Record<string, unknown> })?.metadata !== undefined ? { metadata: (out as { metadata: Record<string, unknown> }).metadata } : {}),
-      }
-      const result = await runToolResultPipeline(raw, toolAfterPipeline)
-      // copy pipeline result back to opencode's output object
-      const cur = result.current
-      if (out && typeof out === "object") {
-        const o = out as Record<string, unknown>
-        o["output"] = cur.output
-        if (cur.title !== undefined) o["title"] = cur.title
-        if (cur.metadata !== undefined) o["metadata"] = cur.metadata
-        // attach provenance for management live feed / debugging
-        o["__pipelineProvenance"] = result.provenance
-      }
-      memLog("info", "hooks", "tool.after pipeline finished", {
+        tool: toolName || "unknown",
+        ...(sid !== undefined ? { sessionID: sid } : {}),
+        ...(event.args !== undefined ? { args: event.args } : {}),
+        ...(event.output !== undefined ? { output: event.output } : {}),
+        ...(event.title !== undefined ? { title: event.title } : {}),
+        ...(event.metadata !== undefined ? { metadata: event.metadata } : {}),
+      };
+      const result = await runToolResultPipeline(raw, toolAfterPipeline);
+      // copy pipeline result back onto the event
+      const cur = result.current;
+      event.output = cur.output ?? "";
+      if (cur.title !== undefined) event.title = cur.title;
+      if (cur.metadata !== undefined) event.metadata = cur.metadata;
+      memLog("info", "hooks", "tool.execute.after pipeline finished", {
         tool: raw.tool,
         provenance: result.provenance.map((r) => `${r.name}:${r.applied ? "ok" : "skip"}:${r.durationMs}ms`).join(","),
-      })
+      });
     },
-    "tool.definition": (input: unknown, output: unknown) =>
-      callHooks("tool.definition", input, output),
-    "experimental.session.compacting": (input: unknown, output: unknown) =>
-      callHooks("compacting", input, output),
-    "experimental.compaction.autocontinue": async (input: unknown, output: { enabled: boolean }) => {
-      output.enabled = true;
-      await callHooks("compaction.autocontinue", input, output);
-    },
-    "chat.params": (input: unknown, output: unknown) =>
-      callHooks("chat.params", input, output),
-    "experimental.chat.messages.transform": (input: unknown, output: unknown) =>
-      callHooks("chat.messages.transform", input, output),
-    "chat.message": async (input: unknown, output: unknown) => {
-      await callHooks("chat.message", input, output);
-    },
-    "experimental.text.complete": (input: unknown, output: unknown) =>
-      callHooks("text.complete", input, output),
-    event: (input: unknown) => (callHooks as (...args: unknown[]) => Promise<void>)("event", input),
+    "compaction": (event: CompactionEvent) => callHooks("compaction", event as never),
+    "options": (event: OptionsEvent) => callHooks("options", event as never),
+    "messages": (event: MessagesEvent) => callHooks("messages", event as never),
+    "message": (event: PromptEvent) => callHooks("message", event as never),
+    "event": (event: PluginEvent) => callHooks("event", event as never),
   };
 }

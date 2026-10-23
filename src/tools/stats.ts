@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import { CONTEXT_LIMIT, WARN_THRESHOLD, wrapWithTracking, normalizeScope, boundedContentTokens } from "./shared";
 import { isDumpNode } from "../storage/queries/search-helpers";

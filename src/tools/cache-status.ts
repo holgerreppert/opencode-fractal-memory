@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import { getWorkingCache } from "../application/cache";
 import { wrapWithTracking } from "./shared";

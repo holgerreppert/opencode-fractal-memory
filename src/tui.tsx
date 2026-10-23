@@ -2,8 +2,8 @@
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import type { TuiPlugin } from "@opencode-ai/plugin/tui"
-import type { Context as V2TuiContext } from "@opencode/plugin/tui/context"
+import type { Context as TuiContext } from "@opencode/plugin/tui/context"
+import { createSignal } from "solid-js"
 import { getLatestPressureSync } from "./storage/sync-pressure"
 
 declare namespace JSX {
@@ -15,7 +15,15 @@ declare namespace JSX {
 
 const CONTEXT_LIMIT = 128000
 
-function getMgmt() {
+interface MgmtStatus {
+  enabled: boolean
+  port: number
+  url: string
+  running: boolean
+  pid: number | null
+}
+
+function getMgmt(): MgmtStatus {
   const configPath = path.join(os.homedir(), ".config", "opencode", "opencode-mem.json")
   let enabled = true
   let port = 8788
@@ -36,14 +44,37 @@ function getMgmt() {
   try {
     if (fs.existsSync(pidFile)) {
       const txt = fs.readFileSync(pidFile, "utf-8").trim()
-      pid = parseInt(txt, 10)
-      if (pid > 0) {
-        process.kill(pid, 0)
+      const parsed = parseInt(txt, 10)
+      if (parsed > 0) {
+        process.kill(parsed, 0)
+        pid = parsed
         running = true
       }
     }
   } catch { running = false }
   return { enabled, port, url, running, pid }
+}
+
+/** True when the port answers HTTP at all — the authoritative liveness check. */
+async function probePort(url: string): Promise<boolean> {
+  try {
+    await fetch(url, { signal: AbortSignal.timeout(1500) })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Sync pid-file state + async port probe. The pid file alone is unreliable:
+ * a spawn race used to delete it while the server kept running, which made
+ * the sidebar read "stopped" forever. A live port is the ground truth.
+ */
+async function refreshMgmt(): Promise<MgmtStatus> {
+  const base = getMgmt()
+  if (!base.enabled) return base
+  const up = await probePort(base.url)
+  return { ...base, running: base.running || up }
 }
 
 function getPressure(): { pressure_pct: number; total_tokens: number; timestamp: number; session_id: string } | null {
@@ -55,9 +86,9 @@ function bar(pct: number, width = 10): string {
   return "█".repeat(Math.min(filled, width)) + "░".repeat(Math.max(width - filled, 0))
 }
 
-/** Text of the `/mem` status command — shared by the V1 and V2 keymaps. */
-function statusMessage(): string {
-  const m = getMgmt()
+/** Text of the `/mem` status command. */
+async function statusMessage(): Promise<string> {
+  const m = await refreshMgmt()
   const p = getPressure()
   return `${m.enabled ? "ON" : "OFF"} ${m.url} ${m.running ? "● running" : "○ stopped"}${p ? ` | ${p.pressure_pct}% ${p.total_tokens.toLocaleString()}/${CONTEXT_LIMIT.toLocaleString()}` : ""}`
 }
@@ -65,9 +96,8 @@ function statusMessage(): string {
 /**
  * Colors for the sidebar box.
  *
- * V1 exposes a flat theme (`theme.current` with hex strings); V2 exposes
- * nested semantic tokens whose values are RGBA objects. Both are passed
- * through to the OpenTUI color props, which accept either.
+ * The runtime exposes nested semantic tokens whose values are RGBA objects.
+ * They are passed through to the OpenTUI color props.
  */
 interface SidebarColors {
   primary: unknown
@@ -81,11 +111,11 @@ interface SidebarColors {
 
 /**
  * The sidebar box. `getColors` is called during render so the theme is read
- * inside the reactive scope (V1: `theme.current`; V2: `ctx.theme`).
+ * inside the reactive scope.
  */
-function renderSidebar(getColors: () => SidebarColors) {
+function renderSidebar(getColors: () => SidebarColors, getMgmtState: () => MgmtStatus) {
   const skin = getColors()
-  const m = getMgmt()
+  const m = getMgmtState()
   const p = getPressure()
   const dot = m.running ? "●" : "○"
   const dotColor = m.running ? skin.success : skin.textMuted
@@ -131,58 +161,16 @@ function renderSidebar(getColors: () => SidebarColors) {
 }
 
 /**
- * V1 entrypoint (OpenCode 1.18.x terminal client).
+ * Terminal-client entrypoint.
  *
- * Registers the `/mem` palette command and the Fractal Memory sidebar box.
+ * The CLI plugin registers a keymap layer and claims a slot on the context.
  */
-export const tui: TuiPlugin = async (api, options) => {
-  if (options?.enabled === false) return
-
-  api.keymap.registerLayer({
-    commands: [
-      {
-        name: "mem.status",
-        title: "mem status",
-        category: "Plugin",
-        namespace: "palette",
-        slashName: "mem",
-        run() {
-          api.ui.toast({ variant: "info", title: "Fractal Memory", message: statusMessage(), duration: 3000 })
-        },
-      },
-    ],
-  })
-
-  api.slots.register({
-    order: 50,
-    slots: {
-      sidebar_content(ctx: any) {
-        return renderSidebar(() => {
-          const skin = ctx.theme.current
-          return {
-            primary: skin.primary ?? "#5f87ff",
-            textMuted: skin.textMuted ?? "#a5a5a5",
-            border: skin.border ?? "#4a4a4a",
-            backgroundPanel: skin.backgroundPanel ?? "#1d1d1d",
-            success: skin.success ?? "#5faf5f",
-            error: skin.error ?? "#ff5f5f",
-            warning: skin.warning ?? "#ffaf00",
-          }
-        })
-      },
-    },
-  })
-}
-
-/**
- * V2 entrypoint (OpenCode 2.x terminal client).
- *
- * V2 registers a keymap layer and claims a slot on the context instead of
- * receiving an `api` object, and the theme is a nested semantic-token tree
- * rather than the V1 flat theme.
- */
-async function setupTuiV2(ctx: V2TuiContext): Promise<() => void> {
-  if (ctx.options?.enabled === false) return () => {}
+async function setupTui(ctx: TuiContext): Promise<() => void> {
+  if (ctx.options?.enabled === false) {
+    return () => {
+      // disabled — nothing was registered
+    };
+  }
 
   ctx.keymap.layer(() => ({
     mode: "global",
@@ -194,11 +182,25 @@ async function setupTuiV2(ctx: V2TuiContext): Promise<() => void> {
         palette: true,
         slash: { name: "mem", aliases: ["status"], arguments: true },
         run() {
-          ctx.ui.toast.show({ variant: "info", title: "Fractal Memory", message: statusMessage(), duration: 3000 })
+          // Return the promise so callers (and tests) can await the toast.
+          return statusMessage().then((message) =>
+            ctx.ui.toast.show({ variant: "info", title: "Fractal Memory", message, duration: 3000 }),
+          ).catch(() => { /* toast is best-effort */ });
         },
       },
     ],
   }))
+
+  // Re-check management liveness + pressure on an interval so the sidebar
+  // self-corrects after a cold service start (the first render can happen
+  // before the server plugin has spawned the management server, which
+  // previously latched "○ stopped" for the whole session). Reading the
+  // signal inside render subscribes the slot to updates. The pid file alone
+  // is not trusted — a live port probe is the ground truth.
+  const [mgmtState, setMgmtState] = createSignal<MgmtStatus>(getMgmt())
+  const refresh = () => { void refreshMgmt().then(setMgmtState).catch(() => { /* keep last state */ }) }
+  refresh()
+  const timer = setInterval(refresh, 3000)
 
   const unregister = ctx.ui.slot({
     append: "sidebar.content",
@@ -214,21 +216,21 @@ async function setupTuiV2(ctx: V2TuiContext): Promise<() => void> {
           error: theme.text.feedback.error.base,
           warning: theme.text.feedback.warning.base,
         }
-      }),
+      }, mgmtState),
   })
 
-  return () => unregister()
+  return () => {
+    clearInterval(timer)
+    unregister()
+  }
 }
 
 /**
- * Dual-shape TUI entrypoint.
+ * Terminal-client entrypoint.
  *
- * OpenCode 1.18.x calls `tui(api, options)`; OpenCode 2.x calls
- * `setup(ctx)`. The V1 loader rejects a module that exports BOTH `server()`
- * and `tui()` — this module only exports `tui`, so the two coexist safely.
+ * The runtime resolves the package's `tui` entrypoint and calls `setup(ctx)`.
  */
 export default {
   id: "opencode-fractal-memory",
-  setup: setupTuiV2,
-  tui,
+  setup: setupTui,
 }

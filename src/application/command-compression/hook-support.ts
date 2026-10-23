@@ -53,7 +53,7 @@ export function offloadOutput(output: string): string | null {
 // content so lossy compression can never silently lose a hash or id.
 const ID_RE = /\b(?:[a-f0-9]{7,40}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Z]+-\d+|\d+\.\d+\.\d+)\b/gi;
 
-export function extractIdentifiers(text: string, cap = 16): string[] {
+function extractIdentifiers(text: string, cap = 16): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   const matches = text.match(ID_RE) ?? [];

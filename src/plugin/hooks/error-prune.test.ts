@@ -36,18 +36,18 @@ describe("createErrorPruneHandler", () => {
     const handler = createErrorPruneHandler(config);
 
     // Simulate a tool.before call (increments turn counter)
-    const before = handler["tool.before"];
+    const before = handler["tool.execute.before"];
     if (before) await before({} as any);
 
     // Build a messages.transform call with an errored tool part
     const output = {
       messages: [
         {
-          info: { role: "user" },
+          role: "user",
           parts: [{ type: "text", text: "hello" }],
         },
         {
-          info: { role: "assistant" },
+          role: "assistant",
           parts: [
             makeToolPart("grep", "error", { pattern: "some really long error pattern that needs pruning" }),
           ],
@@ -55,10 +55,10 @@ describe("createErrorPruneHandler", () => {
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
       // The handler mutates output
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     const prunedPart = output.messages[1]!.parts[0] as any;
@@ -70,17 +70,17 @@ describe("createErrorPruneHandler", () => {
     const config = makeConfig();
     const handler = createErrorPruneHandler(config);
 
-    const before = handler["tool.before"];
+    const before = handler["tool.execute.before"];
     if (before) await before({} as any);
 
     const output = {
       messages: [
         {
-          info: { role: "user" },
+          role: "user",
           parts: [{ type: "text", text: "hi" }],
         },
         {
-          info: { role: "assistant" },
+          role: "assistant",
           parts: [
             makeToolPart("grep", "success", { pattern: "some pattern" }),
           ],
@@ -88,9 +88,9 @@ describe("createErrorPruneHandler", () => {
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     const part = output.messages[1]!.parts[0] as any;
@@ -102,17 +102,17 @@ describe("createErrorPruneHandler", () => {
     const config = makeConfig();
     const handler = createErrorPruneHandler(config);
 
-    const before = handler["tool.before"];
+    const before = handler["tool.execute.before"];
     if (before) await before({} as any);
 
     const output = {
       messages: [
         {
-          info: { role: "user" },
+          role: "user",
           parts: [{ type: "text", text: "hi" }],
         },
         {
-          info: { role: "assistant" },
+          role: "assistant",
           parts: [
             makeToolPart("read", "error", { filePath: "/important/file.ts" }),
           ],
@@ -120,9 +120,9 @@ describe("createErrorPruneHandler", () => {
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     const part = output.messages[1]!.parts[0] as any;
@@ -133,13 +133,13 @@ describe("createErrorPruneHandler", () => {
     const config = makeConfig();
     const handler = createErrorPruneHandler(config);
 
-    const before = handler["tool.before"];
+    const before = handler["tool.execute.before"];
     if (before) await before({} as any);
 
     const output = {
       messages: [
         {
-          info: { role: "assistant" },
+          role: "assistant",
           parts: [
             makeToolPart("cmd", "error", { key: "short" }),
           ],
@@ -147,9 +147,9 @@ describe("createErrorPruneHandler", () => {
       ],
     };
 
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     if (transform) {
-      await transform({} as any, output);
+      await transform({ sessionID: "ses_test", messages: output.messages });
     }
 
     const part = output.messages[0]!.parts[0] as any;

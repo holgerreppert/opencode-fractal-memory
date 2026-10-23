@@ -4,21 +4,21 @@ import { getFileContext } from "../../application/graph/query";
 import { extractSkeleton } from "../../application/skeletonize";
 import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { writeGraphLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { PluginHooks, ToolAfterEvent } from "./types";
 
 function hasGraph(graph: ReturnType<typeof getActiveGraph>): graph is NonNullable<ReturnType<typeof getActiveGraph>> {
   return graph !== null && graph.nodeCount() >= 10;
 }
 
-export function createGraphContextHandler(config: MemConfig): HookHandler {
+export function createGraphContextHandler(config: MemConfig): PluginHooks {
   const graphConfig = config.graph;
   if (!graphConfig?.enabled) return {};
 
   const autoSkeletonMinLines = graphConfig.autoSkeletonizeMinLines;
 
   return {
-    "tool.after": async (_input: unknown, output: unknown) => {
-      const input = _input as { tool?: string; args?: { filePath?: string; offset?: number } };
+    "tool.execute.after": async (event: ToolAfterEvent) => {
+      const input = event as unknown as { tool?: string; args?: { filePath?: string; offset?: number } };
       if (input.tool !== "read") return;
 
       const filePath = input.args?.filePath;
@@ -26,7 +26,7 @@ export function createGraphContextHandler(config: MemConfig): HookHandler {
 
       if (input.args?.offset) return;
 
-      const out = output as { output?: string };
+      const out = event as unknown as { output?: string };
       const raw = typeof out.output === "string" ? out.output : "";
       if (!raw) return;
 

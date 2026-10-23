@@ -1,19 +1,19 @@
 import type { MemConfig } from "../../infrastructure/config/config";
-import type { HookHandler } from "./types";
+import type { PluginHooks, SystemEvent } from "./types";
 import type { OutputTokenControlConfig } from "../../application/output-token-control";
 import { getInjectionText, estimatePressureLevel, logOutputTokenInjection, getCompactionNudge } from "../../application/output-token-control";
 import { recordInjection } from "../../application/injection-visibility";
 
-export function createOutputTokenControlHandler(config: MemConfig): HookHandler {
+export function createOutputTokenControlHandler(config: MemConfig): PluginHooks {
   const otcConfig = config.outputTokenControl as OutputTokenControlConfig | undefined;
   if (!otcConfig?.enabled) {
     return {};
   }
 
   return {
-    "system.transform": async (_input: unknown, output: unknown) => {
-      const input = _input as { args?: Record<string, unknown>; sessionID?: string };
-      const out = output as { system: string[] };
+    "system": async (event: SystemEvent) => {
+      const input = event as unknown as { args?: Record<string, unknown>; sessionID?: string };
+      const out = event as unknown as { system: string[] };
 
       let userMessage = "";
       if (input.args?.userMessage) {

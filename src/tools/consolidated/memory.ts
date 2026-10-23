@@ -1,7 +1,8 @@
-import { tool, type ToolDefinition } from "@opencode-ai/plugin";
+import { tool } from "../../tools/define-tool";
 import type { MemoryStore } from "../../storage/sqlite";
 import { MemoryGet, MemorySet, MemoryDelete, MemoryList, MemoryFetch, MemoryReplace } from "../core";
 import { MemorySearch, MemoryDrilldown, MemoryDrilldownQuery } from "../search";
+import type { ToolDefinition } from "../define-tool";
 
 const SUGGESTIONS: Record<string, string> = {
   search: "\n\n---\nNEXT: `memory(mode=get, id=<node>)` for full context, or `memory(mode=drilldown, id=<node>)` for source chain.",

@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import type { SqliteNode } from "./base";
 import { rowToNode } from "./base";
-import type { MemoryScope, MemoryNode, MemoryNodeType, MemoryCategory, MemoryDomain, MemoryNodeLevel } from "../types";
+import type { MemoryScope, MemoryNode } from "../types";
 import type { SearchFilter } from "../../domain/ports/SearchStore";
 
 export type { SearchFilter };

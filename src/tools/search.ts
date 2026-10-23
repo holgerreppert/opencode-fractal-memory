@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
 import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType, MemorySubtask } from "../storage/types";
 import { estimateTokens, generateEmbedding } from "../infrastructure/llm/embeddings";

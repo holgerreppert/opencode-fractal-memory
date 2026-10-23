@@ -9,6 +9,7 @@ import {
 import { parseCandidates } from "./candidates";
 import type { MemConfig } from "../../infrastructure/config/config";
 import type { MemoryStore } from "../../storage/sqlite";
+import type { SessionApi } from "../../plugin/session-api";
 
 import { computeGate } from "../gate";
 import { selectMMR } from "../mmr";
@@ -18,17 +19,17 @@ import { injectionMarker, recordInjection } from "../injection-visibility";
 export interface AutoRetrieveDeps {
   store: MemoryStore;
   config: MemConfig;
-  client?: unknown;
+  session?: SessionApi | undefined;
   currentSessionId?: { value: string } | undefined;
   log: (level: "debug" | "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => void;
 }
 
 export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, MessagesHook> {
-  const { store, config, client, currentSessionId, log } = deps;
+  const { store, config, session, currentSessionId, log } = deps;
   const ollamaConfig = config.ollama;
   const llmJudgeEnabled = config.autoRetrieve?.llmJudgeEnabled !== false;
   const rerankDeps = {
-    client,
+    session,
     currentSessionId,
     ollama: ollamaConfig,
     llmJudgeEnabled,
@@ -40,9 +41,9 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
   }
 
   return {
-    "experimental.chat.messages.transform": async (_input, output) => {
+    messages: async (event) => {
       const pipelineStart = Date.now();
-      const messages = output.messages;
+      const messages = event.messages;
       if (!messages || messages.length === 0) return;
 
       const memoryResult = findMemorySearchResult(messages);
@@ -87,11 +88,11 @@ export function createAutoRetrieveHook(deps: AutoRetrieveDeps): Record<string, M
         let finalItems = gateResult.selected;
 
         // 2. Query Refinement (if gate says uncertain)
-        if (gateResult.uncertain && client && currentSessionId?.value) {
+        if (gateResult.uncertain && session) {
           log("info", "memory-rerank: Gate uncertain, attempting query refinement");
 
           const originalQuery = extractLastAgentQuery(messages) ?? agentReasoning.slice(0, 200);
-          const rewritten = await rewriteQuery(client, currentSessionId.value, {
+          const rewritten = await rewriteQuery(session, event.model, {
             originalQuery,
             reasoningContext: agentReasoning,
             topLabels: ordered.slice(0, 3).map(i => i.label),

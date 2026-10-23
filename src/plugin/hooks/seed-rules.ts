@@ -2,7 +2,7 @@ import type { MemoryStore, MemoryScope } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { injectionMarker, recordInjection } from "../../application/injection-visibility";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
-import type { HookHandler } from "./types";
+import type { PluginHooks, SystemEvent } from "./types";
 
 const CROSS_SESSION_CACHE = new Map<string, string[]>();
 let lastCrossSessionFetch = 0;
@@ -49,11 +49,11 @@ export function createSeedRulesHandler(
   ruleCache: Map<string, { content: string; type: string }>,
   ruleCacheDirty: { value: boolean },
   sessionInjectionLock: Map<string, boolean>,
-): HookHandler {
+): PluginHooks {
   return {
-    "system.transform": async (_input: unknown, output: unknown) => {
-      const input = _input as { args?: Record<string, unknown>; sessionID?: string };
-      const out = output as { system: string[] };
+    "system": async (event: SystemEvent) => {
+      const input = event as unknown as { args?: Record<string, unknown>; sessionID?: string };
+      const out = event as unknown as { system: string[] };
       const sessionId = input.sessionID ?? `session-${Date.now()}`;
       setSessionId(sessionId);
 

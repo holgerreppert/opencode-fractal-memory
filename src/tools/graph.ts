@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "../tools/define-tool";
 import { getActiveGraph, ensureBackgroundGraph, buildGraph } from "../application/graph/build";
 import type { CodeGraph } from "../application/graph/graph";
 import { callers, callees, callChain, searchNodes, explain, shortestPath, getFileContext } from "../application/graph/query";
@@ -59,16 +59,17 @@ function formatCallResults(results: any[]): unknown[] {
   }));
 }
 
-export function executeGraphTool(params: GraphToolParams): GraphToolResult {
+export function executeGraphTool(params: GraphToolParams, root?: string): GraphToolResult {
+  const projectRoot = root ?? process.cwd();
   let graph = getActiveGraph();
 
   if (!hasGraph(graph)) {
-    ensureBackgroundGraph(process.cwd());
+    ensureBackgroundGraph(projectRoot);
     graph = getActiveGraph();
   }
   if (!hasGraph(graph)) {
     try {
-      const result = buildGraph(process.cwd(), 5000);
+      const result = buildGraph(projectRoot, 5000);
       graph = result.graph;
     } catch {
       return { relation: params.relation, results: [], truncated: false, error: "Graph build failed. Check logs for details." };
@@ -174,7 +175,7 @@ export function executeGraphTool(params: GraphToolParams): GraphToolResult {
   }
 }
 
-export function createGraphPluginTool() {
+export function createGraphPluginTool(root?: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const t: any = tool({
     description: `USE INSTEAD OF grep/glob/read — 10-100x more token-efficient for code exploration.
@@ -198,10 +199,30 @@ Relations:
   search      — find graph nodes by name or file path
   explain     — get all neighbors of a graph node by ID
   path        — shortest path between two nodes by ID`,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    args: {} as any,
+    args: {
+      relation: tool.schema
+        .enum([
+          "callers",
+          "callees",
+          "call_chain",
+          "imports",
+          "dependents",
+          "search",
+          "explain",
+          "path",
+        ])
+        .describe("Which relation to resolve"),
+      name: tool.schema.string().optional().describe("Symbol name (callers/callees/call_chain)"),
+      file: tool.schema.string().optional().describe("File path (imports/dependents)"),
+      depth: tool.schema.number().int().optional().describe("Max depth for call_chain"),
+      query: tool.schema.string().optional().describe("Search text for the search relation"),
+      from: tool.schema.string().optional().describe("Start node id for path"),
+      to: tool.schema.string().optional().describe("Target node id for path"),
+      id: tool.schema.string().optional().describe("Node id for explain"),
+      limit: tool.schema.number().int().optional().describe("Max results"),
+    },
     async execute(args: Record<string, unknown>) {
-      const result = executeGraphTool(args as unknown as GraphToolParams);
+      const result = executeGraphTool(args as unknown as GraphToolParams, root);
       return { output: JSON.stringify(result, null, 2) };
     },
   });

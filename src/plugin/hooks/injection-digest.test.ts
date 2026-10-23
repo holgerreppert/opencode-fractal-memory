@@ -26,7 +26,7 @@ describe("createInjectionDigestHandler", () => {
 
   test("injects digest synthetic message summarizing recorded injections", async () => {
     const handler = createInjectionDigestHandler(makeStore(), makeConfig(true), { value: "s1" });
-    const transform = handler["chat.messages.transform"];
+    const transform = handler["messages"];
     expect(transform).toBeDefined();
 
     recordInjection(makeConfig(true), "compression", "100→20 chars");
@@ -34,16 +34,16 @@ describe("createInjectionDigestHandler", () => {
 
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "hi" }] },
-        { info: { role: "assistant" }, parts: [{ type: "text", text: "hello" }] },
+        { role: "user", parts: [{ type: "text", text: "hi" }] },
+        { role: "assistant", parts: [{ type: "text", text: "hello" }] },
       ],
     };
 
-    await transform!({} as any, output as any);
+    await transform!({ sessionID: "ses_test", messages: output.messages });
 
     expect(output.messages).toHaveLength(3);
     const injected = output.messages[1]!;
-    expect(injected.info?.role).toBe("user");
+    expect(injected.role).toBe("user");
     expect(injected.parts[0]?.text).toContain("[memory-plugin:digest]");
     expect(injected.parts[0]?.text).toContain("compression");
     expect(injected.parts[0]?.text).toContain("seed-rules");
@@ -54,14 +54,14 @@ describe("createInjectionDigestHandler", () => {
     const logged: Array<{ sid: string; data: Record<string, unknown> }> = [];
     const store = makeStore((sid, data) => logged.push({ sid, data }));
     const handler = createInjectionDigestHandler(store, makeConfig(true), { value: "s1" });
-    const transform = handler["chat.messages.transform"]!;
+    const transform = handler["messages"]!;
 
     recordInjection(makeConfig(true), "graph-context", "skeleton on a.ts");
     recordInjection(makeConfig(true), "graph-context", "skeleton on b.ts");
     recordInjection(makeConfig(true), "re-read-elimination", "cached src/c.ts");
 
-    const output = { messages: [{ info: { role: "user" }, parts: [{ type: "text", text: "hi" }] }] };
-    await transform({} as any, output as any);
+    const output = { messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }] };
+    await transform({ sessionID: "ses_test", messages: output.messages });
 
     const graph = logged.find(l => l.data.injectionMode === "graph-context");
     expect(graph).toBeDefined();
@@ -74,13 +74,13 @@ describe("createInjectionDigestHandler", () => {
 
   test("injects nothing when ledger empty", async () => {
     const handler = createInjectionDigestHandler(makeStore(), makeConfig(true), { value: "s1" });
-    const transform = handler["chat.messages.transform"]!;
+    const transform = handler["messages"]!;
     const output = {
       messages: [
-        { info: { role: "user" }, parts: [{ type: "text", text: "hi" }] },
+        { role: "user", parts: [{ type: "text", text: "hi" }] },
       ],
     };
-    await transform({} as any, output as any);
+    await transform({ sessionID: "ses_test", messages: output.messages });
     expect(output.messages).toHaveLength(1);
   });
 });
