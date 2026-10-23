@@ -2,6 +2,7 @@ import type { MemoryStore } from "../../storage/sqlite";
 import type { MemConfig } from "../../infrastructure/config/config";
 import { memLog, setSessionId, appendSessionLog } from "../../logging";
 import { distillRules, runConsolidation, applyScoreDecay, extractSessionLessons, captureSessionWork } from "../../application";
+import { captureSessionIntent } from "../../application/intent-observer";
 import { drainPendingExtractions, ollamaExtract, warmupExtractionModel } from "../../application/command-compression";
 import { getSessionCache, recordSessionCache } from "../../application/command-compression/hook-support";
 import { cleanupMiddleTermCaptures } from "../state";
@@ -55,6 +56,16 @@ export function createEventHandler(
             memLog("info", "auto-capture", msg)
           ).catch(err => memLog("error", "auto-capture", "Failed", { error: String(err) }));
           tasks.push("capture");
+        }
+        // Intent observation (V2 re-home of the V1 text.complete observer):
+        // always-on like the original — no config gate — so the
+        // usefulness-vector corpus keeps growing. Fire-and-forget, deduped
+        // by message id inside the observer.
+        if (client) {
+          captureSessionIntent(store, sessionId, client).then(msg =>
+            memLog("info", "intent", msg, { sessionId })
+          ).catch(err => memLog("error", "intent", "Failed", { sessionId, error: String(err) }));
+          tasks.push("intent");
         }
         if (config?.autoDistill?.enabled) {
           distillRules(store, config.autoDistill, sessionId, client).then(msg =>

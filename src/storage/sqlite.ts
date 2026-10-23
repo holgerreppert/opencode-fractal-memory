@@ -588,6 +588,14 @@ class SqliteMemoryStore implements MemoryStore {
     return this.injectionStore.getIntentLines(sessionId, limit);
   }
 
+  async countIntentLines(sessionId: string): Promise<number> {
+    return this.injectionStore.countIntentLines(sessionId);
+  }
+
+  async hasIntentForMessage(messageId: string): Promise<boolean> {
+    return this.injectionStore.hasIntentForMessage(messageId);
+  }
+
   async getCompressionStats(days: number = 7, limit: number = 100): Promise<import("../domain/ports/CompressionStore").CompressionStatsResult> {
     return this.compressionStore.getCompressionStats(days, limit);
   }

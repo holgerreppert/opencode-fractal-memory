@@ -301,3 +301,25 @@ export function getIntentLines(db: Database, sessionId: string, limit = 200): Ar
     return [];
   }
 }
+
+export function countIntentLines(db: Database, sessionId: string): number {
+  try {
+    const row = db.query(
+      "SELECT COUNT(*) AS c FROM intent_lines WHERE session_id = ?"
+    ).get(sessionId) as { c: number } | null;
+    return row?.c ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function hasIntentForMessage(db: Database, messageId: string): boolean {
+  try {
+    const row = db.query(
+      "SELECT 1 AS one FROM intent_lines WHERE message_id = ? LIMIT 1"
+    ).get(messageId) as { one: number } | null;
+    return row !== null;
+  } catch {
+    return false;
+  }
+}

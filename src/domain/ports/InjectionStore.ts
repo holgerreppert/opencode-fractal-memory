@@ -30,6 +30,8 @@ export interface InjectionStore {
     userMsgHash: string | null; rawText: string; source: string;
     messageId: string | null; partId: string | null;
   }>>;
+  countIntentLines(sessionId: string): Promise<number>;
+  hasIntentForMessage(messageId: string): Promise<boolean>;
   markInjectionProcessed(id: number): Promise<void>;
   migrateFromProjectDb(): Promise<number>;
   injectNode(nodeId: string, scope: string): Promise<void>;

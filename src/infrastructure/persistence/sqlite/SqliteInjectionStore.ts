@@ -9,6 +9,8 @@ import {
   updateMemoryToolCall,
   insertIntentLine as insertIntentLineRow,
   getIntentLines as getIntentLineRows,
+  countIntentLines as countIntentLineRows,
+  hasIntentForMessage as hasIntentMessageRow,
 } from "../../../storage/injection-events";
 
 export class SqliteInjectionStore implements InjectionStore {
@@ -114,5 +116,15 @@ export class SqliteInjectionStore implements InjectionStore {
   }>> {
     const db = await this.provider.getDb();
     return getIntentLineRows(db, sessionId, limit);
+  }
+
+  async countIntentLines(sessionId: string): Promise<number> {
+    const db = await this.provider.getDb();
+    return countIntentLineRows(db, sessionId);
+  }
+
+  async hasIntentForMessage(messageId: string): Promise<boolean> {
+    const db = await this.provider.getDb();
+    return hasIntentMessageRow(db, messageId);
   }
 }
