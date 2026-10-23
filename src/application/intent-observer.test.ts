@@ -15,8 +15,9 @@ interface StoredRow {
   messageId: string | null;
 }
 
-function fakeStore(opts: { count?: number; has?: boolean } = {}) {
+function fakeStore(opts: { count?: number; has?: boolean; injected?: string[] } = {}) {
   const stored: StoredRow[] = [];
+  const bumped: Array<{ nodeIds: string[]; intent: string }> = [];
   const store = {
     async countIntentLines(_sessionId: string): Promise<number> {
       return opts.count ?? stored.length;
@@ -35,8 +36,15 @@ function fakeStore(opts: { count?: number; has?: boolean } = {}) {
         messageId: data.messageId ?? null,
       });
     },
+    async getInjectionNodeIds(_sessionId: string, _limit?: number): Promise<string[]> {
+      return opts.injected ?? [];
+    },
+    async bumpIntentVector(nodeIds: string[], intent: string): Promise<number> {
+      bumped.push({ nodeIds, intent });
+      return nodeIds.length;
+    },
   };
-  return { store: store as unknown as MemoryStore, stored };
+  return { store: store as unknown as MemoryStore, stored, bumped };
 }
 
 describe("extractIntentLine", () => {
@@ -133,6 +141,48 @@ describe("captureRoundIntent", () => {
     const { store, stored } = fakeStore();
     await captureRoundIntent(store, "ses_a", [msg("assistant", "intent: researching docs", "")]);
     expect(stored[0]!.messageId).toBeNull();
+  });
+
+  test("attributes injected nodes to the classified intent on first capture", async () => {
+    const { store, bumped } = fakeStore({ injected: ["n1", "n2", "n3"] });
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("assistant", "intent: debugging the reload 404", "a1"),
+    ]);
+    expect(status).toContain("intent round 1");
+    expect(status).toContain("(+3 nodes → debug)");
+    expect(bumped).toHaveLength(1);
+    expect(bumped[0]!.nodeIds).toEqual(["n1", "n2", "n3"]);
+    expect(bumped[0]!.intent).toBe("debug");
+  });
+
+  test("skips attribution when the session had no injections", async () => {
+    const { store, bumped } = fakeStore({ injected: [] });
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("assistant", "intent: planning the vector", "a1"),
+    ]);
+    expect(status).toBe('intent round 1 q="planning the vector"');
+    expect(bumped).toHaveLength(0);
+  });
+
+  test("does not attribute on a duplicate capture", async () => {
+    const { store, bumped } = fakeStore({ has: true, injected: ["n1"] });
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("assistant", "intent: verifying the fix", "a1"),
+    ]);
+    expect(status).toContain("duplicate");
+    expect(bumped).toHaveLength(0);
+  });
+
+  test("attribution failures never fail the capture", async () => {
+    const { store, stored } = fakeStore();
+    (store as unknown as { getInjectionNodeIds: () => Promise<string[]> }).getInjectionNodeIds = async () => {
+      throw new Error("db gone");
+    };
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("assistant", "intent: implementing the seam", "a1"),
+    ]);
+    expect(status).toBe('intent round 1 q="implementing the seam"');
+    expect(stored).toHaveLength(1);
   });
 });
 

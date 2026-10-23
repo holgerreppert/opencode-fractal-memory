@@ -1,6 +1,6 @@
 import { tool } from "../tools/define-tool";
 import type { MemoryStore } from "../storage/sqlite";
-import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType, MemorySubtask } from "../storage/types";
+import type { MemoryDomain, MemoryNodeLevel, MemoryNodeType, MemorySubtask, TaskIntent } from "../storage/types";
 import { estimateTokens, generateEmbedding } from "../infrastructure/llm/embeddings";
 import { searchNodes } from "../application/search";
 import { getActiveRerankMode } from "../application/dream-rsi/replay-evaluator";
@@ -30,7 +30,7 @@ export function MemoryDrilldown(store: MemoryStore) {
         ...result.path.map((n, i) => {
           const indent = "  ".repeat(i);
           const marker = i === 0 ? "→" : "↳";
-          return `${indent}${marker} [L${n.level}] ${n.label ?? n.id.slice(0, 8)}${n.content.length > 50 ? "..." : ""}`;
+          return `${indent}${marker} [L${n.level}] ${n.label ?? n.id.slice(0, 8)} ${n.content.length > 50 ? "..." : ""}`;
         }),
         "",
         "### Full Content",
@@ -67,6 +67,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
       rerank: tool.schema.boolean().optional().describe("Re-rank results by keyword overlap and position (default true)"),
       rerank_mode: tool.schema.enum(["keyword", "cross-encoder"]).optional().describe("Rerank strategy: keyword (default) or cross-encoder (local ONNX model, better relevance)"),
       subtask: tool.schema.enum(["analysis", "localization", "editing", "validation"]).optional().describe("Coding phase of this query — boosts memories captured during the same phase"),
+      task_intent: tool.schema.enum(["debug", "implement", "understand", "plan", "verify", "research", "decide", "reflect"]).optional().describe("8-way task intent of this query — boosts nodes whose per-node intent-usefulness vector matches (requires ranking.featureWeights.intent > 0)"),
       expand_links: tool.schema.boolean().optional().describe("Expand results with wiki-linked nodes (default true)"),
       expand_temporal: tool.schema.boolean().optional().describe("Expand results with temporally adjacent nodes (conversation flow)"),
       category_filter: tool.schema.enum(["episodic", "semantic"]).optional().describe("Filter to specific memory category (episodic=fast decay, semantic=long-term)"),
@@ -82,6 +83,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
         rerank?: boolean;
         rerankMode?: "keyword" | "cross-encoder";
         subtask?: MemorySubtask;
+        taskIntent?: TaskIntent;
         projectName?: string;
         categoryFilter?: "episodic" | "semantic";
         domainFilter?: MemoryDomain;
@@ -97,6 +99,7 @@ export function MemorySearch(store: MemoryStore, defaultRerankMode?: "keyword" |
         if (learned !== undefined) options.rerankMode = learned;
       }
       if (args.subtask !== undefined) options.subtask = args.subtask as MemorySubtask;
+      if (args.task_intent !== undefined) options.taskIntent = args.task_intent;
       if (args.min_level !== undefined) options.minLevel = args.min_level as MemoryNodeLevel;
       if (args.max_level !== undefined) options.maxLevel = args.max_level as MemoryNodeLevel;
       if (args.min_usefulness !== undefined) options.minUsefulness = args.min_usefulness;
@@ -224,7 +227,7 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
       const results = await store.drilldownQuery(args.query, args.max_results ?? 20, args.project_name);
 
       if (results.length === 0) {
-        return `No memory found matching your query "${args.query}".
+        return `No memory found matching "${args.query}".
 
 **Tip**: Use \`memory(mode="search", ...)\` first with broader keywords.`;
       }
@@ -236,7 +239,7 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
       const lines: string[] = [
         `## Top-Down Drilldown: "${args.query}"`,
         "",
-        `Found ${results.length} relevant memory nodes (${summaryResults.length} summaries, ${intermediateResults.length} intermediate, ${detailResults.length} details).`,
+        `Found ${results.length} relevant memory nodes (${summaryResults.length} summaries, ${intermediateResults.length} summaries, ${detailResults.length} details).`,
         "",
       ];
 
@@ -245,9 +248,6 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
         for (const result of summaryResults) {
           lines.push(`**[L${result.node.level}] ${result.node.label ?? result.node.id.slice(0, 8)}** (${(result.relevance * 100).toFixed(0)}% relevant)`);
           lines.push(`> ${result.node.content.slice(0, 200)}${result.node.content.length > 200 ? "..." : ""}`);
-          if (result.path.length > 1) {
-            lines.push(`_Source path: ${result.path.map(n => n.label ?? n.id.slice(0, 8)).join(" → ")}_`);
-          }
           lines.push("");
         }
       }
@@ -256,7 +256,7 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
         lines.push("### Weekly Summaries");
         for (const result of intermediateResults) {
           lines.push(`**[L${result.node.level}] ${result.node.label ?? result.node.id.slice(0, 8)}** (${(result.relevance * 100).toFixed(0)}% relevant)`);
-          lines.push(`> ${result.node.content.slice(0, 150)}${result.node.content.length > 150 ? "..." : ""}`);
+          lines.push(`> ${result.node.content.slice(0, 200)}${result.node.content.length > 200 ? "..." : ""}`);
           lines.push("");
         }
       }
@@ -265,7 +265,7 @@ export function MemoryDrilldownQuery(store: MemoryStore) {
         lines.push("### Specific Details");
         for (const result of detailResults) {
           lines.push(`**[L${result.node.level}] ${result.node.label ?? result.node.id.slice(0, 8)}** (${(result.relevance * 100).toFixed(0)}% relevant)`);
-          lines.push(`> ${result.node.content.slice(0, 150)}${result.node.content.length > 150 ? "..." : ""}`);
+          lines.push(`> ${result.node.content.slice(0, 200)}${result.node.content.length > 200 ? "..." : ""}`);
           lines.push("");
         }
       }

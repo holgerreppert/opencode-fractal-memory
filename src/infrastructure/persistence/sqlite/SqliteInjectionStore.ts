@@ -11,6 +11,7 @@ import {
   getIntentLines as getIntentLineRows,
   countIntentLines as countIntentLineRows,
   hasIntentForMessage as hasIntentMessageRow,
+  queryInjectedNodeIds as queryInjectedNodeIdsRow,
 } from "../../../storage/injection-events";
 
 export class SqliteInjectionStore implements InjectionStore {
@@ -126,5 +127,10 @@ export class SqliteInjectionStore implements InjectionStore {
   async hasIntentForMessage(messageId: string): Promise<boolean> {
     const db = await this.provider.getDb();
     return hasIntentMessageRow(db, messageId);
+  }
+
+  async getInjectionNodeIds(sessionId: string, limit = 20): Promise<string[]> {
+    const db = await this.provider.getDb();
+    return queryInjectedNodeIdsRow(db, sessionId, limit);
   }
 }

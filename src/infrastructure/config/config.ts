@@ -212,6 +212,7 @@ export interface MemConfig {
       confidence: number;
       usefulness: number;
       cost: number;
+      intent: number;
     };
     gate: {
       minScore: number;
@@ -624,6 +625,7 @@ const DEFAULT_CONFIG: MemConfig = {
       confidence: 0.05,
       usefulness: 0.05,
       cost: 0.1,
+      intent: 0,
     },
     gate: {
       minScore: 0.3,
@@ -692,7 +694,8 @@ const RankingSchema = z.object({
     confidence: z.number().min(0).max(1).default(0.05),
     usefulness: z.number().min(0).max(1).default(0.05),
     cost: z.number().min(0).max(1).default(0.1),
-  }).default({ semantic: 0.45, bm25: 0.22, quality: 0.13, confidence: 0.05, usefulness: 0.05, cost: 0.1 }),
+    intent: z.number().min(0).max(1).default(0),
+  }).default({ semantic: 0.45, bm25: 0.22, quality: 0.13, confidence: 0.05, usefulness: 0.05, cost: 0.1, intent: 0 }),
   gate: z.object({
     minScore: z.number().min(0).max(1).default(0.3),
     deltaThreshold: z.number().min(0).max(1).default(0.15),

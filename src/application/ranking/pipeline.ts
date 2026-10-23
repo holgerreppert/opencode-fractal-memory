@@ -1,4 +1,4 @@
-import type { MemoryNode, MemoryNodeLevel, SearchIntent, MemorySubtask } from "../../storage/types";
+import type { MemoryNode, MemoryNodeLevel, SearchIntent, TaskIntent, MemorySubtask } from "../../storage/types";
 import { extractFeatures, type RankFeatures } from "./features";
 import { fuseScore, normalizeFusedScore } from "./fusion";
 import type { RankWeights } from "./weights";
@@ -22,6 +22,7 @@ export interface RankOptions {
   rrfK?: number | undefined;
   levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined;
   intent?: SearchIntent | undefined;
+  taskIntent?: TaskIntent | undefined;
   subtask?: MemorySubtask | undefined;
   recencyRole?: "tiebreak" | "off" | undefined;
   recencyAnchor?: (node: MemoryNode) => Date | null | undefined;
@@ -76,7 +77,7 @@ export function rankCandidates(candidates: RankCandidate[], options: RankOptions
     (node.level ?? 0) >= 1 ? node.createdAt : node.lastAccessed);
 
   const ranked: RankedResult[] = candidates.map(({ node, semanticScore, bm25Score }) => {
-    const features = extractFeatures(node, { semanticScore, bm25Score });
+    const features = extractFeatures(node, { semanticScore, bm25Score }, options.taskIntent);
     const rawScore = fuseScore(features, weights);
 
     const intentWeight = computeIntentWeight(options.intent, node.category, node.type, node.supertype);
@@ -182,7 +183,7 @@ function rankByRRF(candidates: RankCandidate[], options: RankOptions): RankedRes
     const recencyScore = recencyRole === "off" ? 1.0 : computeRecencyScore(recencyAnchor(candidate.node) ?? null);
     let features = featuresByNode.get(candidate.node.id);
     if (!features) {
-      features = extractFeatures(candidate.node, { semanticScore: candidate.semanticScore, bm25Score: candidate.bm25Score });
+      features = extractFeatures(candidate.node, { semanticScore: candidate.semanticScore, bm25Score: candidate.bm25Score }, options.taskIntent);
       featuresByNode.set(candidate.node.id, features);
     }
     const importance = normalized * (0.3 + 0.7 * recencyScore);

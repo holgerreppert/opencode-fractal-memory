@@ -7,6 +7,7 @@ import type {
   MemoryScope,
   MemorySubtask,
   SearchIntent,
+  TaskIntent,
 } from "../domain/ports/MemoryStore";
 import type { SearchStore, SearchResult } from "../domain/ports/SearchStore";
 import type { RankWeights } from "./ranking/weights";
@@ -47,6 +48,7 @@ export async function searchNodes(
     featureWeights?: Partial<RankWeights> | undefined;
     temporalHops?: number | undefined;
     intent?: SearchIntent | undefined;
+    taskIntent?: TaskIntent | undefined;
     subtask?: MemorySubtask | undefined;
     categoryFilter?: MemoryCategory | undefined;
     domainFilter?: MemoryDomain | undefined;
@@ -97,6 +99,7 @@ export async function searchNodes(
   if (opts.projectName !== undefined) options!.projectName = projectName;
   if (opts.temporalHops !== undefined && opts.temporalHops > 0) options!.temporalHops = opts.temporalHops;
   if (opts.intent !== undefined) options!.intent = opts.intent;
+  if (opts.taskIntent !== undefined) options!.taskIntent = opts.taskIntent;
   if (opts.subtask !== undefined) options!.subtask = opts.subtask;
   if (opts.rerankMode !== undefined) options!.rerankMode = opts.rerankMode;
   if (opts.featureWeights !== undefined) options!.featureWeights = opts.featureWeights;

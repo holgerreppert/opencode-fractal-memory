@@ -1,6 +1,6 @@
 import type {
   MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType,
-  MemoryCategory, MemoryDomain, DrilldownResult, SearchIntent, MemorySubtask,
+  MemoryCategory, MemoryDomain, DrilldownResult, SearchIntent, TaskIntent, MemorySubtask,
 } from "./MemoryStore";
 import type { RankWeights } from "../../application/ranking/weights";
 
@@ -41,6 +41,7 @@ export interface HybridSearchOptions extends SearchFilter {
   temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined;
   temporalHops?: number | undefined;
   intent?: SearchIntent | undefined;
+  taskIntent?: TaskIntent | undefined;
   subtask?: MemorySubtask | undefined;
   featureWeights?: Partial<RankWeights> | undefined;
 }

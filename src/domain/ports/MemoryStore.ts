@@ -12,6 +12,9 @@ export type MemorySupertype = "declarative" | "procedural" | "experiential" | "m
 export type MemoryDomain = "architecture" | "operations" | "knowledge" | "rules" | "history" | "patterns" | "preferences" | null;
 export type SearchIntent = "read" | "edit" | "debug" | "discovery";
 
+/** 8-way agent-declared task intent (intent usefulness-vector plan). */
+export type TaskIntent = "debug" | "implement" | "understand" | "plan" | "verify" | "research" | "decide" | "reflect";
+
 export type MemorySubtask = "analysis" | "localization" | "editing" | "validation";
 
 export type MemoryNode = {

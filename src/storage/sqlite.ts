@@ -5,7 +5,8 @@ import { DbProvider } from "../infrastructure/db/DbProvider";
 import { migrateFromProjectDb } from "./project-db-migration";
 import { tokenize, extractLinks, embeddingToBlob, blobToEmbedding, withRetry, withRetryableTransaction } from "./utils";
 export { extractLinks, embeddingToBlob, blobToEmbedding, tokenize, withRetry, withRetryableTransaction };
-import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
+import type { MemoryNode, MemoryScope, MemoryNodeLevel, MemoryNodeType, MemoryCategory, SearchIntent, TaskIntent, CreateNodeInput, FractalStats, FractalRetrievalResult } from "./types";
+import { bumpNodeIntentVector } from "./queries/node-intent";
 import type { MemoryStore } from "../domain/ports/MemoryStore";
 import type { SearchResult, SearchFilter, BM25SearchOptions, TextSearchOptions } from "../domain/ports/SearchStore";
 import { queryListNodes, queryListProjectNames, queryGetNodeByLabel, queryGetNodeByLabelFull, queryGetNodeByPrefix, queryCreateNode, queryUpdateNode, queryDeleteNode } from "./queries/nodes";
@@ -250,7 +251,7 @@ class SqliteMemoryStore implements MemoryStore {
   async searchByEmbedding(
     query: number[],
     limit: number = 5,
-    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; rerankMode?: "keyword" | "cross-encoder" | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; tagsFilter?: string[] | undefined; featureWeights?: Partial<RankWeights> | undefined }
+    options?: { minLevel?: MemoryNodeLevel | undefined; maxLevel?: MemoryNodeLevel | undefined; levelWeights?: Partial<Record<MemoryNodeLevel, number>> | undefined; queryText?: string | undefined; minUsefulness?: number | undefined; rerank?: boolean | undefined; rerankMode?: "keyword" | "cross-encoder" | undefined; bm25Scores?: Map<string, number> | undefined; projectName?: string | undefined; temporalBoost?: { nodeIds: string[]; edgeType?: string; boostFactor?: number } | undefined; temporalHops?: number | undefined; categoryFilter?: MemoryCategory | undefined; typeFilter?: MemoryNodeType | undefined; intent?: SearchIntent | undefined; taskIntent?: TaskIntent | undefined; tagsFilter?: string[] | undefined; featureWeights?: Partial<RankWeights> | undefined }
   ): Promise<SearchResult[]> {
     const nodes = await searchByEmbeddingFn((s) => this.getDb(s), query, limit, options);
     return nodes.map(n => ({ node: n, score: n.importance }));
@@ -594,6 +595,16 @@ class SqliteMemoryStore implements MemoryStore {
 
   async hasIntentForMessage(messageId: string): Promise<boolean> {
     return this.injectionStore.hasIntentForMessage(messageId);
+  }
+
+  async getInjectionNodeIds(sessionId: string, limit?: number): Promise<string[]> {
+    return this.injectionStore.getInjectionNodeIds(sessionId, limit);
+  }
+
+  async bumpIntentVector(nodeIds: string[], intent: string): Promise<number> {
+    if (nodeIds.length === 0) return 0;
+    const db = await this.getDb();
+    return bumpNodeIntentVector(db, nodeIds, intent);
   }
 
   async getCompressionStats(days: number = 7, limit: number = 100): Promise<import("../domain/ports/CompressionStore").CompressionStatsResult> {

@@ -323,3 +323,32 @@ export function hasIntentForMessage(db: Database, messageId: string): boolean {
     return false;
   }
 }
+
+/**
+ * Unique node ids injected into context for a session (newest injection
+ * rows first, post-rerank ids preferred, pre-rerank as fallback). Feeds
+ * the intent-usefulness vector attribution — capped at 200 ids.
+ */
+export function queryInjectedNodeIds(db: Database, sessionId: string, limit = 20): string[] {
+  try {
+    const rows = db.query(
+      "SELECT post_rerank_ids as postRerankIds, pre_rerank_ids as preRerankIds FROM injection_metrics WHERE session_id = ? ORDER BY timestamp DESC LIMIT ?"
+    ).all(sessionId, limit) as Array<{ postRerankIds: string | null; preRerankIds: string | null }>;
+    const ids = new Set<string>();
+    for (const row of rows) {
+      const raw = row.postRerankIds ?? row.preRerankIds;
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          for (const id of parsed) {
+            if (typeof id === "string" && id) ids.add(id);
+          }
+        }
+      } catch { /* skip malformed */ }
+    }
+    return [...ids].slice(0, 200);
+  } catch {
+    return [];
+  }
+}

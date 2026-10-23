@@ -19,6 +19,8 @@ export interface NodeRepository {
   retrieveFractal(id: string, maxDepth?: number): Promise<FractalRetrievalResult>;
   verifyNode(id: string): Promise<MemoryNode>;
   calculateNodeConfidence(node: MemoryNode): number;
+  /** Credit node ids in the per-node intent-usefulness vector (P2). Returns bumped count. */
+  bumpIntentVector(nodeIds: string[], intent: string): Promise<number>;
   storeLinks(scope: MemoryScope, sourceId: string, content: string): Promise<void>;
   getLinkedNodes(scope: MemoryScope, sourceId: string): Promise<MemoryNode[]>;
   backfillLinks(scope: MemoryScope): Promise<void>;

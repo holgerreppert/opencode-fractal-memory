@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { MemoryStore } from "../storage/sqlite";
 import type { SessionApi } from "../plugin/session-api";
 import type { SessionMessage } from "../plugin/messages";
+import { classifyIntent } from "./ranking/intent-dist";
 
 /**
  * Agent-declared per-round intent: own words, one line, max ~30 words —
@@ -58,7 +59,20 @@ export async function captureRoundIntent(
       source: "agent",
       messageId: msg.id ? msg.id : null,
     });
-    return `intent round ${turn} q="${intent}"`;
+    // P2 attribution: credit the nodes injected this round with the
+    // classified intent (best-effort — vector writes never fail the capture).
+    let credited = 0;
+    let classified = "";
+    try {
+      const cls = classifyIntent(intent);
+      classified = cls.intent;
+      const injected = await store.getInjectionNodeIds(sessionId);
+      if (injected.length > 0) credited = await store.bumpIntentVector(injected, cls.intent);
+    } catch {
+      // attribution is best-effort
+    }
+    const suffix = classified !== "" && credited > 0 ? ` (+${credited} nodes → ${classified})` : "";
+    return `intent round ${turn} q="${intent}"${suffix}`;
   }
   return "no intent line in round";
 }

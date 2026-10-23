@@ -1,4 +1,5 @@
-import type { MemoryNode } from "../../storage/types";
+import type { MemoryNode, TaskIntent } from "../../storage/types";
+import { parseIntentVector } from "../../storage/queries/node-intent";
 import { computeQualityMultiplier } from "../../storage/queries/search-helpers";
 
 /**
@@ -15,6 +16,10 @@ export interface RankFeatures {
   confidence: number;
   usefulness: number;
   cost: number;
+  /** Intent affinity: the node's usefulness share in the current task
+   * intent (P3 of the intent usefulness-vector plan). 0 when the node has
+   * no vector or the caller declared no task intent. */
+  intent: number;
 }
 
 export interface FeatureInput {
@@ -55,7 +60,29 @@ export function adaptiveQualityMultiplier(node: MemoryNode): number {
   return Math.min(1.5, Math.max(0.4, adaptive));
 }
 
-export function extractFeatures(node: MemoryNode, input: FeatureInput): RankFeatures {
+/**
+ * Intent-usefulness affinity (P2/P3): the share of a node's intent vector
+ * that landed on the current task intent — `vector[intent] / Σvector`.
+ * Share-normalized (not raw counts) so heavy-use nodes across many intents
+ * don't outrank focused specialists. Nodes without a vector are neutral (0).
+ */
+export function computeIntentAffinity(
+  metadata: Record<string, unknown> | string | null | undefined,
+  taskIntent: TaskIntent | undefined,
+): number {
+  if (!taskIntent) return 0;
+  const vector = parseIntentVector(metadata);
+  let total = 0;
+  for (const count of Object.values(vector)) total += count;
+  if (total <= 0) return 0;
+  return clamp01((vector[taskIntent] ?? 0) / total);
+}
+
+export function extractFeatures(
+  node: MemoryNode,
+  input: FeatureInput,
+  taskIntent?: TaskIntent | undefined,
+): RankFeatures {
   const totalCost = (node.metadata as Record<string, unknown> | null)?.totalCalls as number
     ?? (node.metadata as Record<string, unknown> | null)?.editCount as number
     ?? 5;
@@ -66,6 +93,7 @@ export function extractFeatures(node: MemoryNode, input: FeatureInput): RankFeat
     confidence: clamp01(node.confidence ?? 0.5),
     usefulness: clamp01((node.usefulnessScore ?? 0) / 5),
     cost: clamp01(1 - Math.min(totalCost / 30, 1)),
+    intent: computeIntentAffinity(node.metadata, taskIntent),
   };
 }
 
@@ -76,4 +104,5 @@ export const FEATURE_KEYS: Array<keyof RankFeatures> = [
   "confidence",
   "usefulness",
   "cost",
+  "intent",
 ];

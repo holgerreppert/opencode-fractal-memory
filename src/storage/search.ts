@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, MemorySubtask } from "../domain/ports/MemoryStore";
+import type { MemoryScope, MemoryNode, MemoryNodeLevel, MemoryNodeType, MemoryCategory, MemoryDomain, SearchIntent, TaskIntent, MemorySubtask } from "../domain/ports/MemoryStore";
 import type { SearchResult } from "../domain/ports/SearchStore";
 import type { SqliteNode } from "./queries/base";
 import { rowToNode } from "./queries/base";
@@ -101,6 +101,7 @@ export async function searchByEmbedding(
     typeFilter?: MemoryNodeType | undefined;
     domainFilter?: MemoryDomain | undefined;
     intent?: SearchIntent | undefined;
+    taskIntent?: TaskIntent | undefined;
     subtask?: MemorySubtask | undefined;
     tagsFilter?: string[] | undefined;
     featureWeights?: Partial<RankWeights> | undefined;
@@ -339,6 +340,7 @@ export async function searchByEmbedding(
     weights,
     levelWeights: options?.levelWeights,
     intent: options?.intent,
+    taskIntent: options?.taskIntent,
     subtask: options?.subtask,
     rrfK: options?.rrfK,
     // MMR diversity when limit suggests top-10 injection (prevents >2 nodes from same project/session)

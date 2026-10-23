@@ -32,6 +32,7 @@ export interface InjectionStore {
   }>>;
   countIntentLines(sessionId: string): Promise<number>;
   hasIntentForMessage(messageId: string): Promise<boolean>;
+  getInjectionNodeIds(sessionId: string, limit?: number): Promise<string[]>;
   markInjectionProcessed(id: number): Promise<void>;
   migrateFromProjectDb(): Promise<number>;
   injectNode(nodeId: string, scope: string): Promise<void>;

@@ -9,6 +9,9 @@
  * the highest total wins, ties break toward the earlier match position.
  * `confidence` = winning score / total score (rounded, 0 = no signal).
  */
+import type { TaskIntent } from "../../storage/types";
+
+export type { TaskIntent };
 
 export const INTENT_ORDER = [
   "debug",
@@ -19,9 +22,7 @@ export const INTENT_ORDER = [
   "research",
   "decide",
   "reflect",
-] as const;
-
-export type TaskIntent = (typeof INTENT_ORDER)[number];
+] as const satisfies readonly TaskIntent[];
 
 interface IntentPattern {
   re: RegExp;
