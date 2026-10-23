@@ -47,6 +47,7 @@
     "test:essential": "bun test",
     "test:full": "bun test --path-ignore-patterns 'zz-none'",
     "test:slow": "bun test --path-ignore-patterns 'zz-none' ./src/storage/search.loco.test.ts ./src/storage/search.swecontext.test.ts",
+    "bench:intent": "bun run scripts/benchmark/eval-intent-affinity.ts",
     "test:coverage": "bun test --coverage",
     "typecheck": "tsc --noEmit",
     "view": "bun run dist/management-standalone.js",

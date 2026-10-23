@@ -28,7 +28,7 @@ function embeddingBlob(emb: number[]): Buffer {
   return Buffer.from(new Float32Array(emb).buffer);
 }
 
-function contentForExperience(exp: ExperienceTask): string {
+export function contentForExperience(exp: ExperienceTask): string {
   const parts: string[] = [];
   if (exp.reasoning) parts.push(`Reasoning: ${exp.reasoning}`);
   if (exp.summary) parts.push(`Summary: ${exp.summary}`);
