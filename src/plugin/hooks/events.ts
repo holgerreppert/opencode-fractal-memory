@@ -21,6 +21,149 @@ export function createEventHandler(
   let activeSessionCount = 0;
   const sl = () => config?.sessionLog?.enabled;
 
+  // End-of-round tasks (formerly session.idle-only). Verified 2026-10-28 via
+  // event tracing: opencode 2.x does NOT emit session.idle or
+  // session.status{idle} on the plugin event stream — session.execution.succeeded
+  // is the only reliable round-end signal — so all three event types funnel
+  // into this deduped runner (multiple triggers may land within seconds).
+  const lastRunAt = new Map<string, number>();
+  const RUN_DEDUP_MS = 20_000;
+  const runIdleTasks = async (
+    sessionId: string,
+    properties: Record<string, unknown>,
+    trigger: string,
+  ): Promise<void> => {
+    const now = Date.now();
+    const last = lastRunAt.get(sessionId) ?? 0;
+    if (now - last < RUN_DEDUP_MS) {
+      memLog("debug", "events", "end-of-round tasks deduped", { sessionId, trigger });
+      return;
+    }
+    lastRunAt.set(sessionId, now);
+    memLog("info", "events", "end-of-round tasks", { sessionId, trigger });
+
+    const tasks: string[] = [];
+    if (config?.autoLessons?.enabled) {
+      extractSessionLessons(store, config.autoLessons, sessionId, client).then(msg =>
+        memLog("info", "auto-lessons", msg)
+      ).catch(err => memLog("error", "auto-lessons", "Failed", { error: String(err) }));
+      tasks.push("lessons");
+    }
+    if (config?.autoCapture?.enabled) {
+      captureSessionWork(store, config.autoCapture, sessionId, client).then(msg =>
+        memLog("info", "auto-capture", msg)
+      ).catch(err => memLog("error", "auto-capture", "Failed", { error: String(err) }));
+      tasks.push("capture");
+    }
+    // Intent observation (V2 re-home of the V1 text.complete observer):
+    // always-on like the original — no config gate — so the
+    // usefulness-vector corpus keeps growing. Fire-and-forget, deduped
+    // by message id inside the observer.
+    if (client) {
+      captureSessionIntent(store, sessionId, client).then(msg =>
+        memLog("info", "intent", msg, { sessionId })
+      ).catch(err => memLog("error", "intent", "Failed", { sessionId, error: String(err) }));
+      tasks.push("intent");
+    }
+    if (config?.autoDistill?.enabled) {
+      distillRules(store, config.autoDistill, sessionId, client).then(msg =>
+        memLog("info", "auto-distill", msg)
+      ).catch(err => memLog("error", "auto-distill", "Failed", { error: String(err) }));
+      tasks.push("distill");
+    }
+    if (config?.autoConsolidate?.enabled) {
+      runConsolidation(store, config.autoConsolidate, sessionId).then(msg =>
+        memLog("info", "consolidation", msg)
+      ).catch(err => memLog("error", "consolidation", "Failed", { error: String(err) }));
+      tasks.push("consolidation");
+    }
+    if (config?.predictiveRating?.enabled) {
+      applyScoreDecay(store, config.predictiveRating).then(msg =>
+        memLog("info", "predictive-rating", msg)
+      ).catch(err => memLog("error", "predictive-rating", "Decay failed", { error: String(err) }));
+      tasks.push("decay");
+    }
+
+    if (config?.graph?.enabled) {
+      const root = directory;
+      const maxFiles = config.graph.maxFiles ?? 5000;
+      ensureBackgroundGraph(root, maxFiles);
+      tasks.push("graph-rebuild");
+    }
+
+    // Dream-RSI: replay session queries against alternative strategies
+    if (config?.dreamRsi?.enabled !== false) {
+      try {
+        const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
+        const embed = async (text: string) => generateEmbedding(text);
+        const adapted = await adaptBeta(store, { maxRevisions: 2, costWeight: 0.1, parallelismWeight: 0.05 });
+        const replayResult = await replaySessionQueries(
+          store, embed, sessionId, adapted.config,
+        );
+        if (replayResult.queriesReplayed > 0) {
+          memLog("info", "dream-rsi", formatReplayResult(replayResult));
+          tasks.push(`replay(${replayResult.queriesReplayed}q,${replayResult.bestStrategyId})`);
+          await persistBestStrategy(store, replayResult, adapted.adaptation, {
+            switchMargin: config.dreamRsi?.switchMargin ?? 0.05,
+          });
+        }
+      } catch (err) {
+        memLog("error", "dream-rsi", "Replay failed", { error: String(err) });
+      }
+
+      try {
+        const sweepResult = await sweepNodeRatings(store);
+        if (sweepResult.promoted > 0 || sweepResult.demoted > 0 || sweepResult.superseded > 0) {
+          memLog("info", "dream-rsi", `Sweep: ${sweepResult.promoted} promoted, ${sweepResult.demoted} demoted, ${sweepResult.superseded} superseded`);
+          tasks.push(`sweep(${sweepResult.promoted}↑${sweepResult.demoted}↓${sweepResult.superseded}×)`);
+        }
+      } catch (err) {
+        memLog("error", "dream-rsi", "Sweep failed", { error: String(err) });
+      }
+    }
+
+    // Deferred Ollama extraction drain: outputs queued by the compress
+    // hook (non-blocking) get extracted here with a long timeout. Results
+    // populate the session cache so repeat outputs compress instantly.
+    if (config?.commandCompression?.ollamaExtraction?.enabled) {
+      const extConfig = config.commandCompression.ollamaExtraction;
+      if (extConfig.deferToIdle !== false) {
+        void warmupExtractionModel(extConfig);
+        const idleTimeoutMs = 120000;
+        const batch = drainPendingExtractions();
+        if (batch.length > 0) {
+          memLog("info", "compress", "idle drain started", { sessionId, queued: batch.length });
+          void (async () => {
+            let extractedCount = 0;
+            for (const item of batch) {
+              try {
+                const extracted = await ollamaExtract(item.output, item.command, {
+                  ...extConfig,
+                  timeoutMs: idleTimeoutMs,
+                });
+                if (extracted) {
+                  const cache = getSessionCache(item.sessionId);
+                  recordSessionCache(cache, item.output, extracted, "ollama-extract");
+                  extractedCount++;
+                }
+              } catch {
+                // Best-effort per item — continue draining the rest.
+              }
+            }
+            memLog("info", "compress", "idle drain complete", { sessionId, queued: batch.length, extracted: extractedCount });
+          })().catch(err => memLog("error", "compress", "Idle drain failed", { sessionId, error: String(err) }));
+          tasks.push(`extract-drain(${batch.length})`);
+        }
+      }
+    }
+
+    if (sl()) {
+      const duration = (properties.activeDurationMs as number) ?? 0;
+      const durStr = duration >= 60000 ? `${(duration / 60000).toFixed(0)}m` : `${(duration / 1000).toFixed(0)}s`;
+      appendSessionLog(`[${new Date().toISOString()}] SESSION IDLE | id=${sessionId} | duration=${durStr} | trigger=${trigger} | tasks=${tasks.join(",") || "none"}`);
+    }
+  };
+
   return {
     "event": async (_input: unknown) => {
       // The registration layer maps the runtime event onto `{type, properties}`
@@ -46,127 +189,28 @@ export function createEventHandler(
         }
       } else if (type === "session.idle") {
         const sessionId = (properties.sessionID as string | undefined) ?? "unknown";
-        await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
-
-        const tasks: string[] = [];
-        if (config?.autoLessons?.enabled) {
-          extractSessionLessons(store, config.autoLessons, sessionId, client).then(msg =>
-            memLog("info", "auto-lessons", msg)
-          ).catch(err => memLog("error", "auto-lessons", "Failed", { error: String(err) }));
-          tasks.push("lessons");
+        if (sessionId !== "unknown") {
+          await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
         }
-        if (config?.autoCapture?.enabled) {
-          captureSessionWork(store, config.autoCapture, sessionId, client).then(msg =>
-            memLog("info", "auto-capture", msg)
-          ).catch(err => memLog("error", "auto-capture", "Failed", { error: String(err) }));
-          tasks.push("capture");
-        }
-        // Intent observation (V2 re-home of the V1 text.complete observer):
-        // always-on like the original — no config gate — so the
-        // usefulness-vector corpus keeps growing. Fire-and-forget, deduped
-        // by message id inside the observer.
-        if (client) {
-          captureSessionIntent(store, sessionId, client).then(msg =>
-            memLog("info", "intent", msg, { sessionId })
-          ).catch(err => memLog("error", "intent", "Failed", { sessionId, error: String(err) }));
-          tasks.push("intent");
-        }
-        if (config?.autoDistill?.enabled) {
-          distillRules(store, config.autoDistill, sessionId, client).then(msg =>
-            memLog("info", "auto-distill", msg)
-          ).catch(err => memLog("error", "auto-distill", "Failed", { error: String(err) }));
-          tasks.push("distill");
-        }
-        if (config?.autoConsolidate?.enabled) {
-          runConsolidation(store, config.autoConsolidate, sessionId).then(msg =>
-            memLog("info", "consolidation", msg)
-          ).catch(err => memLog("error", "consolidation", "Failed", { error: String(err) }));
-          tasks.push("consolidation");
-        }
-        if (config?.predictiveRating?.enabled) {
-          applyScoreDecay(store, config.predictiveRating).then(msg =>
-            memLog("info", "predictive-rating", msg)
-          ).catch(err => memLog("error", "predictive-rating", "Decay failed", { error: String(err) }));
-          tasks.push("decay");
-        }
-
-        if (config?.graph?.enabled) {
-          const root = directory;
-          const maxFiles = config.graph.maxFiles ?? 5000;
-          ensureBackgroundGraph(root, maxFiles);
-          tasks.push("graph-rebuild");
-        }
-
-        // Dream-RSI: replay session queries against alternative strategies
-        if (config?.dreamRsi?.enabled !== false) {
-          try {
-            const { generateEmbedding } = await import("../../infrastructure/llm/embeddings");
-            const embed = async (text: string) => generateEmbedding(text);
-            const adapted = await adaptBeta(store, { maxRevisions: 2, costWeight: 0.1, parallelismWeight: 0.05 });
-            const replayResult = await replaySessionQueries(
-              store, embed, sessionId, adapted.config,
-            );
-            if (replayResult.queriesReplayed > 0) {
-              memLog("info", "dream-rsi", formatReplayResult(replayResult));
-              tasks.push(`replay(${replayResult.queriesReplayed}q,${replayResult.bestStrategyId})`);
-              await persistBestStrategy(store, replayResult, adapted.adaptation, {
-                switchMargin: config.dreamRsi?.switchMargin ?? 0.05,
-              });
-            }
-          } catch (err) {
-            memLog("error", "dream-rsi", "Replay failed", { error: String(err) });
+        await runIdleTasks(sessionId, properties, "session.idle");
+      } else if (type === "session.status") {
+        // V2 `data.status` is {type:"idle"} | {type:"retry"...} | …
+        const status = properties.status as { type?: string } | undefined;
+        const sessionId = (properties.sessionID as string | undefined) ?? "unknown";
+        if (status?.type === "idle") {
+          if (sessionId !== "unknown") {
+            await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
           }
-
-          try {
-            const sweepResult = await sweepNodeRatings(store);
-            if (sweepResult.promoted > 0 || sweepResult.demoted > 0 || sweepResult.superseded > 0) {
-              memLog("info", "dream-rsi", `Sweep: ${sweepResult.promoted} promoted, ${sweepResult.demoted} demoted, ${sweepResult.superseded} superseded`);
-              tasks.push(`sweep(${sweepResult.promoted}↑${sweepResult.demoted}↓${sweepResult.superseded}×)`);
-            }
-          } catch (err) {
-            memLog("error", "dream-rsi", "Sweep failed", { error: String(err) });
-          }
+          await runIdleTasks(sessionId, properties, "session.status");
         }
-
-        // Deferred Ollama extraction drain: outputs queued by the compress
-        // hook (non-blocking) get extracted here with a long timeout. Results
-        // populate the session cache so repeat outputs compress instantly.
-        if (config?.commandCompression?.ollamaExtraction?.enabled) {
-          const extConfig = config.commandCompression.ollamaExtraction;
-          if (extConfig.deferToIdle !== false) {
-            void warmupExtractionModel(extConfig);
-            const idleTimeoutMs = 120000;
-            const batch = drainPendingExtractions();
-            if (batch.length > 0) {
-              memLog("info", "compress", "idle drain started", { sessionId, queued: batch.length });
-              void (async () => {
-                let extractedCount = 0;
-                for (const item of batch) {
-                  try {
-                    const extracted = await ollamaExtract(item.output, item.command, {
-                      ...extConfig,
-                      timeoutMs: idleTimeoutMs,
-                    });
-                    if (extracted) {
-                      const cache = getSessionCache(item.sessionId);
-                      recordSessionCache(cache, item.output, extracted, "ollama-extract");
-                      extractedCount++;
-                    }
-                  } catch {
-                    // Best-effort per item — continue draining the rest.
-                  }
-                }
-                memLog("info", "compress", "idle drain complete", { sessionId, queued: batch.length, extracted: extractedCount });
-              })().catch(err => memLog("error", "compress", "Idle drain failed", { sessionId, error: String(err) }));
-              tasks.push(`extract-drain(${batch.length})`);
-            }
-          }
-        }
-
-        if (sl()) {
-          const duration = (properties.activeDurationMs as number) ?? 0;
-          const durStr = duration >= 60000 ? `${(duration / 60000).toFixed(0)}m` : `${(duration / 1000).toFixed(0)}s`;
-          appendSessionLog(`[${new Date().toISOString()}] SESSION IDLE | id=${sessionId} | duration=${durStr} | tasks=${tasks.join(",") || "none"}`);
+      } else if (type === "session.execution.succeeded") {
+        // V2 verified round-end signal (2026-10-28 event trace): opencode 2.x
+        // does NOT emit session.idle/session.status{idle} to plugins — this is
+        // the reliable per-round completion event. Runs the same deduped
+        // end-of-round tasks; metrics end-stamp only on a real idle.
+        const sessionId = (properties.sessionID as string | undefined) ?? "unknown";
+        if (sessionId !== "unknown") {
+          await runIdleTasks(sessionId, properties, "session.execution.succeeded");
         }
       } else if (type === "session.deleted") {
         activeSessionCount = Math.max(0, activeSessionCount - 1);
