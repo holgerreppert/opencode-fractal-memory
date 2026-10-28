@@ -419,26 +419,57 @@ export async function registerPlugin(ctx: PluginContext, setup: PluginSetup): Pr
   // ---- event stream -------------------------------------------------------
   if (handlers.event) {
     const controller = new AbortController();
+    const EVENT_TRACE_LIMIT = 30;
+    let traced = 0;
+    let received = 0;
+    memLog("info", "registration", "event stream subscribed");
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
           try {
-            // The runtime delivers an event's payload in `data`; the plugin's
-            // handlers read `properties`.
+            // V2 frames: {type, data} (payload under `data`); the V1 compat
+            // shape: {type, properties}; a `sync` envelope wraps the real
+            // event in `syncEvent` with a versioned type ("session.idle.1").
             const raw = event as unknown as {
-              type: string;
+              type?: string;
               properties?: Record<string, unknown>;
               data?: Record<string, unknown>;
+              syncEvent?: { type?: string; data?: Record<string, unknown> };
             };
+            let type = typeof raw.type === "string" ? raw.type : "";
+            let payload = raw.data ?? raw.properties;
+            let payloadSource = raw.data ? "data" : raw.properties ? "properties" : "none";
+            if (type === "sync" && raw.syncEvent) {
+              type = typeof raw.syncEvent.type === "string"
+                ? raw.syncEvent.type.replace(/\.\d+$/, "")
+                : "";
+              payload = raw.syncEvent.data ?? payload;
+              payloadSource = "sync";
+            }
+            received++;
+            // Trace what actually arrives: first N events always, plus every
+            // session.* event — that's where the idle/created fixes must land.
+            if (traced < EVENT_TRACE_LIMIT || type.startsWith("session.")) {
+              traced++;
+              memLog("info", "registration", "event received", {
+                type,
+                payloadSource,
+                payloadKeys: payload ? Object.keys(payload).join(",") : "",
+                rawKeys: Object.keys(event as unknown as Record<string, unknown>).join(","),
+                received,
+              });
+            }
             const pluginEvent: PluginEvent = {
-              type: raw.type,
-              properties: raw.data ?? raw.properties ?? {},
+              type,
+              properties: payload ?? {},
             };
             await handlers.event?.(pluginEvent);
           } catch (err) {
             memLog("error", "registration", "Event handler failed", { type: event.type, error: String(err) });
           }
         }
+        // A completed iterable (no throw) previously exited silently.
+        memLog("warn", "registration", "event stream completed (iterable ended)", { received, traced });
       } catch (err) {
         memLog("error", "registration", "Event subscription ended", { error: String(err) });
       }

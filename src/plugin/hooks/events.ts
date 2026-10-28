@@ -31,7 +31,11 @@ export function createEventHandler(
       const properties = input.properties ?? {};
 
       if (type === "session.created") {
-        const sessionId = (properties.info as { id?: string } | undefined)?.id ?? "unknown";
+        // V2 `data` may carry {sessionID, info} or only sessionID — accept either.
+        const sessionId =
+          (properties.info as { id?: string } | undefined)?.id ??
+          (properties.sessionID as string | undefined) ??
+          "unknown";
         await store.createSessionMetrics(sessionId);
         setSessionId(sessionId);
         activeSessionCount++;
