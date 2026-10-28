@@ -384,4 +384,109 @@ describe("createContextCompressTool", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  // Regression: the bewerberapp bug — history nodes carry a 30-day TTL, and
+  // once expired the expired-filtered lookup missed them while the
+  // (scope,label) UNIQUE index still held the slot, so createNode re-INSERTed
+  // an existing label → "UNIQUE constraint failed: memory_nodes.scope,
+  // memory_nodes.label" on EVERY archivecontext call for the session.
+  test("regression: appends to TTL-expired history nodes instead of UNIQUE-constraint crash", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    try {
+      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig());
+      // 1. Archive msg-2 — creates history node :0 + registry
+      const first = await tool.execute(
+        { topic: "t1", content: JSON.stringify([{ messageId: "msg-2", topic: "t1", description: "d1" }]) },
+        { sessionID: SESSION } as never,
+      );
+      expect(first).toContain("Archived 1 message(s)");
+
+      // 2. The history node TTL-expires 30 days later (negative ttl → past expires_at)
+      const history = await store.getNodeByLabel("project", "contexthistory:ses-tool-test:0");
+      await store.updateNode(history.id, { ttlDays: -1 });
+
+      // 3. Simulate restart — in-memory state gone, rebuilt from the registry
+      forgetCompressSession(SESSION);
+
+      // 4. Archive msg-1. OLD behavior: the lookup missed the expired node →
+      //    createHistoryNode re-INSERTed label :0 → UNIQUE constraint error
+      //    surfaced to the agent and broke the whole session's compression.
+      const second = await tool.execute(
+        { topic: "t2", content: JSON.stringify([{ messageId: "msg-1", topic: "t2", description: "d2" }]) },
+        { sessionID: SESSION } as never,
+      );
+      expect(second).toContain("Archived 1 message(s)");
+
+      // Same node reused (no duplicate), BOTH slices present
+      const revived = await store.getNodeByLabel("project", "contexthistory:ses-tool-test:0");
+      expect(revived.id).toBe(history.id);
+      expect(revived.content).toContain("--- slice m0001 ---");
+      expect(revived.content).toContain("--- slice m0002 ---");
+      // TTL refreshed by the append: the default (expired-filtered) lookup
+      // finds it again — the node is live, not a zombie
+      const liveAgain = await store.getNodeByLabel("project", "contexthistory:ses-tool-test:0");
+      expect(liveAgain.id).toBe(history.id);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("regression: rotation reuses an existing next-index node instead of UNIQUE crash", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-compress-"));
+    const dbPath = path.join(tmp, "memory.db");
+    const store = createSqliteMemoryStore(tmp, dbPath);
+    try {
+      const tool = createContextCompressTool(store, makeClient(SESSION), makeConfig());
+      // 1. Archive msg-2 → history :0
+      await tool.execute(
+        { topic: "t1", content: JSON.stringify([{ messageId: "msg-2", topic: "t1", description: "d1" }]) },
+        { sessionID: SESSION } as never,
+      );
+
+      // 2. Overfill :0 past the rotation cap
+      const node0 = await store.getNodeByLabel("project", "contexthistory:ses-tool-test:0");
+      await store.updateNode(node0.id, { content: "x".repeat(50_000) });
+
+      // 3. A previous rotation already created :1 (registry pointer stale at 0).
+      //    OLD code blindly re-INSERTed :1 → UNIQUE constraint crash.
+      await store.createNode({
+        scope: "project",
+        label: "contexthistory:ses-tool-test:1",
+        content: "--- slice m0000 ---\nold rotation content",
+        type: "contexthistory",
+        level: 0,
+        parentIds: null,
+        embedding: null,
+        embeddingSegments: null,
+        importance: 0.5,
+        usefulnessScore: 0.1,
+        source: "auto_extract",
+        sticky: true,
+        ttlDays: 30,
+        tags: ["contexthistory", `sess:${SESSION}`],
+        metadata: { sessionId: SESSION, historyIndex: 1, kind: "context-history" },
+        summary: "old rotation node",
+      });
+
+      // 4. Archive msg-1 → walks :0 (full) → REUSES :1, appends, heals registry
+      const result = await tool.execute(
+        { topic: "t2", content: JSON.stringify([{ messageId: "msg-1", topic: "t2", description: "d2" }]) },
+        { sessionID: SESSION } as never,
+      );
+      expect(result).toContain("Archived 1 message(s)");
+
+      const node1 = await store.getNodeByLabel("project", "contexthistory:ses-tool-test:1");
+      expect(node1.content).toContain("old rotation content");
+      // ref counter: m0001 (first archive, +1 in recordCompressBlock) → m0003
+      expect(node1.content).toContain("--- slice m0003 ---");
+      const registry = await store.getNodeByLabel("project", "contexthistory:index:ses-tool-test");
+      expect((registry.metadata as { currentHistoryIndex?: number }).currentHistoryIndex).toBe(1);
+    } finally {
+      await store.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

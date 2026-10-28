@@ -77,7 +77,10 @@ export async function rebuildCompressState(store: MemoryStore, sessionId: string
   const state = getCompressState(sessionId);
   if (state.blocks.size > 0) return state;
   try {
-    const registry = await store.getNodeByLabel("project", `contexthistory:index:${sessionId}`);
+    // includeExpired: the registry is structural chain state — TTL filtering
+    // must never make us lose the block map (expired rows own their unique
+    // label slot; see getHistoryNode in context-compress.ts).
+    const registry = await store.getNodeByLabel("project", `contexthistory:index:${sessionId}`, true);
     if (!registry?.content) return state;
     const parsed = JSON.parse(registry.content) as {
       entries?: Array<{ ref: string; msgId: string; status: string; summary: string; label: string; topic?: string }>;
@@ -121,7 +124,7 @@ export async function markDeadCompressEntries(
   const registryLabel = `contexthistory:index:${sessionId}`;
   let registry: { id: string; content?: string | null } | null = null;
   try {
-    registry = await store.getNodeByLabel("project", registryLabel);
+    registry = await store.getNodeByLabel("project", registryLabel, true);
   } catch {
     return 0;
   }

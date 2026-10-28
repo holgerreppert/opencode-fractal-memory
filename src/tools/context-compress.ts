@@ -392,25 +392,45 @@ async function appendToHistory(
   slice: { msgRef: string; topic: string; description: string; messageEntry: string },
 ): Promise<string> {
   const sliceText = formatArchivedSlice(slice, slice.messageEntry);
-  const currentIndex = await getCurrentHistoryIndex(store, sessionId);
+  const startIndex = await getCurrentHistoryIndex(store, sessionId);
+  let index = startIndex;
 
-  let node = await getHistoryNode(store, sessionId, currentIndex);
+  let node = await getHistoryNode(store, sessionId, index);
   if (!node) {
-    node = await createHistoryNode(store, sessionId, currentIndex);
+    node = await createHistoryNode(store, sessionId, index);
   }
-  if ((node.content?.length ?? 0) + sliceText.length > MAX_HISTORY_NODE_CHARS) {
-    const nextIndex = currentIndex + 1;
-    node = await createHistoryNode(store, sessionId, nextIndex);
-    await updateRegistryIndex(store, sessionId, nextIndex);
+  // Rotate forward while the current node can't fit the slice. Existing nodes
+  // at higher indices are REUSED (get-or-create), never blindly re-INSERTed —
+  // a blind INSERT hit the (scope,label) UNIQUE index whenever the registry
+  // pointer was stale or the node had TTL-expired (expired rows still own the
+  // unique slot; the expired-filtered lookup just can't see them), crashing
+  // every archivecontext call for the rest of the session.
+  while ((node.content?.length ?? 0) + sliceText.length > MAX_HISTORY_NODE_CHARS) {
+    index += 1;
+    const existing = await getHistoryNode(store, sessionId, index);
+    if (existing) {
+      node = existing;
+      continue; // re-check capacity on the reused node
+    }
+    node = await createHistoryNode(store, sessionId, index);
+    break; // freshly created node is empty — fits by definition
+  }
+  if (index !== startIndex) {
+    await updateRegistryIndex(store, sessionId, index);
   }
   const newContent = `${node.content ?? ""}\n\n${sliceText}`.trim();
-  await store.updateNode(node.id, { content: newContent });
+  // ttlDays refresh: a write means this chain node is active again — revived
+  // TTL-expired nodes get a fresh 30-day window (queryUpdateNode recomputes
+  // expires_at from ttlDays), so freshly archived content stays retrievable.
+  await store.updateNode(node.id, { content: newContent, ttlDays: 30 });
   return node.label ?? `contexthistory:${sessionId}:${node.id.slice(0, 8)}`;
 }
 
 async function getCurrentHistoryIndex(store: MemoryStore, sessionId: string): Promise<number> {
   try {
-    const registry = await store.getNodeByLabel("project", `contexthistory:index:${sessionId}`);
+    // includeExpired: structural chain read — TTL expiry must not make us
+    // lose track of where the chain is (see getHistoryNode for the crash).
+    const registry = await store.getNodeByLabel("project", `contexthistory:index:${sessionId}`, true);
     const meta = registry?.metadata as Record<string, unknown> | null;
     const idx = meta?.currentHistoryIndex;
     return typeof idx === "number" ? idx : 0;
@@ -421,7 +441,7 @@ async function getCurrentHistoryIndex(store: MemoryStore, sessionId: string): Pr
 
 async function updateRegistryIndex(store: MemoryStore, sessionId: string, index: number): Promise<void> {
   try {
-    const registry = await store.getNodeByLabel("project", `contexthistory:index:${sessionId}`);
+    const registry = await store.getNodeByLabel("project", `contexthistory:index:${sessionId}`, true);
     if (!registry) return;
     await store.updateNode(registry.id, {
       metadata: { ...((registry.metadata as Record<string, unknown>) ?? {}), currentHistoryIndex: index },
@@ -431,7 +451,12 @@ async function updateRegistryIndex(store: MemoryStore, sessionId: string, index:
 
 async function getHistoryNode(store: MemoryStore, sessionId: string, index: number): Promise<{ id: string; content?: string; label?: string | null } | null> {
   try {
-    return await store.getNodeByLabel("project", `contexthistory:${sessionId}:${index}`);
+    // includeExpired: contexthistory nodes carry a 30-day TTL, but they are
+    // STRUCTURAL chain state — an expired node still owns its (scope,label)
+    // UNIQUE slot, so the archive path must find and reuse it. Missing it and
+    // re-creating the label throws "UNIQUE constraint failed" and breaks every
+    // archivecontext call for the session.
+    return await store.getNodeByLabel("project", `contexthistory:${sessionId}:${index}`, true);
   } catch {
     return null;
   }
@@ -439,26 +464,34 @@ async function getHistoryNode(store: MemoryStore, sessionId: string, index: numb
 
 async function createHistoryNode(store: MemoryStore, sessionId: string, index: number): Promise<{ id: string; content?: string; label?: string | null }> {
   const label = `contexthistory:${sessionId}:${index}`;
-  const node = await store.createNode({
-    scope: "project",
-    label,
-    content: "",
-    type: "contexthistory",
-    level: 0,
-    parentIds: null,
-    embedding: null,
-    embeddingSegments: null,
-    importance: 0.5,
-    usefulnessScore: 0.1,
-    source: "auto_extract",
-    sticky: true,
-    ttlDays: 30,
-    tags: ["contexthistory", `sess:${sessionId}`],
-    metadata: { sessionId, historyIndex: index, kind: "context-history" },
-    summary: `Archived context history for session ${sessionId} (part ${index})`,
-  });
-  memLog("debug", "context-compress", "Created history node", { label, sessionId });
-  return node;
+  try {
+    const node = await store.createNode({
+      scope: "project",
+      label,
+      content: "",
+      type: "contexthistory",
+      level: 0,
+      parentIds: null,
+      embedding: null,
+      embeddingSegments: null,
+      importance: 0.5,
+      usefulnessScore: 0.1,
+      source: "auto_extract",
+      sticky: true,
+      ttlDays: 30,
+      tags: ["contexthistory", `sess:${sessionId}`],
+      metadata: { sessionId, historyIndex: index, kind: "context-history" },
+      summary: `Archived context history for session ${sessionId} (part ${index})`,
+    });
+    memLog("debug", "context-compress", "Created history node", { label, sessionId });
+    return node;
+  } catch (err) {
+    // Defensive: the label already exists (TTL-expired node, or a concurrent
+    // create). Reuse it instead of surfacing the UNIQUE constraint error.
+    const existing = await getHistoryNode(store, sessionId, index);
+    if (existing) return existing;
+    throw err;
+  }
 }
 
 // Registry node: contexthistory:index:<sessionId> — the session's msgRef
@@ -471,29 +504,40 @@ async function appendToRegistry(
   const registryLabel = `contexthistory:index:${sessionId}`;
   let registry: { id: string; content?: string | null; metadata?: Record<string, unknown> | null } | null = null;
   try {
-    registry = await store.getNodeByLabel("project", registryLabel);
+    // includeExpired: the registry is structural chain state (msgRef address
+    // book) — never lose track of it to TTL filtering.
+    registry = await store.getNodeByLabel("project", registryLabel, true);
   } catch { /* create below */ }
 
   if (!registry) {
-    await store.createNode({
-      scope: "project",
-      label: registryLabel,
-      content: JSON.stringify({ entries: [entry] }),
-      type: "contexthistory",
-      level: 0,
-      parentIds: null,
-      embedding: null,
-      embeddingSegments: null,
-      importance: 0.5,
-      usefulnessScore: 0.1,
-      source: "auto_extract",
-      sticky: true,
-      tags: ["contexthistory", "index", `sess:${sessionId}`],
-      metadata: { sessionId, currentHistoryIndex: 0, kind: "context-history-index" },
-      summary: `Compressed-context registry for session ${sessionId} — msgRef → archived message index`,
-    });
-    memLog("debug", "context-compress", "Created registry node", { sessionId });
-    return;
+    try {
+      await store.createNode({
+        scope: "project",
+        label: registryLabel,
+        content: JSON.stringify({ entries: [entry] }),
+        type: "contexthistory",
+        level: 0,
+        parentIds: null,
+        embedding: null,
+        embeddingSegments: null,
+        importance: 0.5,
+        usefulnessScore: 0.1,
+        source: "auto_extract",
+        sticky: true,
+        tags: ["contexthistory", "index", `sess:${sessionId}`],
+        metadata: { sessionId, currentHistoryIndex: 0, kind: "context-history-index" },
+        summary: `Compressed-context registry for session ${sessionId} — msgRef → archived message index`,
+      });
+      memLog("debug", "context-compress", "Created registry node", { sessionId });
+      return;
+    } catch (err) {
+      // Defensive: label already exists (expired node now visible via
+      // includeExpired, or a concurrent create). Reuse it — fall through to
+      // the append path instead of surfacing the UNIQUE error.
+      registry = await store.getNodeByLabel("project", registryLabel, true).catch(() => null);
+      if (!registry) throw err;
+      memLog("warn", "context-compress", "Registry create collided — reused existing node", { sessionId });
+    }
   }
 
   let entries: Array<Record<string, unknown>> = [];
