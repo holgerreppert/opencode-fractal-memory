@@ -206,10 +206,12 @@ export function createEventHandler(
       } else if (type === "session.execution.succeeded") {
         // V2 verified round-end signal (2026-10-28 event trace): opencode 2.x
         // does NOT emit session.idle/session.status{idle} to plugins — this is
-        // the reliable per-round completion event. Runs the same deduped
-        // end-of-round tasks; metrics end-stamp only on a real idle.
+        // the reliable per-round completion event. Mirrors V1 idle semantics
+        // (V1 idle was also per-round): end-stamp the metrics row and run the
+        // same deduped end-of-round tasks.
         const sessionId = (properties.sessionID as string | undefined) ?? "unknown";
         if (sessionId !== "unknown") {
+          await store.updateSessionMetrics(sessionId, { endedAt: Date.now(), status: "completed" });
           await runIdleTasks(sessionId, properties, "session.execution.succeeded");
         }
       } else if (type === "session.deleted") {
