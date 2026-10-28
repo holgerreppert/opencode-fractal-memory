@@ -12,6 +12,7 @@ interface StoredRow {
   turn: number;
   userMsgHash: string | null;
   rawText: string;
+  source: string;
   messageId: string | null;
 }
 
@@ -33,6 +34,7 @@ function fakeStore(opts: { count?: number; has?: boolean; injected?: string[] } 
         turn: data.turn,
         userMsgHash: data.userMsgHash,
         rawText: data.rawText,
+        source: data.source ?? "agent",
         messageId: data.messageId ?? null,
       });
     },
@@ -117,10 +119,65 @@ describe("captureRoundIntent", () => {
     expect(stored).toHaveLength(0);
   });
 
-  test("no-op when the round has no intent line", async () => {
+  test("infers from the user message when the agent skipped the intent line", async () => {
     const { store, stored } = fakeStore();
     const status = await captureRoundIntent(store, "ses_a", [
-      msg("user", "hi", "u1"),
+      msg("user", "please fix the reload 404 bug", "u1"),
+      msg("assistant", "done, all tests pass", "a1"),
+    ]);
+    expect(status).toContain("(inferred)");
+    expect(status).toContain('q="please fix the reload 404 bug"');
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.source).toBe("inferred");
+    expect(stored[0]!.rawText).toContain("reload 404");
+    expect(stored[0]!.messageId).toBe("u1");
+  });
+
+  test("agent line takes precedence over inference", async () => {
+    const { store, stored } = fakeStore();
+    await captureRoundIntent(store, "ses_a", [
+      msg("user", "please fix the reload 404 bug", "u1"),
+      msg("assistant", "intent: verifying the retry backoff", "a1"),
+    ]);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.source).toBe("agent");
+    expect(stored[0]!.rawText).toBe("verifying the retry backoff");
+  });
+
+  test("skips inference when the user message has no intent signal", async () => {
+    const { store, stored } = fakeStore();
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("user", "ok", "u1"),
+      msg("assistant", "done", "a1"),
+    ]);
+    expect(status).toBe("no intent signal to infer");
+    expect(stored).toHaveLength(0);
+  });
+
+  test("inferring dedupes on the user message id", async () => {
+    const { store, stored } = fakeStore({ has: true });
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("user", "please fix the reload 404 bug", "u1"),
+      msg("assistant", "done", "a1"),
+    ]);
+    expect(status).toContain("duplicate");
+    expect(stored).toHaveLength(0);
+  });
+
+  test("inferred rounds still attribute injected nodes", async () => {
+    const { store, bumped } = fakeStore({ injected: ["n1", "n2"] });
+    const status = await captureRoundIntent(store, "ses_a", [
+      msg("user", "please fix the reload 404 bug", "u1"),
+      msg("assistant", "done", "a1"),
+    ]);
+    expect(status).toContain("(+2 nodes → debug)");
+    expect(bumped).toHaveLength(1);
+    expect(bumped[0]!.intent).toBe("debug");
+  });
+
+  test("no-op when the round has no intent line and no user message", async () => {
+    const { store, stored } = fakeStore();
+    const status = await captureRoundIntent(store, "ses_a", [
       msg("assistant", "working on it", "a1"),
     ]);
     expect(status).toBe("no intent line in round");
