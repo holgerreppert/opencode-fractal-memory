@@ -3,7 +3,7 @@ import type { MemoryScope, MemoryStore } from "../storage/sqlite";
 import { generateEmbedding } from "../infrastructure/llm/embeddings";
 import { memLog, getSessionId } from "../logging";
 import { onNodeCreated } from "../storage/auto-edges";
-import { resolveNode, wrapWithContextWarning, wrapWithTracking, normalizeScope } from "./shared";
+import { resolveNode, resolveNodeByLabel, wrapWithContextWarning, wrapWithTracking, normalizeScope } from "./shared";
 
 // Try to generate embedding, returning null on failure instead of throwing
 async function tryGenerateEmbedding(
@@ -175,7 +175,9 @@ export function MemoryRate(store: MemoryStore) {
       if (args.id) {
         nodeId = args.id;
       } else if (args.label) {
-        const node = await store.getNodeByLabel(scope, args.label);
+        // Cross-scope: the rating invitation and injected blocks don't carry
+        // scope, so a global node must resolve without scope="global".
+        const node = await resolveNodeByLabel(store, args.label, scope);
         nodeId = node.id;
       } else {
         throw new Error("Must provide either id or label");
